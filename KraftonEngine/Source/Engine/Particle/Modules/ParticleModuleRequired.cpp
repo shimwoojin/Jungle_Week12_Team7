@@ -1,8 +1,24 @@
-#include "ParticleModuleRequired.h"
+﻿#include "ParticleModuleRequired.h"
 
 #include "Materials/Material.h"
 
-void UParticleModuleRequired::SetToSensibleDefaults(UParticleEmitter* Owner) {}
+void UParticleModuleRequired::SetToSensibleDefaults(UParticleEmitter* Owner)
+{
+	MaterialSlot = "None";
+	CachedMaterial = nullptr;
+
+	BlendState = EBlendState::AlphaBlend;
+	bUseLocalSpace = false;
+
+	SubImagesHorizontal = 1;
+	SubImagesVertical = 1;
+
+	EmitterDuration = 1.0f;
+	EmitterLoops = 0;
+
+	SortMode = ESortMode::None;
+	ScreenAlignment = EScreenAlignment::Square;
+}
 
 UMaterial* UParticleModuleRequired::ResolveMaterial()
 {

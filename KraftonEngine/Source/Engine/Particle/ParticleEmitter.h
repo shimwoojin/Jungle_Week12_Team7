@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Object/Object.h"
 #include "Particle/ParticleHelper.h"
@@ -6,6 +6,7 @@
 #include "Source/Engine/Particle/ParticleEmitter.generated.h"
 
 class UParticleLODLevel;
+class UParticleModule;
 class FParticleEmitterInstance;
 class UParticleSystemComponent;
 
@@ -36,7 +37,8 @@ public:
 	// 디폴트 LOD 0 + Required + Spawn 까지 만들어 emitter 를 사용 가능 상태로.
 	void InitializeDefaultLODLevel();
 
-	// 새 LOD level 을 생성 (LOD0 모듈 카피). 반환은 새 LOD 또는 기존 LOD.
+	// 새 LOD level 을 생성. 현재는 Required + Spawn 기본 모듈만 생성.
+	// LOD0 모듈 복사/보간은 UpdateFromLOD0() 구현 시 처리.
 	UParticleLODLevel* CreateLODLevel(int32 InLevel);
 	void               RemoveLODLevel(int32 InLevel);
 	UParticleLODLevel* GetLODLevel(int32 InLevel) const;
@@ -58,7 +60,7 @@ public:
 
 protected:
 	// CacheEmitterModuleInfo() 의 결과 — emitter 가 소유 (재계산 가능).
-	uint32 ParticleSize              = 0;
+	uint32 ParticleSize              = sizeof(FBaseParticle);
 	uint32 RequiredBytesPerInstance  = 0;
 	TMap<const UParticleModule*, uint32> ModuleOffsetMap;
 };
