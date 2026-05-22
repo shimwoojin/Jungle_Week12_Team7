@@ -117,12 +117,31 @@ FMOD_RELEASE_DLL = "fmod.dll"
 # PostBuildEvent 에서 명시적으로 *.dll 을 OutDir 로 복사한다.
 # Debug 구성은 debug\\bin, 그 외(Release/Game/ObjViewDebug/Demo)는 release bin 사용.
 # (Include 경로는 INCLUDE_PATHS 에 직접 추가됨 — 위 주석 참고.)
-PHYSX_DEBUG_BIN   = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\debug\\bin"
-PHYSX_RELEASE_BIN = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\bin"
+PHYSX_DEBUG_LIB_DIR   = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\debug\\lib"
+PHYSX_RELEASE_LIB_DIR = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\lib"
+PHYSX_DEBUG_BIN       = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\debug\\bin"
+PHYSX_RELEASE_BIN     = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\bin"
+PHYSX_LIBS = [
+    "PhysX_64.lib",
+    "PhysXFoundation_64.lib",
+    "PhysXCommon_64.lib",
+    "PhysXExtensions_static_64.lib",
+    "PhysXTask_static_64.lib",
+    "PhysXPvdSDK_static_64.lib",
+    "LowLevel_static_64.lib",
+    "LowLevelAABB_static_64.lib",
+    "LowLevelDynamics_static_64.lib",
+    "SceneQuery_static_64.lib",
+    "SimulationController_static_64.lib",
+    "PhysXCooking_64.lib",
+    "PhysXCharacterKinematic_static_64.lib",
+    "PhysXVehicle_static_64.lib",
+]
 
 # Reflection — UCLASS/UPROPERTY 매크로 → *.generated.h/.cpp 자동 생성.
 # 빌드 시작 직전(PreBuildEvent)과 ClCompile 직전(GenerateReflectionHeaders target)
 # 두 위치에 모두 박는다 — VS IDE / msbuild 호출 경로 모두 커버.
+LOCAL_PYTHON_PATH = "..\\Scripts\python\\python.exe"
 GENERATE_HEADERS_TOOL = "..\\Scripts\\GenerateHeaders.py"
 
 # Lua (LuaJIT, 5.1 ABI) — lua51.dll 은 .gitignore 의 **/[Bb]in/* 에 걸려 있어
@@ -319,7 +338,8 @@ def generate_vcxproj(files: dict[str, list[str]]):
                       Condition="exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')",
                       Label="LocalAppDataPlatform")
 
-    ET.SubElement(proj, "PropertyGroup", Label="UserMacros")
+    user_macros = ET.SubElement(proj, "PropertyGroup", Label="UserMacros")
+    ET.SubElement(user_macros, "PhysXLibs").text = ";".join(PHYSX_LIBS)
 
     # OutDir, IntDir, IncludePath, LibraryPath, WorkingDirectory for all configurations
     include_path_value = ";".join(INCLUDE_PATHS) + ";$(IncludePath)"
@@ -391,9 +411,14 @@ def generate_vcxproj(files: dict[str, list[str]]):
         subsystem = props.get("subsystem", "Windows" if is_x64 else "Console")
         ET.SubElement(link, "SubSystem").text = subsystem
         ET.SubElement(link, "GenerateDebugInformation").text = "true"
-        if ADDITIONAL_LIB_DIRS:
+        additional_lib_dirs = list(ADDITIONAL_LIB_DIRS)
+        if is_x64:
+            additional_lib_dirs.append(
+                f"$(ProjectDir){PHYSX_DEBUG_LIB_DIR if cfg == 'Debug' else PHYSX_RELEASE_LIB_DIR}"
+            )
+        if additional_lib_dirs:
             ET.SubElement(link, "AdditionalLibraryDirectories").text = (
-                ";".join(ADDITIONAL_LIB_DIRS) + ";%(AdditionalLibraryDirectories)"
+                ";".join(additional_lib_dirs) + ";%(AdditionalLibraryDirectories)"
             )
         all_deps = list(ADDITIONAL_DEPENDENCIES)
         if is_x64:
@@ -402,8 +427,11 @@ def generate_vcxproj(files: dict[str, list[str]]):
             all_deps.append(FMOD_DEBUG_LIB if cfg == "Debug" else FMOD_RELEASE_LIB)
             all_deps.append(FBX_LIB)
         if all_deps:
+            additional_dependencies = ";".join(all_deps)
+            if is_x64:
+                additional_dependencies += ";$(PhysXLibs)"
             ET.SubElement(link, "AdditionalDependencies").text = (
-                ";".join(all_deps) + ";%(AdditionalDependencies)"
+                additional_dependencies + ";%(AdditionalDependencies)"
             )
 
         if is_x64:
@@ -424,7 +452,7 @@ def generate_vcxproj(files: dict[str, list[str]]):
         # *.generated.h/.cpp 를 생성. 모든 구성에서 동일하게 1회 실행.
         pre_build = ET.SubElement(idg, "PreBuildEvent")
         ET.SubElement(pre_build, "Command").text = (
-            f'python "$(ProjectDir){GENERATE_HEADERS_TOOL}" --root "$(ProjectDir)."'
+            f'"$(ProjectDir){LOCAL_PYTHON_PATH}" "$(ProjectDir){GENERATE_HEADERS_TOOL}" --root "$(ProjectDir)."'
         )
 
     # ClCompile items
