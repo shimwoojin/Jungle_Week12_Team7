@@ -1,32 +1,77 @@
-#include "ParticleEmitterInstance.h"
+﻿#include "ParticleEmitterInstance.h"
 
 #include "Particle/ParticleEmitter.h"
 #include "Particle/ParticleLODLevel.h"
 #include "Particle/ParticleModule.h"
+#include "Particle/Modules/ParticleModuleSpawn.h"
+#include "Particle/Modules/ParticleModuleRequired.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Math/Transform.h"
 
-FParticleEmitterInstance::~FParticleEmitterInstance() {}
+FParticleEmitterInstance::~FParticleEmitterInstance()
+{
+	ParticleData.clear();
+	ParticleIndices.clear();
+}
 
 void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystemComponent* InComponent)
 {
-	Emitter   = InEmitter;
+	Emitter = InEmitter;
 	Component = InComponent;
-	// TODO: emitter 의 ParticleSize/ModuleOffsetMap 캐시 + 초기 capacity 할당.
+
+	CurrentLODIndex = 0;
+	SpawnFraction = 0.0f;
+	EmitterTimeSeconds = 0.0f;
+	LoopCount = 0;
+	ActiveParticles = 0;
+
+	ClearPendingEvents();
+
+	if (Emitter)
+	{
+		Emitter->InitializeDefaultLODLevel();
+		Emitter->CacheEmitterModuleInfo();
+
+		ModuleOffsetMap = &Emitter->GetModuleOffsetMap();
+
+		ParticleStride = std::max<uint32>(Emitter->GetParticleSize(), sizeof(FBaseParticle));
+	}
+	else
+	{
+		ModuleOffsetMap = nullptr;
+		ParticleStride = sizeof(FBaseParticle);
+	}
+
+	ResizeParticleData(GetInitialParticleCapacity());
 }
 
 void FParticleEmitterInstance::Tick(float DeltaTime)
 {
-	// TODO: SpawnParticles → UpdateParticles → Kill → 이벤트 큐 정리
+	if (!Emitter) return;
+	if (!Component) return;
+	if (DeltaTime <= 0.0f) return;
+
+	ClearPendingEvents();
+
+	SpawnParticles(DeltaTime);
+	UpdateParticles(DeltaTime);
+
+	EmitterTimeSeconds += DeltaTime;
 }
 
 void FParticleEmitterInstance::Reset()
 {
-	ActiveParticles    = 0;
-	SpawnFraction      = 0.0f;
+	ActiveParticles = 0;
+	SpawnFraction = 0.0f;
 	EmitterTimeSeconds = 0.0f;
-	LoopCount          = 0;
+	LoopCount = 0;
+
 	ClearPendingEvents();
+
+	for (uint32 i = 0; i < MaxActiveParticles; ++i)
+	{
+		ParticleIndices[i] = static_cast<uint16>(i);
+	}
 }
 
 FDynamicEmitterDataBase* FParticleEmitterInstance::GetDynamicData()
@@ -65,8 +110,8 @@ UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
 
 FTransform FParticleEmitterInstance::GetComponentToWorld() const
 {
-	// TODO: Component 의 world transform 반환.
-	return FTransform{};
+	if (!Component) return FTransform{};
+	return FTransform(Component->GetWorldMatrix());
 }
 
 void FParticleEmitterInstance::ClearPendingEvents()
@@ -77,25 +122,301 @@ void FParticleEmitterInstance::ClearPendingEvents()
 	BurstEvents.clear();
 }
 
-void FParticleEmitterInstance::SpawnParticles(float DeltaTime)      {}
-void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase) {}
-void FParticleEmitterInstance::UpdateParticles(float DeltaTime)     {}
+void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
+{
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD || !LOD->bEnabled) return;
+	if (!LOD->SpawnModule) return;
+
+	float SpawnAmount = 0.0f;
+	int32 BurstCount = 0;
+
+	LOD->SpawnModule->GetSpawnAmount(
+		DeltaTime,
+		EmitterTimeSeconds,
+		SpawnAmount,
+		BurstCount);
+
+	SpawnAmount = std::max(0.0f, SpawnAmount);
+	BurstCount = std::max(0, BurstCount);
+
+	const float TotalSpawnFloat = SpawnFraction + SpawnAmount;
+	const int32 RateSpawnCount = static_cast<int32>(std::floor(TotalSpawnFloat));
+
+	SpawnFraction = TotalSpawnFloat - static_cast<float>(RateSpawnCount);
+
+	int32 SpawnCount = RateSpawnCount + BurstCount;
+	if (SpawnCount <= 0) return;
+
+	if (SpawnCount > static_cast<int32>(ParticleConstants::MaxBurstCountPerFrame))
+	{
+		SpawnCount = static_cast<int32>(ParticleConstants::MaxBurstCountPerFrame);
+	}
+
+	const uint32 FreeCount =
+		ParticleConstants::MaxParticlesPerEmitter > ActiveParticles
+		? ParticleConstants::MaxParticlesPerEmitter - ActiveParticles
+		: 0;
+
+	if (FreeCount == 0) return;
+
+	if (static_cast<uint32>(SpawnCount) > FreeCount)
+	{
+		SpawnCount = static_cast<int32>(FreeCount);
+	}
+
+	SpawnInternal(SpawnCount, 0.0f);
+}
+
+void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
+{
+	if (Count <= 0) return;
+
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD || !LOD->bEnabled) return;
+
+	const uint32 RequiredActiveCount = ActiveParticles + static_cast<uint32>(Count);
+	if (RequiredActiveCount > MaxActiveParticles)
+	{
+		const uint32 NewCapacity = GrowParticleCapacity(MaxActiveParticles, RequiredActiveCount);
+		if (NewCapacity <= MaxActiveParticles) return;
+
+		ResizeParticleData(NewCapacity);
+	}
+
+	const uint32 ActiveFlag = static_cast<uint32>(EParticleStateFlags::Active);
+	const uint32 SpawnedFlag = static_cast<uint32>(EParticleStateFlags::Spawned);
+
+	for (int32 SpawnIndex = 0; SpawnIndex < Count; ++SpawnIndex)
+	{
+		if (ActiveParticles >= MaxActiveParticles) break;
+
+		const uint32 Slot = ActiveParticles;
+		uint8* ParticleBytes = ParticleData.data() + Slot * ParticleStride;
+
+		std::memset(ParticleBytes, 0, ParticleStride);
+
+		FBaseParticle* Particle = reinterpret_cast<FBaseParticle*>(ParticleBytes);
+		*Particle = FBaseParticle{};
+
+		Particle->Flags = ActiveFlag | SpawnedFlag;
+
+		if (Component)
+		{
+			Particle->Location = Component->GetWorldLocation();
+			Particle->OldLocation = Particle->Location;
+		}
+
+		ParticleIndices[ActiveParticles] = static_cast<uint16>(Slot);
+		++ActiveParticles;
+
+		for (UParticleModule* Module : LOD->Modules)
+		{
+			if (!Module || !Module->IsEnabled()) continue;
+
+			const uint32 ModuleOffset = GetModuleDataOffset(Module);
+			Module->Spawn(this, ModuleOffset, SpawnTimeBase, Particle);
+		}
+
+		FParticleEventSpawnData SpawnEvent;
+		SpawnEvent.Type = EParticleEventType::Spawn;
+		SpawnEvent.TimeSeconds = EmitterTimeSeconds;
+		SpawnEvent.Location = Particle->Location;
+		SpawnEvent.Velocity = Particle->Velocity;
+		SpawnEvent.ParticleCount = 1;
+		SpawnEvents.push_back(SpawnEvent);
+	}
+}
+
+void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
+{
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD || !LOD->bEnabled) return;
+
+	for (uint32 i = 0; i < ActiveParticles; ++i)
+	{
+		FBaseParticle* Particle = GetParticleAt(i);
+		if (!Particle) continue;
+
+		Particle->OldLocation = Particle->Location;
+		Particle->Location = Particle->Location + Particle->Velocity * DeltaTime;
+		Particle->RelativeTime += DeltaTime * Particle->OneOverMaxLifetime;
+	}
+
+	for (UParticleModule* Module : LOD->Modules)
+	{
+		if (!Module || !Module->IsEnabled()) continue;
+
+		const uint32 ModuleOffset = GetModuleDataOffset(Module);
+		Module->Update(this, ModuleOffset, DeltaTime);
+	}
+
+	uint32 WriteIndex = 0;
+
+	for (uint32 ReadIndex = 0; ReadIndex < ActiveParticles; ++ReadIndex)
+	{
+		FBaseParticle* Particle = GetParticleAt(ReadIndex);
+		if (!Particle) continue;
+
+		if (IsParticleKilled(Particle))
+		{
+			FParticleEventDeathData DeathEvent;
+			DeathEvent.Type = EParticleEventType::Death;
+			DeathEvent.TimeSeconds = EmitterTimeSeconds;
+			DeathEvent.Location = Particle->Location;
+			DeathEvent.Velocity = Particle->Velocity;
+			DeathEvent.ParticleAge = Particle->RelativeTime;
+			DeathEvents.push_back(DeathEvent);
+
+			continue;
+		}
+
+		ClearSpawnedFlag(Particle);
+
+		if (WriteIndex != ReadIndex)
+		{
+			FBaseParticle* WriteParticle =
+				reinterpret_cast<FBaseParticle*>(ParticleData.data() + WriteIndex * ParticleStride);
+
+			std::memmove(WriteParticle, Particle, ParticleStride);
+		}
+
+		ParticleIndices[WriteIndex] = static_cast<uint16>(WriteIndex);
+		++WriteIndex;
+	}
+
+	ActiveParticles = WriteIndex;
+}
 
 void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)
 {
+	NewMax = std::min<uint32>(NewMax, ParticleConstants::MaxParticlesPerEmitter);
+
 	MaxActiveParticles = NewMax;
-	ParticleData.resize(NewMax * ParticleStride, 0);
-	ParticleIndices.resize(NewMax, 0);
+
+	ParticleData.resize(MaxActiveParticles * ParticleStride, 0);
+	ParticleIndices.resize(MaxActiveParticles, 0);
+
+	for (uint32 i = 0; i < MaxActiveParticles; ++i)
+	{
+		ParticleIndices[i] = static_cast<uint16>(i);
+	}
+
+	if (ActiveParticles > MaxActiveParticles)
+	{
+		ActiveParticles = MaxActiveParticles;
+	}
+}
+
+void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& OutData) const
+{
+	OutData.ActiveParticleCount = ActiveParticles;
+	OutData.ParticleStride = ParticleStride;
+
+	OutData.ParticleData.resize(ActiveParticles * ParticleStride, 0);
+	OutData.ParticleIndices.resize(ActiveParticles, 0);
+
+	for (uint32 i = 0; i < ActiveParticles; ++i)
+	{
+		const FBaseParticle* Particle = GetParticleAt(i);
+		if (!Particle) continue;
+
+		std::memcpy(
+			OutData.ParticleData.data() + i * ParticleStride,
+			Particle,
+			ParticleStride);
+
+		OutData.ParticleIndices[i] = static_cast<uint16>(i);
+	}
+
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD || !LOD->RequiredModule)
+	{
+		return;
+	}
+
+	UParticleModuleRequired* Required = LOD->RequiredModule;
+
+	OutData.Material = Required->ResolveMaterial();
+	OutData.BlendState = Required->BlendState;
+	OutData.bUseLocalSpace = Required->bUseLocalSpace;
+
+	if (Component)
+	{
+		OutData.LocalToWorld = Component->GetWorldMatrix();
+	}
+}
+
+uint32 FParticleEmitterInstance::GetInitialParticleCapacity() const
+{
+	return 64;
+}
+
+uint32 FParticleEmitterInstance::GrowParticleCapacity(uint32 Current, uint32 Required) const
+{
+	uint32 NewCapacity = Current > 0 ? Current : GetInitialParticleCapacity();
+
+	while (NewCapacity < Required)
+	{
+		NewCapacity *= 2;
+	}
+
+	return std::min(NewCapacity, ParticleConstants::MaxParticlesPerEmitter);
+}
+
+bool FParticleEmitterInstance::IsParticleKilled(const FBaseParticle* Particle) const
+{
+	if (!Particle) return true;
+
+	const uint32 KilledFlag = static_cast<uint32>(EParticleStateFlags::Killed);
+	return (Particle->Flags & KilledFlag) != 0 || Particle->RelativeTime >= 1.0f;
+}
+
+void FParticleEmitterInstance::ClearSpawnedFlag(FBaseParticle* Particle) const
+{
+	if (!Particle) return;
+
+	const uint32 SpawnedFlag = static_cast<uint32>(EParticleStateFlags::Spawned);
+	Particle->Flags &= ~SpawnedFlag;
 }
 
 // -- Sprite ----
-FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()    { return nullptr; }
+FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()    
+{ 
+	FDynamicSpriteEmitterData* Data = new FDynamicSpriteEmitterData();
+
+	FillReplayData(Data->Source);
+
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (LOD && LOD->RequiredModule)
+	{
+		Data->Source.SubImagesHorizontal = LOD->RequiredModule->SubImagesHorizontal;
+		Data->Source.SubImagesVertical = LOD->RequiredModule->SubImagesVertical;
+	}
+
+	return Data;
+}
 
 // -- Mesh ----
-FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()      { return nullptr; }
+FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData() 
+{ 
+	FDynamicMeshEmitterData* Data = new FDynamicMeshEmitterData();
+	FillReplayData(Data->Source);
+	return Data;
+}
 
 // -- Beam ----
-FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()      { return nullptr; }
+FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()     
+{ 
+	FDynamicBeamEmitterData* Data = new FDynamicBeamEmitterData();
+
+	FillReplayData(Data->Source);
+
+	Data->Source.SourcePoint = SourcePoint;
+	Data->Source.TargetPoint = TargetPoint;
+
+	return Data;
+}
 void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const FVector& InTarget)
 {
 	SourcePoint = InSource;
@@ -103,4 +424,9 @@ void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const F
 }
 
 // -- Ribbon ----
-FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()    { return nullptr; }
+FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()   
+{ 
+	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
+	FillReplayData(Data->Source);
+	return Data;
+}

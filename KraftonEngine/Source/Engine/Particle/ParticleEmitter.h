@@ -54,6 +54,7 @@ public:
 	uint32 GetParticleSize()                const { return ParticleSize; }
 	uint32 GetReqInstanceBytes()            const { return RequiredBytesPerInstance; }
 	uint32 GetModuleOffset(const class UParticleModule* M) const;
+	const TMap<const UParticleModule*, uint32>& GetModuleOffsetMap() const { return ModuleOffsetMap; }
 
 	// 인스턴스 팩토리 — TypeData 에 따라 sprite/mesh/beam/ribbon instance 생성.
 	FParticleEmitterInstance* CreateInstance(UParticleSystemComponent* InComponent);
