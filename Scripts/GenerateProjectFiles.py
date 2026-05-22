@@ -113,10 +113,15 @@ FMOD_RELEASE_LIB = "fmod_vc.lib"
 FMOD_DEBUG_DLL = "fmodL.dll"
 FMOD_RELEASE_DLL = "fmod.dll"
 
-# PhysX (NuGet, 4.1.2) — vcpkg auto applocal-deps가 일부 환경에서 동작하지 않아
-# PostBuildEvent 에서 명시적으로 *.dll 을 OutDir 로 복사한다.
-# Debug 구성은 debug\\bin, 그 외(Release/Game/ObjViewDebug/Demo)는 release bin 사용.
-# (Include 경로는 INCLUDE_PATHS 에 직접 추가됨 — 위 주석 참고.)
+# PhysX (NuGet, 4.1.2) — NuGet 의 NVIDIA.PhysX.targets 는 include / props 만 정리해
+# 주고 *.lib 자동 link 는 하지 않는다 (확인: 명시 link 빼면 LNK2019 PxCreateFoundation
+# 등으로 link 실패). 예전에 "vcpkg 끌어와서 빌드되던 것" 은 사용자 PC 의
+# `vcpkg integrate install` 이 user-wide property sheet 로 vcpkg 의 PhysX lib 를
+# 자동으로 끼워 넣어주던 부수효과였고, vcpkg 가 없는 PC 에서는 빌드가 깨졌다.
+# 본 스크립트는 vcxproj 의 <VcpkgEnabled>false</VcpkgEnabled> 로 vcpkg 통합을 끄고
+# (Globals 에 박힘 — generate_vcxproj 참고), NuGet 패키지 경로의 lib 를 명시적으로
+# AdditionalLibraryDirectories / AdditionalDependencies 에 넣어 모든 PC 에서 동일하게
+# NuGet 의 PhysX 만 사용하게 한다. DLL 은 PostBuildEvent 에서 OutDir 로 복사.
 PHYSX_DEBUG_LIB_DIR   = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\debug\\lib"
 PHYSX_RELEASE_LIB_DIR = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\lib"
 PHYSX_DEBUG_BIN       = "packages\\NVIDIA.PhysX.4.1.2\\installed\\x64-windows\\debug\\bin"
@@ -309,6 +314,10 @@ def generate_vcxproj(files: dict[str, list[str]]):
     ET.SubElement(pg, "ProjectGuid").text = PROJECT_GUID
     ET.SubElement(pg, "RootNamespace").text = ROOT_NAMESPACE
     ET.SubElement(pg, "WindowsTargetPlatformVersion").text = "10.0"
+    # vcpkg user-wide integration 비활성화. 로컬 PC 에 `vcpkg integrate install` 이
+    # 적용돼 있어도 본 프로젝트는 NuGet 의 PhysX (packages/NVIDIA.PhysX.4.1.2) 만 쓰도록
+    # 강제. (vcpkg 의 PhysX 가 끼어들면 lib 버전/심볼 불일치로 link 실패가 발생했음.)
+    ET.SubElement(pg, "VcpkgEnabled").text = "false"
 
     ET.SubElement(proj, "Import", Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props")
 
