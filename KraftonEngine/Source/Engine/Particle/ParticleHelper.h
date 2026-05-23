@@ -116,10 +116,12 @@ struct FParticleSpriteVertex
 
 struct FParticleMeshInstanceVertex
 {
-	// per-instance transform (column-major 12 floats = 3 rows of float4)
+	// per-instance world transform (row-major, 4 rows of float4).
+	// FMatrix가 row-major + HLSL이 mul(v, M)으로 받으니 4 row 모두 전송 (row 3에 translation).
 	FVector4 Transform0;
 	FVector4 Transform1;
 	FVector4 Transform2;
+	FVector4 Transform3;
 	FVector4 Color;
 	int32    SubImageIndex;
 };
@@ -146,6 +148,7 @@ enum class EDynamicEmitterType : uint8
 	Mesh,
 	Beam,
 	Ribbon,
+	Count,	// 배열 크기 산출용 — 새 타입 추가 시 이 위에.
 };
 
 struct FDynamicEmitterReplayDataBase
@@ -157,8 +160,9 @@ struct FDynamicEmitterReplayDataBase
 	TArray<uint8>  ParticleData;               // [ActiveParticleCount * Stride]
 	TArray<uint16> ParticleIndices;            // 활성 인덱스 (sort 결과 등 포함 가능)
 
+	// Material이 BlendState/DepthStencilState 등 렌더 상태의 single source of truth.
+	// 별도 BlendState 필드를 두지 않음 — Material->GetBlendState() 사용.
 	UMaterial* Material = nullptr;
-	EBlendState BlendState = EBlendState::AlphaBlend;
 	bool bUseLocalSpace = false;
 	FMatrix LocalToWorld;      // bUseLocalSpace == true 일 때만 의미 있음 (default ctor = zero)
 };

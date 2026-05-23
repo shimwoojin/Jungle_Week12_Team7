@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core/Types/CoreTypes.h"
 
@@ -47,6 +47,8 @@ struct FShowFlags
 {
 	bool bStaticMesh = true;
 	bool bSkeletalMesh = true;
+	bool bParticles = true;             // ParticleSystemComponent 표시 토글
+	bool bParticleBounds = false;       // 입자 시스템 AABB 디버그 표시
 	bool bGrid = true;
 	bool bWorldAxis = true;
 	bool bGizmo = true;

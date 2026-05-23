@@ -85,6 +85,7 @@ void FDrawCommandBuilder::BeginCollect(const FFrameContext& Frame)
 	CollectViewMode = Frame.RenderOptions.ViewMode;
 	bCollectWeightBoneHeatMap = Frame.RenderOptions.bWeightBoneHeatMap;
 	CollectWeightBoneHeatMapBoneIndex = Frame.RenderOptions.WeightBoneHeatMapBoneIndex;
+	CollectCameraPosition = Frame.CameraPosition;
 
 	bHasSelectionMaskCommands = false;
 
@@ -164,10 +165,16 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 	{
 		return;
 	}
-	if (!ProxyBuffer.HasBuffers()) return;
+	// ProxyBuffer가 비어 있어도 section-level BufferOverride가 있을 수 있음 (Particle 멀티 emitter).
+	// → early return 제거, 루프 안에서 effective buffer 체크.
 
 	// PassState → RenderState 변환 (Wireframe 오버라이드 포함)
 	const FDrawCommandRenderState BaseRenderState = PassRenderStateTable->ToDrawCommandState(Pass, CollectViewMode);
+
+	// Translucent depth-first 정렬용 거리² (Pass != Translucent면 SortKey에서 무시)
+	const FVector& ObjPos = Proxy.GetCachedWorldPos();
+	const FVector  ToCam  = CollectCameraPosition - ObjPos;
+	const float    DistSq = ToCam.Dot(ToCam);
 
 	// PerObjectCB 업데이트
 	FConstantBuffer* PerObjCB = GetPerObjectCBForProxy(&Scene, Proxy);
@@ -194,7 +201,12 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
  	for (const FMeshSectionDraw& Section : Proxy.GetSectionDraws())
 	{
 		if (Section.IndexCount == 0) continue;
-		if (!ProxyBuffer.IB) continue;
+
+		// Section의 BufferOverride 있으면 사용, 없으면 proxy 공유 ProxyBuffer.
+		const FDrawCommandBuffer& EffBuffer = Section.BufferOverride.HasBuffers()
+			? Section.BufferOverride
+			: ProxyBuffer;
+		if (!EffBuffer.IB) continue;
 
 		// Section Material이 셰이더를 가지면 사용, 없으면 Proxy 폴백
 		FShader* SectionShader = (Section.Material && Section.Material->GetShader())
@@ -206,7 +218,7 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 		Cmd.Pass = Pass;
 		Cmd.Shader = EffectiveShader;
 		Cmd.RenderState = BaseRenderState;
-		Cmd.Buffer = ProxyBuffer;
+		Cmd.Buffer = EffBuffer;
 		Cmd.PerObjectCB = PerObjCB;
 		Cmd.bIsSkeletal = bSkeletal;
 		Cmd.bIsGpuSkinned = bGPUSkinning;
@@ -237,7 +249,7 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 				ApplyMaterialRenderState(Cmd.RenderState, Mat, BaseRenderState);
 		}
 
-		Cmd.BuildSortKey();
+		Cmd.BuildSortKey(0, DistSq);
 	}
 }
 

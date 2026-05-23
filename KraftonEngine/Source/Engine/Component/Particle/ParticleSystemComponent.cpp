@@ -52,6 +52,7 @@ void UParticleSystemComponent::Activate(bool bReset)
 	}
 
 	PushDynamicDataToProxy();
+	MarkProxyDirty(EDirtyFlag::Mesh);
 }
 
 void UParticleSystemComponent::Deactivate()

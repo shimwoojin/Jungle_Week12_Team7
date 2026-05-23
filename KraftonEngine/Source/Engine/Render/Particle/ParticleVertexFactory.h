@@ -6,7 +6,6 @@
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
-struct ID3D11InputLayout;
 class FShader;
 class FDynamicVertexBuffer;
 
@@ -23,27 +22,38 @@ public:
 
 	virtual EDynamicEmitterType GetType() const = 0;
 
-	// RHI 의존 리소스 초기화/해제 (Shader/InputLayout 등). lazy-init 패턴.
+	// RHI 의존 리소스 초기화/해제 (Shader 등). lazy-init 패턴.
+	// InputLayout은 FShader가 VS reflection으로 내부 관리 — factory는 별도 보유 안 함.
 	virtual void InitResources(ID3D11Device* Device) = 0;
 	virtual void ReleaseResources() = 0;
 
-	// pipeline 의 입력 layout. 한 번 만들어 캐시.
-	virtual ID3D11InputLayout* GetInputLayout() const = 0;
-	virtual FShader*           GetShader() const = 0;
+	virtual FShader* GetShader() const = 0;
 
 	// EmitterReplayData 의 입자 buffer 를 읽어 dynamic VB 로 변환/업로드.
 	// 반환: 이 draw 의 vertex/index 카운트.
 	// CameraRight/CameraUp: 빌보드 expansion에 사용 (Mesh/Beam/Ribbon은 무시 가능).
+	// CameraPosition: 같은 proxy 내 입자 간 back-to-front sort에 사용 (Mesh particle).
 	struct FDrawSpec
 	{
 		uint32 VertexCount = 0;
 		uint32 IndexCount  = 0;
 		uint32 VertexByteOffset = 0;
 		uint32 IndexByteOffset  = 0;
+
+		// 인스턴싱 경로 (Mesh particle 등) — InstanceCount > 0이면 정적 mesh + per-instance.
+		// InOutVB는 instance stream을, StaticVB/IB는 정적 mesh 외부 자원을 가리킴.
+		ID3D11Buffer* StaticVB       = nullptr;
+		uint32        StaticVBStride = 0;
+		ID3D11Buffer* StaticIB       = nullptr;
+		uint32        InstanceCount  = 0;
 	};
+	// bRequiresSort: caller(SceneProxy)가 Material.BlendState 등으로 결정.
+	// AlphaBlend면 true, Opaque/Additive/Modulate면 false. 입자 간 카메라 거리 정렬을 skip 가능.
 	virtual bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	                       const FDynamicEmitterReplayDataBase& Replay,
 	                       const FVector& CameraRight, const FVector& CameraUp,
+	                       const FVector& CameraPosition,
+	                       bool bRequiresSort,
 	                       FDynamicVertexBuffer& InOutVB,
 	                       FDrawSpec& OutDraw) = 0;
 };
@@ -57,12 +67,13 @@ class FParticleSpriteVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Sprite; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
+	               bool bRequiresSort,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -70,8 +81,7 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };
 
 // -----------------------------------------------------------------------------
@@ -79,16 +89,19 @@ protected:
 //   StaticMesh 의 vertex/index 를 그대로 쓰고, per-instance buffer 에
 //   transform/color/sub-image 를 흘려넣는다 (instanced draw).
 // -----------------------------------------------------------------------------
+class UStaticMesh;
+
 class FParticleMeshVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Mesh; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
+	               bool bRequiresSort,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -96,8 +109,10 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader*     Shader             = nullptr;
+	// Replay.Mesh == nullptr 일 때 fallback. InitResources에서 한 번 로드 후 재사용.
+	// (정점 포맷이 FVertexPNCT라 Mesh.hlsl과 매칭 — 엔진 빌트인 Cube primitive와 달리)
+	UStaticMesh* CachedCubeFallback = nullptr;
 };
 
 // -----------------------------------------------------------------------------
@@ -109,12 +124,13 @@ class FParticleBeamVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Beam; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
+	               bool bRequiresSort,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -122,20 +138,20 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };
 
 class FParticleRibbonVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Ribbon; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
+	               bool bRequiresSort,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -143,6 +159,5 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };

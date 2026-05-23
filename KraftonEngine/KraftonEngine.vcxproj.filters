@@ -612,6 +612,9 @@
     <FxCompile Include="Shaders\Particle\Sprite.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Particle\Mesh.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
     <FxCompile Include="Shaders\UI\Font.hlsl">
       <Filter>Shaders\UI</Filter>
     </FxCompile>

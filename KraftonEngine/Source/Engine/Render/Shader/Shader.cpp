@@ -285,14 +285,19 @@ void FShader::CreateInputLayoutFromReflection(ID3D11Device* InDevice, ID3DBlob* 
 		if (ParamDesc.SystemValueType != D3D_NAME_UNDEFINED)
 			continue;
 
+		// 시맨틱 prefix "INSTANCE_" → slot 1, per-instance data (DrawIndexedInstanced용).
+		// 그 외 시맨틱은 slot 0, per-vertex (기존 동작).
+		const bool bIsInstance = (ParamDesc.SemanticName != nullptr)
+			&& (strncmp(ParamDesc.SemanticName, "INSTANCE_", 9) == 0);
+
 		D3D11_INPUT_ELEMENT_DESC Elem = {};
 		Elem.SemanticName = ParamDesc.SemanticName;
 		Elem.SemanticIndex = ParamDesc.SemanticIndex;
 		Elem.Format = MaskToFormat(ParamDesc.ComponentType, ParamDesc.Mask);
-		Elem.InputSlot = 0;
+		Elem.InputSlot = bIsInstance ? 1 : 0;
 		Elem.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-		Elem.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-		Elem.InstanceDataStepRate = 0;
+		Elem.InputSlotClass = bIsInstance ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
+		Elem.InstanceDataStepRate = bIsInstance ? 1 : 0;
 
 		Elements.push_back(Elem);
 	}
