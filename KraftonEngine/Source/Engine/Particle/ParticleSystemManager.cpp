@@ -123,7 +123,7 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 void FParticleSystemManager::RefreshAvailableParticleSystems()
 {
 	const std::filesystem::path ContentRoot =
-		std::filesystem::path(FPaths::RootDir()) / L"Content";
+		std::filesystem::path(FPaths::RootDir()) / L"Content" / L"Particle System";
 
 	if (!std::filesystem::exists(ContentRoot))
 	{

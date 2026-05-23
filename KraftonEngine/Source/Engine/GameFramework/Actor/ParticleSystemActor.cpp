@@ -1,4 +1,4 @@
-#include "ParticleSystemActor.h"
+﻿#include "ParticleSystemActor.h"
 
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Particle/ParticleEmitter.h"
@@ -154,7 +154,7 @@ void AParticleSystemActor::InitDefaultComponents()
 	SetRootComponent(ParticleSystemComponent);
 
 	UParticleSystem* PS = UObjectManager::Get().CreateObject<UParticleSystem>();
-	BuildDemoTemplate(PS);
+	// BuildDemoTemplate(PS);
 
 	ParticleSystemComponent->SetTemplate(PS);
 	ParticleSystemComponent->Activate(true);
