@@ -8,7 +8,7 @@ struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11InputLayout;
 class FShader;
-class FParticleDynamicVertexBuffer;
+class FDynamicVertexBuffer;
 
 // =============================================================================
 // FParticleVertexFactory
@@ -44,7 +44,7 @@ public:
 	virtual bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	                       const FDynamicEmitterReplayDataBase& Replay,
 	                       const FVector& CameraRight, const FVector& CameraUp,
-	                       FParticleDynamicVertexBuffer& InOutVB,
+	                       FDynamicVertexBuffer& InOutVB,
 	                       FDrawSpec& OutDraw) = 0;
 };
 
@@ -63,7 +63,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
-	               FParticleDynamicVertexBuffer& InOutVB,
+	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -89,7 +89,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
-	               FParticleDynamicVertexBuffer& InOutVB,
+	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -115,7 +115,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
-	               FParticleDynamicVertexBuffer& InOutVB,
+	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -136,7 +136,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
-	               FParticleDynamicVertexBuffer& InOutVB,
+	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;

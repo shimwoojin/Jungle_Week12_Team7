@@ -4,7 +4,6 @@
 #include "GameFramework/AActor.h"
 #include "Materials/Material.h"
 #include "Render/Particle/ParticleVertexFactory.h"
-#include "Render/Particle/ParticleDynamicVertexBuffer.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/FrameContext.h"
 #include "Render/Command/DrawCommand.h"
@@ -28,7 +27,6 @@ FParticleSystemSceneProxy::FParticleSystemSceneProxy(UParticleSystemComponent* I
 	ProxyFlags &= ~EPrimitiveProxyFlags::SupportsOutline;
 	ProxyFlags &= ~EPrimitiveProxyFlags::ShowAABB;
 
-	DynamicVB = new FParticleDynamicVertexBuffer();
 	SpriteFactory = new FParticleSpriteVertexFactory();
 }
 
@@ -44,7 +42,7 @@ FParticleSystemSceneProxy::~FParticleSystemSceneProxy()
 	delete MeshFactory;   MeshFactory   = nullptr;
 	delete BeamFactory;   BeamFactory   = nullptr;
 	delete RibbonFactory; RibbonFactory = nullptr;
-	if (DynamicVB) { DynamicVB->Release(); delete DynamicVB; DynamicVB = nullptr; }
+	DynamicVB.Release();
 	DynamicIB.Release();
 	// ParticleMaterial은 UObjectManager가 소유 — 여기서 해제 X
 }
@@ -154,7 +152,7 @@ static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FV
 bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                                   FDrawCommandBuffer& OutBuffer) const
 {
-	if (!Device || !Context || !DynamicVB || !SpriteFactory) return false;
+	if (!Device || !Context || !SpriteFactory) return false;
 
 	// Lazy init — Shader 등 RHI 의존 리소스.
 	if (!SpriteFactory->GetShader())
@@ -180,14 +178,10 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		ReplayPtr = &StubReplay;
 	}
 
-	// VB 채우기 — 새 프레임 시작 후 Allocate (factory 내부에서 처리).
-	DynamicVB->BeginFrame(Context);
-
+	// VB 채우기 — factory 내부에서 EnsureCapacity + Update(Map(DISCARD) → memcpy → Unmap).
 	FParticleVertexFactory::FDrawSpec Spec;
 	const bool bOk = SpriteFactory->BuildDraw(Device, Context, *ReplayPtr,
-		CachedCameraRight, CachedCameraUp, *DynamicVB, Spec);
-
-	DynamicVB->EndFrame(Context);
+		CachedCameraRight, CachedCameraUp, DynamicVB, Spec);
 
 	if (!bOk || Spec.VertexCount == 0 || Spec.IndexCount == 0) return false;
 
@@ -217,8 +211,8 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	LastIndexCount = Spec.IndexCount;
 
 	OutBuffer = {};
-	OutBuffer.VB       = DynamicVB->GetBuffer();
-	OutBuffer.VBStride = DynamicVB->GetStride();
+	OutBuffer.VB       = DynamicVB.GetBuffer();
+	OutBuffer.VBStride = DynamicVB.GetStride();
 	OutBuffer.IB       = DynamicIB.GetBuffer();
 	return OutBuffer.VB != nullptr && OutBuffer.IB != nullptr;
 }

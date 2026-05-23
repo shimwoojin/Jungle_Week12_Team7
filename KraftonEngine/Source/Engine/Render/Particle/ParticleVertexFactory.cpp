@@ -1,10 +1,11 @@
 #include "ParticleVertexFactory.h"
 
-#include "Render/Particle/ParticleDynamicVertexBuffer.h"
+#include "Render/Resource/Buffer.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/VertexTypes.h"
 
 #include <d3d11.h>
+#include <vector>
 
 // =============================================================================
 // Sprite — CPU 빌보드 expansion: 입자 1개 → 4 corner 정점 (FVertexPNCT)
@@ -25,7 +26,7 @@ void FParticleSpriteVertexFactory::ReleaseResources()
 bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                              const FDynamicEmitterReplayDataBase& Replay,
                                              const FVector& CameraRight, const FVector& CameraUp,
-                                             FParticleDynamicVertexBuffer& InOutVB,
+                                             FDynamicVertexBuffer& InOutVB,
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -34,29 +35,9 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 
 	const uint32 VertCount  = N * 4;
 	const uint32 IndexCount = N * 6;
-	const uint32 BytesNeeded = VertCount * sizeof(FVertexPNCT);
 
-	// VB 용량 확보 — capacity 부족 시 재할당 (한 프레임 grow 비용 1회)
-	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
-	{
-		const uint32 InitialCap = BytesNeeded > 4096 ? BytesNeeded : 4096;
-		if (!InOutVB.Init(Device, InitialCap, sizeof(FVertexPNCT))) return false;
-		InOutVB.BeginFrame(Context);
-	}
-
-	void* MappedPtr = nullptr;
-	uint32 ByteOffset = 0;
-	if (!InOutVB.Allocate(Context, BytesNeeded, MappedPtr, ByteOffset))
-	{
-		// capacity 부족 → grow 후 재시도
-		InOutVB.EndFrame(Context);
-		const uint32 NewCap = BytesNeeded * 2;
-		if (!InOutVB.Init(Device, NewCap, sizeof(FVertexPNCT))) return false;
-		InOutVB.BeginFrame(Context);
-		if (!InOutVB.Allocate(Context, BytesNeeded, MappedPtr, ByteOffset)) return false;
-	}
-
-	FVertexPNCT* Dst = static_cast<FVertexPNCT*>(MappedPtr);
+	// CPU 측 임시 버퍼에 모두 채운 뒤 한 번에 GPU 업로드.
+	std::vector<FVertexPNCT> Vertices(VertCount);
 
 	// 입자 데이터는 [ActiveCount × Stride] 의 raw 바이트. FBaseParticle 헤더로 캐스팅.
 	const uint8* RawBase = Replay.ParticleData.data();
@@ -92,16 +73,27 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 			const float Dx = CornerSign[c][0] * (HalfW * 2.0f); // CornerSign이 ±0.5라 *2 보정
 			const float Dy = CornerSign[c][1] * (HalfH * 2.0f);
 			FVector Corner = WorldCenter + CameraRight * Dx + CameraUp * Dy;
-			Dst[i * 4 + c].Position = Corner;
-			Dst[i * 4 + c].Normal   = { 0, 0, 0 };
-			Dst[i * 4 + c].Color    = P.Color;
-			Dst[i * 4 + c].UV       = { CornerUV[c][0], CornerUV[c][1] };
+			Vertices[i * 4 + c].Position = Corner;
+			Vertices[i * 4 + c].Normal   = { 0, 0, 0 };
+			Vertices[i * 4 + c].Color    = P.Color;
+			Vertices[i * 4 + c].UV       = { CornerUV[c][0], CornerUV[c][1] };
 		}
 	}
 
+	// VB 용량 확보 + 업로드. Stride가 0이면 첫 호출이라 Create 먼저.
+	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+	{
+		InOutVB.Create(Device, VertCount, sizeof(FVertexPNCT));
+	}
+	else
+	{
+		InOutVB.EnsureCapacity(Device, VertCount);
+	}
+	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
+
 	OutDraw.VertexCount      = VertCount;
 	OutDraw.IndexCount       = IndexCount;
-	OutDraw.VertexByteOffset = ByteOffset;
+	OutDraw.VertexByteOffset = 0;
 	OutDraw.IndexByteOffset  = 0;
 	return true;
 }
@@ -114,7 +106,7 @@ void FParticleMeshVertexFactory::ReleaseResources() {}
 bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
                                            const FDynamicEmitterReplayDataBase& /*Replay*/,
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
-                                           FParticleDynamicVertexBuffer& /*InOutVB*/,
+                                           FDynamicVertexBuffer& /*InOutVB*/,
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -126,7 +118,7 @@ void FParticleBeamVertexFactory::ReleaseResources() {}
 bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
                                            const FDynamicEmitterReplayDataBase& /*Replay*/,
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
-                                           FParticleDynamicVertexBuffer& /*InOutVB*/,
+                                           FDynamicVertexBuffer& /*InOutVB*/,
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -138,7 +130,7 @@ void FParticleRibbonVertexFactory::ReleaseResources() {}
 bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
                                              const FDynamicEmitterReplayDataBase& /*Replay*/,
                                              const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
-                                             FParticleDynamicVertexBuffer& /*InOutVB*/,
+                                             FDynamicVertexBuffer& /*InOutVB*/,
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};

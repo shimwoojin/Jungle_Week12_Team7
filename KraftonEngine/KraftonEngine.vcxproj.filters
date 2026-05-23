@@ -1394,9 +1394,6 @@
     <ClCompile Include="Source\Engine\Render\Geometry\LineGeometry.cpp">
       <Filter>Source\Engine\Render\Geometry</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Render\Particle\ParticleDynamicVertexBuffer.cpp">
-      <Filter>Source\Engine\Render\Particle</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Engine\Render\Particle\ParticleVertexFactory.cpp">
       <Filter>Source\Engine\Render\Particle</Filter>
     </ClCompile>
@@ -2596,9 +2593,6 @@
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\Geometry\LineGeometry.h">
       <Filter>Source\Engine\Render\Geometry</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Engine\Render\Particle\ParticleDynamicVertexBuffer.h">
-      <Filter>Source\Engine\Render\Particle</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\Particle\ParticleVertexFactory.h">
       <Filter>Source\Engine\Render\Particle</Filter>

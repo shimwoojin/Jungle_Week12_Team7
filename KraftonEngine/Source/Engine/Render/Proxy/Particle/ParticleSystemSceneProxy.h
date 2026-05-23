@@ -6,7 +6,6 @@
 #include "Component/Particle/ParticleSystemComponent.h"
 
 class FParticleVertexFactory;
-class FParticleDynamicVertexBuffer;
 class UMaterial;
 
 // =============================================================================
@@ -47,11 +46,10 @@ protected:
 	FParticleVertexFactory* BeamFactory   = nullptr;
 	FParticleVertexFactory* RibbonFactory = nullptr;
 
-	// per-proxy dynamic VB (ring).
-	FParticleDynamicVertexBuffer* DynamicVB = nullptr;
+	// per-proxy dynamic VB (Map(DISCARD) 통합 업로드). const PrepareDrawBuffer에서 갱신 → mutable.
+	mutable FDynamicVertexBuffer DynamicVB;
 
 	// per-proxy dynamic IB — quad pattern (4 verts + 6 indices per particle).
-	// PrepareDrawBuffer가 const이므로 mutable.
 	mutable FDynamicIndexBuffer DynamicIB;
 
 	// 단색 입자용 transient Material (UpdateMaterial에서 lazy init).
