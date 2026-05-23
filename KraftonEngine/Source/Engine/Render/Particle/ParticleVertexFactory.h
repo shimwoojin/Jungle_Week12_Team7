@@ -54,6 +54,7 @@ public:
 	                       const FVector& CameraRight, const FVector& CameraUp,
 	                       const FVector& CameraPosition,
 	                       bool bRequiresSort,
+	                       EParticleReplaySortMode SortMode,
 	                       FDynamicVertexBuffer& InOutVB,
 	                       FDrawSpec& OutDraw) = 0;
 };
@@ -74,6 +75,7 @@ public:
 	               const FVector& CameraRight, const FVector& CameraUp,
 	               const FVector& CameraPosition,
 	               bool bRequiresSort,
+	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -102,6 +104,7 @@ public:
 	               const FVector& CameraRight, const FVector& CameraUp,
 	               const FVector& CameraPosition,
 	               bool bRequiresSort,
+	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -131,6 +134,7 @@ public:
 	               const FVector& CameraRight, const FVector& CameraUp,
 	               const FVector& CameraPosition,
 	               bool bRequiresSort,
+	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -152,6 +156,7 @@ public:
 	               const FVector& CameraRight, const FVector& CameraUp,
 	               const FVector& CameraPosition,
 	               bool bRequiresSort,
+	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 

@@ -9,19 +9,43 @@
 #include <d3d11.h>
 #include <vector>
 #include <algorithm>
+#include <cmath>
+
+static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
+                                      const FBaseParticle& A, const FVector& AWorldPos,
+                                      const FBaseParticle& B, const FVector& BWorldPos,
+                                      const FVector& CameraPosition)
+{
+	switch (SortMode)
+	{
+	case EParticleReplaySortMode::Age_OldestFirst:
+		return A.RelativeTime > B.RelativeTime;
+	case EParticleReplaySortMode::Age_NewestFirst:
+		return A.RelativeTime < B.RelativeTime;
+	case EParticleReplaySortMode::ViewProjDepth:
+		// Approximate projected depth with camera distance until a camera-forward/depth input is added.
+	case EParticleReplaySortMode::ViewDistance:
+	{
+		const FVector ToA = AWorldPos - CameraPosition;
+		const FVector ToB = BWorldPos - CameraPosition;
+		return ToA.Dot(ToA) > ToB.Dot(ToB);
+	}
+	case EParticleReplaySortMode::None:
+	default:
+		return false;
+	}
+}
 
 // =============================================================================
-// Sprite — CPU 빌보드 expansion: 입자 1개 → 4 corner 정점 (FVertexPNCT)
+// Sprite CPU billboard expansion
 // =============================================================================
 void FParticleSpriteVertexFactory::InitResources(ID3D11Device* /*Device*/)
 {
-	// FShader 가 reflection 으로 InputLayout 자동 생성 — 별도 layout 작업 불필요.
 	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleSprite);
 }
 
 void FParticleSpriteVertexFactory::ReleaseResources()
 {
-	// FShaderManager가 owning. 포인터만 nullify.
 	Shader = nullptr;
 }
 
@@ -30,6 +54,7 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              const FVector& CameraRight, const FVector& CameraUp,
                                              const FVector& CameraPosition,
                                              bool bRequiresSort,
+                                             EParticleReplaySortMode SortMode,
                                              FDynamicVertexBuffer& InOutVB,
                                              FDrawSpec& OutDraw)
 {
@@ -38,26 +63,22 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
 
-	const uint32 VertCount  = N * 4;
+	const uint32 VertCount = N * 4;
 	const uint32 IndexCount = N * 6;
 
-	// SubUV atlas tile 크기 — Sprite ReplayData에서 가져옴 (caller가 type 보장).
 	const auto& SpriteReplay = static_cast<const FDynamicSpriteEmitterReplayData&>(Replay);
 	const int32 SubH = SpriteReplay.SubImagesHorizontal > 0 ? SpriteReplay.SubImagesHorizontal : 1;
-	const int32 SubV = SpriteReplay.SubImagesVertical   > 0 ? SpriteReplay.SubImagesVertical   : 1;
+	const int32 SubV = SpriteReplay.SubImagesVertical > 0 ? SpriteReplay.SubImagesVertical : 1;
 	const float TileW = 1.0f / static_cast<float>(SubH);
 	const float TileH = 1.0f / static_cast<float>(SubV);
 
-	// CPU 측 임시 버퍼에 모두 채운 뒤 한 번에 GPU 업로드.
 	std::vector<FVertexPNCT> Vertices(VertCount);
 
-	// 입자 데이터는 [ActiveCount × Stride] 의 raw 바이트. FBaseParticle 헤더로 캐스팅.
 	const uint8* RawBase = View.ParticleData;
-	const uint32 Stride  = View.ParticleStride;
-	const bool   bLocal  = Replay.bUseLocalSpace;
-	const FMatrix& L2W   = Replay.LocalToWorld;
+	const uint32 Stride = View.ParticleStride;
+	const bool bLocal = Replay.bUseLocalSpace;
+	const FMatrix& L2W = Replay.LocalToWorld;
 
-	// 입자의 world position 헬퍼 (sort + 정점 생성에서 동일 변환 사용).
 	auto GetWorldPos = [RawBase, Stride, bLocal, &L2W](uint32 i) -> FVector
 	{
 		const auto& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
@@ -66,28 +87,30 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		return W;
 	};
 
-	// 카메라 거리 내림차순(back-to-front)으로 입자 인덱스 정렬 → 정점 생성 시 그 순서로 박음.
-	// IB는 정렬과 무관하게 quad pattern (0,1,2, 0,2,3, 4,5,6, ...) — 그대로 작동.
-	// AlphaBlend가 아닌 경우(Opaque/Additive/Modulate) sort 생략 — 결과는 동일하고 1만 입자 ~1.4ms 절약.
 	std::vector<uint32> SortedIdx(N);
 	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
 	if (bRequiresSort)
 	{
 		std::sort(SortedIdx.begin(), SortedIdx.end(),
-			[&GetWorldPos, &CameraPosition](uint32 a, uint32 b)
+			[&GetWorldPos, &CameraPosition, RawBase, Stride, SortMode](uint32 a, uint32 b)
 			{
-				const FVector Pa = GetWorldPos(a) - CameraPosition;
-				const FVector Pb = GetWorldPos(b) - CameraPosition;
-				return Pa.Dot(Pa) > Pb.Dot(Pb); // 멀면 먼저
+				const FBaseParticle& ParticleA =
+					*reinterpret_cast<const FBaseParticle*>(RawBase + a * Stride);
+				const FBaseParticle& ParticleB =
+					*reinterpret_cast<const FBaseParticle*>(RawBase + b * Stride);
+				return ShouldSortParticleIndices(
+					SortMode,
+					ParticleA, GetWorldPos(a),
+					ParticleB, GetWorldPos(b),
+					CameraPosition);
 			});
 	}
 
-	// 4 corner 정의 (UV + Right/Up 오프셋 부호)
 	static const float CornerSign[4][2] = {
-		{ -0.5f,  0.5f }, // TL
-		{  0.5f,  0.5f }, // TR
-		{  0.5f, -0.5f }, // BR
-		{ -0.5f, -0.5f }, // BL
+		{ -0.5f,  0.5f },
+		{  0.5f,  0.5f },
+		{  0.5f, -0.5f },
+		{ -0.5f, -0.5f },
 	};
 	static const float CornerUV[4][2] = {
 		{ 0.0f, 0.0f },
@@ -104,27 +127,24 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		const float HalfH = P.Size.Y * 0.5f;
 		const FVector WorldCenter = GetWorldPos(i);
 
-		// SubImage → atlas tile 인덱스 (col, row). SubImagesH/V == 1이면 항상 (0, 0).
 		const int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
 		const int32 Col = RawIdx % SubH;
 		const int32 Row = (RawIdx / SubH) % SubV;
 
 		for (int c = 0; c < 4; ++c)
 		{
-			const float Dx = CornerSign[c][0] * (HalfW * 2.0f); // CornerSign이 ±0.5라 *2 보정
+			const float Dx = CornerSign[c][0] * (HalfW * 2.0f);
 			const float Dy = CornerSign[c][1] * (HalfH * 2.0f);
 			FVector Corner = WorldCenter + CameraRight * Dx + CameraUp * Dy;
-			// Atlas tile 좌표로 변환: (col + cornerU) * TileW.
 			const float U = (static_cast<float>(Col) + CornerUV[c][0]) * TileW;
 			const float V = (static_cast<float>(Row) + CornerUV[c][1]) * TileH;
 			Vertices[sortI * 4 + c].Position = Corner;
-			Vertices[sortI * 4 + c].Normal   = { 0, 0, 0 };
-			Vertices[sortI * 4 + c].Color    = P.Color;
-			Vertices[sortI * 4 + c].UV       = { U, V };
+			Vertices[sortI * 4 + c].Normal = { 0, 0, 0 };
+			Vertices[sortI * 4 + c].Color = P.Color;
+			Vertices[sortI * 4 + c].UV = { U, V };
 		}
 	}
 
-	// VB 용량 확보 + 업로드. Stride가 0이면 첫 호출이라 Create 먼저.
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 	{
 		InOutVB.Create(Device, VertCount, sizeof(FVertexPNCT));
@@ -135,22 +155,20 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	}
 	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
 
-	OutDraw.VertexCount      = VertCount;
-	OutDraw.IndexCount       = IndexCount;
+	OutDraw.VertexCount = VertCount;
+	OutDraw.IndexCount = IndexCount;
 	OutDraw.VertexByteOffset = 0;
-	OutDraw.IndexByteOffset  = 0;
+	OutDraw.IndexByteOffset = 0;
 	return true;
 }
 
 // =============================================================================
-// Mesh — 정적 StaticMesh + per-instance stream으로 DrawIndexedInstanced
+// Mesh instanced path
 // =============================================================================
 void FParticleMeshVertexFactory::InitResources(ID3D11Device* Device)
 {
 	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh);
 
-	// Replay.Mesh가 nullptr인 stub용 fallback — Content의 기본 Cube 자산.
-	// Mesh primitive(FVertex 포맷) 대신 UStaticMesh(FVertexPNCT)라 셰이더 input layout과 매칭.
 	if (!CachedCubeFallback && Device)
 	{
 		CachedCubeFallback = FMeshManager::LoadStaticMesh("Content/Data/BasicShape/Cube.OBJ", Device);
@@ -160,7 +178,7 @@ void FParticleMeshVertexFactory::InitResources(ID3D11Device* Device)
 void FParticleMeshVertexFactory::ReleaseResources()
 {
 	Shader = nullptr;
-	CachedCubeFallback = nullptr; // UObjectManager 소유 — pointer만 비움
+	CachedCubeFallback = nullptr;
 }
 
 bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
@@ -168,6 +186,7 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
                                            const FVector& CameraPosition,
                                            bool bRequiresSort,
+                                           EParticleReplaySortMode SortMode,
                                            FDynamicVertexBuffer& InOutVB,
                                            FDrawSpec& OutDraw)
 {
@@ -176,32 +195,60 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
 
-	// Mesh emitter 전용 데이터로 캐스팅 (caller가 type 보장).
 	const auto& MeshReplay = static_cast<const FDynamicMeshEmitterReplayData&>(Replay);
-	// Mesh null이면 InitResources에서 로드한 Content/Data/BasicShape/Cube.OBJ fallback.
 	UStaticMesh* Mesh = MeshReplay.Mesh ? MeshReplay.Mesh : CachedCubeFallback;
 	if (!Mesh) return false;
 	FMeshBuffer* MB = Mesh->GetLODMeshBuffer(0);
 	if (!MB || !MB->IsValid()) return false;
 
-	// per-instance 정점 채우기.
-	std::vector<FParticleMeshInstanceVertex> Instances(N);
 	const uint8* RawBase = View.ParticleData;
+	const uint32 Stride = View.ParticleStride;
 
-	for (uint32 i = 0; i < N; ++i)
+	auto GetWorldPos = [RawBase, Stride, &Replay](uint32 i) -> FVector
 	{
-		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * View.ParticleStride);
+		const auto& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
+		FVector W = P.Location;
+		if (Replay.bUseLocalSpace)
+		{
+			W = Replay.LocalToWorld.TransformPositionWithW(W);
+		}
+		return W;
+	};
 
-		// world matrix = Scale × RotationZ × Translation (row-major, mul(v, M))
+	std::vector<uint32> SortedIdx(N);
+	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
+	if (bRequiresSort)
+	{
+		std::sort(SortedIdx.begin(), SortedIdx.end(),
+			[&GetWorldPos, &CameraPosition, RawBase, Stride, SortMode](uint32 a, uint32 b)
+			{
+				const FBaseParticle& ParticleA =
+					*reinterpret_cast<const FBaseParticle*>(RawBase + a * Stride);
+				const FBaseParticle& ParticleB =
+					*reinterpret_cast<const FBaseParticle*>(RawBase + b * Stride);
+				return ShouldSortParticleIndices(
+					SortMode,
+					ParticleA, GetWorldPos(a),
+					ParticleB, GetWorldPos(b),
+					CameraPosition);
+			});
+	}
+
+	std::vector<FParticleMeshInstanceVertex> Instances(N);
+	for (uint32 sortI = 0; sortI < N; ++sortI)
+	{
+		const uint32 i = SortedIdx[sortI];
+		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
+
 		FMatrix M = FMatrix::MakeScaleMatrix(P.Size)
-		          * FMatrix::MakeRotationZ(P.Rotation)
-		          * FMatrix::MakeTranslationMatrix(P.Location);
+			* FMatrix::MakeRotationZ(P.Rotation)
+			* FMatrix::MakeTranslationMatrix(P.Location);
 		if (Replay.bUseLocalSpace)
 		{
 			M = M * Replay.LocalToWorld;
 		}
 
-		FParticleMeshInstanceVertex& V = Instances[i];
+		FParticleMeshInstanceVertex& V = Instances[sortI];
 		V.Transform0 = FVector4{ M.M[0][0], M.M[0][1], M.M[0][2], M.M[0][3] };
 		V.Transform1 = FVector4{ M.M[1][0], M.M[1][1], M.M[1][2], M.M[1][3] };
 		V.Transform2 = FVector4{ M.M[2][0], M.M[2][1], M.M[2][2], M.M[2][3] };
@@ -210,24 +257,6 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		V.SubImageIndex = P.SubImageIndex;
 	}
 
-	// 카메라 거리 내림차순 정렬 (back-to-front) — AlphaBlend 시 가림 정확성 보장.
-	// Opaque/Additive/Modulate면 sort 생략. Transform3.xyz가 입자 world position (row 3 = translation).
-	if (bRequiresSort)
-	{
-		std::sort(Instances.begin(), Instances.end(),
-			[&CameraPosition](const FParticleMeshInstanceVertex& A, const FParticleMeshInstanceVertex& B)
-			{
-				const float Ax = A.Transform3.X - CameraPosition.X;
-				const float Ay = A.Transform3.Y - CameraPosition.Y;
-				const float Az = A.Transform3.Z - CameraPosition.Z;
-				const float Bx = B.Transform3.X - CameraPosition.X;
-				const float By = B.Transform3.Y - CameraPosition.Y;
-				const float Bz = B.Transform3.Z - CameraPosition.Z;
-				return (Ax*Ax + Ay*Ay + Az*Az) > (Bx*Bx + By*By + Bz*Bz);
-			});
-	}
-
-	// Dynamic instance VB upload.
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 	{
 		InOutVB.Create(Device, N, sizeof(FParticleMeshInstanceVertex));
@@ -238,13 +267,12 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	}
 	if (!InOutVB.Update(Context, Instances.data(), N)) return false;
 
-	// 정적 mesh 자원 + instance count를 OutDraw로 전달.
-	OutDraw.StaticVB       = MB->GetVertexBuffer().GetBuffer();
+	OutDraw.StaticVB = MB->GetVertexBuffer().GetBuffer();
 	OutDraw.StaticVBStride = MB->GetVertexBuffer().GetStride();
-	OutDraw.StaticIB       = MB->GetIndexBuffer().GetBuffer();
-	OutDraw.VertexCount    = MB->GetVertexBuffer().GetVertexCount();
-	OutDraw.IndexCount     = MB->GetIndexBuffer().GetIndexCount();
-	OutDraw.InstanceCount  = N;
+	OutDraw.StaticIB = MB->GetIndexBuffer().GetBuffer();
+	OutDraw.VertexCount = MB->GetVertexBuffer().GetVertexCount();
+	OutDraw.IndexCount = MB->GetIndexBuffer().GetIndexCount();
+	OutDraw.InstanceCount = N;
 	return true;
 }
 
@@ -255,6 +283,7 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11Devic
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
                                            const FVector& /*CameraPosition*/,
                                            bool /*bRequiresSort*/,
+                                           EParticleReplaySortMode /*SortMode*/,
                                            FDynamicVertexBuffer& /*InOutVB*/,
                                            FDrawSpec& OutDraw)
 {
@@ -269,6 +298,7 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11Dev
                                              const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
                                              const FVector& /*CameraPosition*/,
                                              bool /*bRequiresSort*/,
+                                             EParticleReplaySortMode /*SortMode*/,
                                              FDynamicVertexBuffer& /*InOutVB*/,
                                              FDrawSpec& OutDraw)
 {

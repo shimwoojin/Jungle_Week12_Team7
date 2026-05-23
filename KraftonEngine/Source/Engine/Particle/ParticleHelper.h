@@ -305,9 +305,19 @@ enum class EDynamicEmitterType : uint8
 	Count,	// 배열 크기 산출용 — 새 타입 추가 시 이 위에.
 };
 
+enum class EParticleReplaySortMode : uint8
+{
+	None = 0,
+	ViewProjDepth,
+	ViewDistance,
+	Age_OldestFirst,
+	Age_NewestFirst,
+};
+
 struct FDynamicEmitterReplayDataBase
 {
 	EDynamicEmitterType EmitterType = EDynamicEmitterType::Unknown;
+	EParticleReplaySortMode SortMode = EParticleReplaySortMode::None;
 
 	uint32 ActiveParticleCount = 0;
 	uint32 ParticleStride      = 0;            // BaseParticle + payload

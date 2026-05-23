@@ -340,13 +340,12 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 			? MeshMaterial : SpriteMaterial;
 		UMaterial* SectionMat  = RequiredMat ? RequiredMat : FallbackMat;
 
-		// AlphaBlend만 sort 필요 — Opaque/Additive/Modulate는 정렬 무관 (1만 입자 ~1.4ms 절약).
-		const bool bRequiresSort = SectionMat
-			&& SectionMat->GetBlendState() == EBlendState::AlphaBlend;
+		const bool bRequiresSort = Replay->SortMode != EParticleReplaySortMode::None;
 
 		FParticleVertexFactory::FDrawSpec Spec;
 		if (!Factory->BuildDraw(Device, Context, *Replay,
-			CachedCameraRight, CachedCameraUp, CachedCameraPosition, bRequiresSort, *EmitterVB, Spec))
+			CachedCameraRight, CachedCameraUp, CachedCameraPosition,
+			bRequiresSort, Replay->SortMode, *EmitterVB, Spec))
 		{
 			++EmitterIdx;
 			continue;
