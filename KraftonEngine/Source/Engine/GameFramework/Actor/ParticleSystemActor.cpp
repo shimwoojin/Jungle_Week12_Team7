@@ -89,11 +89,14 @@ namespace
 			}
 		}
 
-		// Required: Mesh Material
+		// Required: Mesh Material — instance(2x2 atlas) 사용해 UMaterialInstance 경로 시연.
+		// Parent: ParticleMesh.mat → SubImagesH/V만 override.
 		if (UParticleModuleRequired* Required = LOD->RequiredModule)
 		{
-			Required->MaterialSlot  = "Content/Material/Particle/ParticleMesh.mat";
-			Required->bUseLocalSpace = false;
+			Required->MaterialSlot       = "Content/Material/Particle/ParticleMesh_Atlas2x2.mat";
+			Required->SubImagesHorizontal = 2;
+			Required->SubImagesVertical   = 2;
+			Required->bUseLocalSpace      = false;
 		}
 
 		// Spawn rate — mesh는 더 적게

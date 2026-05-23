@@ -165,7 +165,7 @@ void FParticleSystemSceneProxy::UpdateMesh()
 
 			// RequiredModule.SubImagesH/V를 Material cbuffer에 흘림 (Cascade 패턴).
 			// Sprite Material엔 해당 파라미터 없으면 SetScalarParameter가 silent fail (무시).
-			// 한계: 동일 Material 자산이 emitter끼리 공유되면 마지막 set이 모두 적용 — 추후 MaterialInstance로 분리 필요.
+			// emitter끼리 다른 SubImages가 필요하면 .mat에 "Parent" 키를 지정해 UMaterialInstance로 분리하면 자체 CB라 충돌 없음.
 			if (M && Required)
 			{
 				M->SetScalarParameter("SubImagesH", static_cast<float>(Required->SubImagesHorizontal));
