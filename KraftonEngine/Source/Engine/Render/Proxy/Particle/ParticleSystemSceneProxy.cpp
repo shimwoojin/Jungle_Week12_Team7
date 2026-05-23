@@ -134,7 +134,7 @@ static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FV
 	OutReplay.ActiveParticleCount = 8;
 	OutReplay.ParticleStride = sizeof(FBaseParticle);
 	OutReplay.bUseLocalSpace = false;
-	OutReplay.BlendState = EBlendState::AlphaBlend;
+	// Material은 proxy의 transient ParticleMaterial이 BlendState 등 담당 — stub은 미설정.
 	OutReplay.ParticleData.assign(static_cast<size_t>(OutReplay.ActiveParticleCount) * OutReplay.ParticleStride, 0);
 
 	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());

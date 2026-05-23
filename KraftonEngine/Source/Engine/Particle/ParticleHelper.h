@@ -149,8 +149,9 @@ struct FDynamicEmitterReplayDataBase
 	TArray<uint8>  ParticleData;               // [ActiveParticleCount * Stride]
 	TArray<uint16> ParticleIndices;            // 활성 인덱스 (sort 결과 등 포함 가능)
 
+	// Material이 BlendState/DepthStencilState 등 렌더 상태의 single source of truth.
+	// 별도 BlendState 필드를 두지 않음 — Material->GetBlendState() 사용.
 	UMaterial* Material = nullptr;
-	EBlendState BlendState = EBlendState::AlphaBlend;
 	bool bUseLocalSpace = false;
 	FMatrix LocalToWorld;      // bUseLocalSpace == true 일 때만 의미 있음 (default ctor = zero)
 };
