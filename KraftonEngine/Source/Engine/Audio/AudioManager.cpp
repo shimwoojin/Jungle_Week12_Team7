@@ -1,4 +1,4 @@
-#include "AudioManager.h"
+﻿#include "AudioManager.h"
 #include "Core/Logging/Log.h"
 #include "Platform/Paths.h"
 #include <algorithm>
@@ -236,19 +236,5 @@ void FAudioManager::SetMasterVolume(float Volume)
 
 void FAudioManager::LoadDefaultAudios()
 {
-	LoadAudio("CityBgm", "city_bgm.mp3", true);
-	LoadAudio("Phase_EscapePolice", "phase_escapepolice.wav", true);
-	LoadAudio("Phase_Meteor", "phase_meteor.mp3", true);
-	LoadAudio("Click", "pop.mp3");
-	LoadAudio("CarEngineLoop", "car_engine_loop.mp3", true);
-	LoadAudio("Notify", "notify.mp3");
-	LoadAudio("Complete", "complete.mp3");
-	LoadAudio("Crash", "crash.mp3");
-	LoadAudio("Water", "water.mp3", true);
-	LoadAudio("Siren", "siren.mp3", true);
-	LoadAudio("Fueling", "fueling.mp3", true);
-	LoadAudio("ScoreUp", "score_up.mp3");
-	LoadAudio("MeteorBoom", "meteor_boom.mp3");
-	LoadAudio("MeteorFall", "meteor_fall.mp3");
-	LoadAudio("Whoosh", "whoosh.mp3");
+
 }
