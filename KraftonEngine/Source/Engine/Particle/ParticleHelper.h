@@ -20,6 +20,7 @@
 
 class UMaterial;
 class UStaticMesh;
+class UParticleModule;
 class FParticleEmitterInstance;
 class FParticleSystemSceneProxy;
 class FParticleVertexFactory;
@@ -131,6 +132,100 @@ struct FParticleBeamTrailVertex
 	FVector  Position;
 	FVector4 Color;
 	FVector2 UV;
+};
+
+// -----------------------------------------------------------------------------
+// Layout / Storage / View
+//   Runtime particle memory model의 기초 타입.
+//   - Layout : emitter 1개의 particle stride / instance payload / module offsets
+//   - Storage: particle bytes + indices + instance data 를 single block 으로 소유
+//   - View   : storage 를 읽기 전용으로 바라보는 경량 view
+// -----------------------------------------------------------------------------
+struct FParticleLayout
+{
+	uint32 ParticleStride = ParticleUtils::AlignParticleDataSize(sizeof(FBaseParticle));
+	uint32 InstancePayloadSize = 0;
+	TMap<const UParticleModule*, uint32> ModuleOffsets;
+};
+
+struct FParticleStorage
+{
+	TArray<uint8> MemBlock;
+
+	uint8* ParticleData = nullptr;
+	uint16* ParticleIndices = nullptr;
+	uint8* InstanceData = nullptr;
+
+	uint32 ParticleDataBytes = 0;
+	uint32 ParticleIndexCount = 0;
+	uint32 InstanceDataBytes = 0;
+	uint32 MaxActiveParticles = 0;
+
+	void Allocate(uint32 InParticleDataBytes, uint32 InParticleIndexCount, uint32 InInstanceDataBytes = 0)
+	{
+		ParticleDataBytes = InParticleDataBytes;
+		ParticleIndexCount = InParticleIndexCount;
+		InstanceDataBytes = InInstanceDataBytes;
+		MaxActiveParticles = InParticleIndexCount;
+
+		const uint32 IndexBytes = ParticleIndexCount * static_cast<uint32>(sizeof(uint16));
+		const uint32 TotalBytes = ParticleDataBytes + IndexBytes + InstanceDataBytes;
+
+		MemBlock.resize(TotalBytes, 0);
+		RebindViews();
+	}
+
+	void Release()
+	{
+		MemBlock.clear();
+		ParticleData = nullptr;
+		ParticleIndices = nullptr;
+		InstanceData = nullptr;
+		ParticleDataBytes = 0;
+		ParticleIndexCount = 0;
+		InstanceDataBytes = 0;
+		MaxActiveParticles = 0;
+	}
+
+	void Reset()
+	{
+		for (uint8& Byte : MemBlock)
+		{
+			Byte = 0;
+		}
+
+		RebindViews();
+	}
+
+	void RebindViews()
+	{
+		if (MemBlock.empty())
+		{
+			ParticleData = nullptr;
+			ParticleIndices = nullptr;
+			InstanceData = nullptr;
+			return;
+		}
+
+		uint8* Base = MemBlock.data();
+		ParticleData = Base;
+		ParticleIndices = reinterpret_cast<uint16*>(Base + ParticleDataBytes);
+		InstanceData = Base + ParticleDataBytes + ParticleIndexCount * static_cast<uint32>(sizeof(uint16));
+	}
+
+	bool IsAllocated() const
+	{
+		return !MemBlock.empty();
+	}
+};
+
+struct FParticleDataView
+{
+	uint32 ActiveParticleCount = 0;
+	uint32 ParticleStride = 0;
+	const uint8* ParticleData = nullptr;
+	const uint16* ParticleIndices = nullptr;
+	const uint8* InstanceData = nullptr;
 };
 
 // -----------------------------------------------------------------------------

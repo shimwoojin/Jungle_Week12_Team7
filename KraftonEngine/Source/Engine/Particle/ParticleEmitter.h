@@ -14,8 +14,8 @@ class UParticleSystemComponent;
 // UParticleEmitter
 //   하나의 emitter (= LODLevels 의 묶음). PSC 가 emitter 하나마다 한 개의
 //   FParticleEmitterInstance 를 만든다.
-//   CacheEmitterModuleInfo() 에서 LOD0 의 모듈을 훑어 ParticleSize 와
-//   ModuleOffsetMap 을 계산해두면 EmitterInstance 가 그대로 사용한다.
+//   CacheEmitterModuleInfo() 에서 LOD0 의 모듈을 훑어 CachedLayout 을 계산해두면
+//   EmitterInstance 가 그대로 사용한다.
 // =============================================================================
 UCLASS()
 class UParticleEmitter : public UObject
@@ -57,17 +57,16 @@ public:
 	// 모듈 변경 시 PSC 가 다시 호출한다.
 	void CacheEmitterModuleInfo();
 
-	uint32 GetParticleSize()                const { return ParticleSize; }
-	uint32 GetReqInstanceBytes()            const { return RequiredBytesPerInstance; }
+	uint32 GetParticleSize()                const { return CachedLayout.ParticleStride; }
+	uint32 GetReqInstanceBytes()            const { return CachedLayout.InstancePayloadSize; }
 	uint32 GetModuleOffset(const class UParticleModule* M) const;
-	const TMap<const UParticleModule*, uint32>& GetModuleOffsetMap() const { return ModuleOffsetMap; }
+	const TMap<const UParticleModule*, uint32>& GetModuleOffsetMap() const { return CachedLayout.ModuleOffsets; }
+	const FParticleLayout& GetParticleLayout() const { return CachedLayout; }
 
 	// 인스턴스 팩토리 — TypeData 에 따라 sprite/mesh/beam/ribbon instance 생성.
 	FParticleEmitterInstance* CreateInstance(UParticleSystemComponent* InComponent);
 
 protected:
 	// CacheEmitterModuleInfo() 의 결과 — emitter 가 소유 (재계산 가능).
-	uint32 ParticleSize              = sizeof(FBaseParticle);
-	uint32 RequiredBytesPerInstance  = 0;
-	TMap<const UParticleModule*, uint32> ModuleOffsetMap;
+	FParticleLayout CachedLayout;
 };
