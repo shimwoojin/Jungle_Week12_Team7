@@ -2,12 +2,12 @@
 #include <filesystem>
 #include <fstream>
 #include "Materials/Material.h"
+#include "Materials/MaterialInstance.h"
 #include "Platform/Paths.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Resource/Buffer.h"
 #include "Texture/Texture2D.h"
 #include "Render/Pipeline/Renderer.h"
-#include "Materials/Material.h"
 
 void FMaterialManager::ScanMaterialAssets()
 {
@@ -62,6 +62,42 @@ UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 		DefaultMaterial->SetVector4Parameter("SectionColor", FVector4(1.0f, 0.0f, 1.0f, 1.0f));
 		MaterialCache.emplace(GenericPath, DefaultMaterial);
 		return DefaultMaterial;
+	}
+
+	// 2.5 Parent 키 — UMaterialInstance 분기
+	if (JsonData.hasKey(MatKeys::Parent))
+	{
+		FString ParentPath = JsonData[MatKeys::Parent].ToString().c_str();
+		if (!ParentPath.empty())
+		{
+			UMaterial* ParentMat = GetOrCreateMaterial(ParentPath);
+			if (ParentMat)
+			{
+				UMaterialInstance* MI = UObjectManager::Get().CreateObject<UMaterialInstance>();
+				MI->InitializeFromParent(ParentMat, GenericPath);
+
+				// 명시된 렌더 상태만 오버라이드 — 없으면 Parent 값 유지.
+				if (JsonData.hasKey(MatKeys::RenderPass))
+				{
+					ERenderPass MIPass = StringToRenderPass(JsonData[MatKeys::RenderPass].ToString().c_str());
+					MI->OverrideRenderPass(MIPass);
+					if (JsonData.hasKey(MatKeys::BlendState))
+						MI->OverrideBlendState(StringToBlendState(JsonData[MatKeys::BlendState].ToString().c_str(), MIPass));
+					if (JsonData.hasKey(MatKeys::DepthStencilState))
+						MI->OverrideDepthStencilState(StringToDepthStencilState(JsonData[MatKeys::DepthStencilState].ToString().c_str(), MIPass));
+					if (JsonData.hasKey(MatKeys::RasterizerState))
+						MI->OverrideRasterizerState(StringToRasterizerState(JsonData[MatKeys::RasterizerState].ToString().c_str(), MIPass));
+				}
+
+				// Override 파라미터/텍스처만 적용 — InjectDefault/Purge는 건너뜀 (instance는 override만 보존).
+				ApplyParameters(MI, JsonData);
+				ApplyTextures(MI, JsonData);
+				MI->RebuildCachedSRVs();
+
+				MaterialCache.emplace(GenericPath, MI);
+				return MI;
+			}
+		}
 	}
 
 	// 3. JSON에서 기본 정보 추출

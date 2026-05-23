@@ -762,8 +762,8 @@ void FParticleEmitterInstance::AdvanceLoopState(float DeltaTime)
 }
 
 // -- Sprite ----
-FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()    
-{ 
+FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
+{
 	FDynamicSpriteEmitterData* Data = new FDynamicSpriteEmitterData();
 
 	FillReplayData(Data->Source);
@@ -780,8 +780,8 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 }
 
 // -- Mesh ----
-FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData() 
-{ 
+FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
+{
 	FDynamicMeshEmitterData* Data = new FDynamicMeshEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
@@ -803,8 +803,8 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 }
 
 // -- Beam ----
-FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()     
-{ 
+FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
+{
 	FDynamicBeamEmitterData* Data = new FDynamicBeamEmitterData();
 
 	FillReplayData(Data->Source);
@@ -822,8 +822,8 @@ void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const F
 }
 
 // -- Ribbon ----
-FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()   
-{ 
+FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
+{
 	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;

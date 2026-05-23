@@ -14,6 +14,7 @@
 class UTexture2D;
 class FArchive;
 class FShader;
+class UMaterialInstance;
 
 // 파라미터 이름 → 상수 버퍼 내 위치 매핑
 struct FMaterialParameterInfo
@@ -74,7 +75,10 @@ struct FMaterialConstantBuffer
 UCLASS()
 class UMaterial : public UObject
 {
-private:
+	// UMaterialInstance가 Parent의 Template/CBMap을 깊은 복사할 때 직접 접근.
+	friend class UMaterialInstance;
+
+protected:
 	FString PathFileName;// 어떤 Material인지 판별하는 고유 이름
 	uint32 MaterialInstanceID; // 고유 ID
 	FMaterialTemplate* Template; // 공유
@@ -96,7 +100,7 @@ private:
 	// SRV 캐시 — SetTextureParameter 시 갱신, BuildCommandForProxy에서 map lookup 회피
 	ID3D11ShaderResourceView* CachedSRVs[(int)EMaterialTextureSlot::Max] = {};
 
-	bool SetParameter(const FString& Name, const void* Data, uint32 Size);
+	virtual bool SetParameter(const FString& Name, const void* Data, uint32 Size);
 
 public:
 	GENERATED_BODY()
@@ -113,27 +117,27 @@ public:
 
 	const TMap<FString, FMaterialParameterInfo*> GetParameterInfo() const { return Template->GetParameterInfo(); }
 
-	bool SetScalarParameter(const FString& ParamName, float Value);
-	bool SetVector3Parameter(const FString& ParamName, const FVector& Value);
-	bool SetVector4Parameter(const FString& ParamName, const FVector4& Value);
-	bool SetTextureParameter(const FString& ParamName, UTexture2D* Texture);
-	bool SetMatrixParameter(const FString& ParamName, const FMatrix& Value);
+	virtual bool SetScalarParameter(const FString& ParamName, float Value);
+	virtual bool SetVector3Parameter(const FString& ParamName, const FVector& Value);
+	virtual bool SetVector4Parameter(const FString& ParamName, const FVector4& Value);
+	virtual bool SetTextureParameter(const FString& ParamName, UTexture2D* Texture);
+	virtual bool SetMatrixParameter(const FString& ParamName, const FMatrix& Value);
 
-	bool GetScalarParameter(const FString& ParamName, float& OutValue) const;
-	bool GetVector3Parameter(const FString& ParamName, FVector& OutValue) const;
-	bool GetVector4Parameter(const FString& ParamName, FVector4& OutValue) const;
-	bool GetTextureParameter(const FString& ParamName, UTexture2D*& OutTexture) const;
-	bool GetMatrixParameter(const FString& ParamName, FMatrix& Value) const;
+	virtual bool GetScalarParameter(const FString& ParamName, float& OutValue) const;
+	virtual bool GetVector3Parameter(const FString& ParamName, FVector& OutValue) const;
+	virtual bool GetVector4Parameter(const FString& ParamName, FVector4& OutValue) const;
+	virtual bool GetTextureParameter(const FString& ParamName, UTexture2D*& OutTexture) const;
+	virtual bool GetMatrixParameter(const FString& ParamName, FMatrix& Value) const;
 
 	TMap<FString, UTexture2D*>* GetTexture() { return &TextureParameters; }
 
 	void Bind(ID3D11DeviceContext* Context);
 
-	FShader* GetShader() const { return Template ? Template->GetShader() : TransientShader; }
-	ERenderPass GetRenderPass() const { return RenderPass; }
-	EBlendState GetBlendState() const { return BlendState; }
-	EDepthStencilState GetDepthStencilState() const { return DepthStencilState; }
-	ERasterizerState GetRasterizerState() const { return RasterizerState; }
+	virtual FShader* GetShader() const { return Template ? Template->GetShader() : TransientShader; }
+	virtual ERenderPass GetRenderPass() const { return RenderPass; }
+	virtual EBlendState GetBlendState() const { return BlendState; }
+	virtual EDepthStencilState GetDepthStencilState() const { return DepthStencilState; }
+	virtual ERasterizerState GetRasterizerState() const { return RasterizerState; }
 
 	// Per-shader CB 오버라이드 — transient Material에서 Gizmo/SubUV/Decal 등이 사용
 	template<typename T>
@@ -154,7 +158,7 @@ public:
 	void SetAssetPathFileName(const FString& InPath) { PathFileName = InPath; }
 	void Serialize(FArchive& Ar);//>>>>>Manager가 위임
 
-	FConstantBuffer* GetGPUBufferBySlot(uint32 InSlot) const
+	virtual FConstantBuffer* GetGPUBufferBySlot(uint32 InSlot) const
 	{
 		// Per-shader override (transient Material의 외부 CB)
 		if (PerShaderOverride.Buffer && PerShaderOverride.Slot == InSlot)
@@ -169,7 +173,7 @@ public:
 	}
 
 	// dirty CB를 GPU에 업로드 — BuildCommandForProxy 전에 호출
-	void FlushDirtyBuffers(ID3D11Device* Device, ID3D11DeviceContext* Ctx)
+	virtual void FlushDirtyBuffers(ID3D11Device* Device, ID3D11DeviceContext* Ctx)
 	{
 		for (auto& Pair : ConstantBufferMap)
 		{
@@ -186,7 +190,7 @@ public:
 	}
 
 	// 캐시된 SRV 배열 직접 접근 (map lookup 회피)
-	const ID3D11ShaderResourceView* const* GetCachedSRVs() const { return CachedSRVs; }
+	virtual const ID3D11ShaderResourceView* const* GetCachedSRVs() const { return CachedSRVs; }
 
 	// SRV 캐시 재구축 — Material 생성/텍스처 로드 후 호출
 	void RebuildCachedSRVs();

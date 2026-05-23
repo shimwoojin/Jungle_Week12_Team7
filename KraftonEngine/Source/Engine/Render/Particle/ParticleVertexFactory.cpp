@@ -5,6 +5,7 @@
 #include "Render/Types/VertexTypes.h"
 #include "Mesh/Static/StaticMesh.h"
 #include "Mesh/MeshManager.h"
+#include "Materials/Material.h"
 
 #include <d3d11.h>
 #include <vector>
@@ -16,8 +17,8 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
                                       const FBaseParticle& B, const FVector& BWorldPos,
                                       const FVector& CameraPosition)
 {
-	// Replay.SortMode가 지정한 "입자 내부 정렬 정책"을 이 함수 하나로 모은다.
-	// SceneProxy는 정렬 필요 여부만 정하고, 실제 comparator 선택은 factory가 맡는다.
+	// Replay.SortMode가 지정한 "입자 내부 정렬 정책"을 함수 하나로 모은다.
+	// SceneProxy는 정렬 필요 여부만 결정하고, 실제 comparator 선택은 factory가 맡는다.
 	switch (SortMode)
 	{
 	case EParticleReplaySortMode::Age_OldestFirst:
@@ -93,7 +94,6 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
 	if (bRequiresSort)
 	{
-		// 정렬 결과를 먼저 active index 배열로 만든 뒤, quad 정점 생성 순서를 그에 맞춘다.
 		std::sort(SortedIdx.begin(), SortedIdx.end(),
 			[&GetWorldPos, &CameraPosition, RawBase, Stride, SortMode](uint32 a, uint32 b)
 			{
@@ -130,7 +130,15 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		const float HalfH = P.Size.Y * 0.5f;
 		const FVector WorldCenter = GetWorldPos(i);
 
-		const int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
+		// If SubUV did not write an explicit frame yet, fall back to lifetime-based frame
+		// selection so atlas materials still animate during early bring-up.
+		int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
+		const int32 FrameCount = SubH * SubV;
+		if (RawIdx <= 0 && FrameCount > 1)
+		{
+			RawIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
+			if (RawIdx < 0) RawIdx = 0;
+		}
 		const int32 Col = RawIdx % SubH;
 		const int32 Row = (RawIdx / SubH) % SubV;
 
@@ -207,6 +215,19 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const uint8* RawBase = View.ParticleData;
 	const uint32 Stride = View.ParticleStride;
 
+	int32 SubH = 1;
+	int32 SubV = 1;
+	if (MeshReplay.Material)
+	{
+		float fH = 1.0f;
+		float fV = 1.0f;
+		MeshReplay.Material->GetScalarParameter("SubImagesH", fH);
+		MeshReplay.Material->GetScalarParameter("SubImagesV", fV);
+		if (fH >= 1.0f) SubH = static_cast<int32>(fH);
+		if (fV >= 1.0f) SubV = static_cast<int32>(fV);
+	}
+	const int32 FrameCount = SubH * SubV;
+
 	auto GetWorldPos = [RawBase, Stride, &Replay](uint32 i) -> FVector
 	{
 		const auto& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
@@ -222,7 +243,6 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
 	if (bRequiresSort)
 	{
-		// Mesh도 Sprite와 동일한 SortMode를 쓰되, 최종 결과는 instance stream 순서로 반영한다.
 		std::sort(SortedIdx.begin(), SortedIdx.end(),
 			[&GetWorldPos, &CameraPosition, RawBase, Stride, SortMode](uint32 a, uint32 b)
 			{
@@ -258,7 +278,14 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		V.Transform2 = FVector4{ M.M[2][0], M.M[2][1], M.M[2][2], M.M[2][3] };
 		V.Transform3 = FVector4{ M.M[3][0], M.M[3][1], M.M[3][2], M.M[3][3] };
 		V.Color = P.Color;
-		V.SubImageIndex = P.SubImageIndex;
+
+		int32 SubIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
+		if (SubIdx <= 0 && FrameCount > 1)
+		{
+			SubIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
+			if (SubIdx < 0) SubIdx = 0;
+		}
+		V.SubImageIndex = SubIdx;
 	}
 
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())

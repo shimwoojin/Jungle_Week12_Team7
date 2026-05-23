@@ -1,0 +1,9 @@
+{
+  "PathFileName" : "Content/Material/Particle/ParticleMesh_Atlas2x2.mat",
+  "Parent" : "Content/Material/Particle/ParticleMesh.mat",
+  "Parameters" : {
+    "SubImagesH" : 2.000000,
+    "SubImagesV" : 2.000000
+  },
+  "Origin" : "Particle"
+}

@@ -4,6 +4,7 @@
 #include "Particle/ParticleEmitter.h"
 #include "Particle/ParticleEmitterInstance.h"
 #include "Particle/ParticleEventManager.h"
+#include "Particle/ParticleSystemManager.h"
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
 #include "Serialization/Archive.h"
 
@@ -20,6 +21,14 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	DestroyEmitterInstances();
 
 	Template = InTemplate;
+	if (Template && !Template->GetSourcePath().empty())
+	{
+		TemplatePath = Template->GetSourcePath();
+	}
+	else if (!Template)
+	{
+		TemplatePath = "None";
+	}
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
 
@@ -36,6 +45,18 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 
 	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
+}
+
+void UParticleSystemComponent::LoadTemplateFromPath()
+{
+	const FString& Path = TemplatePath.ToString();
+	if (Path.empty() || Path == "None")
+	{
+		SetTemplate(nullptr);
+		return;
+	}
+
+	SetTemplate(FParticleSystemManager::Get().Load(Path));
 }
 
 void UParticleSystemComponent::Activate(bool bReset)
@@ -197,9 +218,10 @@ void UParticleSystemComponent::PostEditProperty(const char* PropertyName)
 
 	if (!PropertyName) return;
 
-	if (std::strcmp(PropertyName, "Template") == 0)
+	if (std::strcmp(PropertyName, "TemplatePath") == 0 ||
+		std::strcmp(PropertyName, "Template") == 0)
 	{
-		SetTemplate(Template);
+		LoadTemplateFromPath();
 		return;
 	}
 
@@ -255,10 +277,7 @@ void UParticleSystemComponent::PostDuplicate()
 		CurrentLODIndex = 0;
 	}
 
-	if (Template)
-	{
-		Template->BuildEmitters();
-	}
+	LoadTemplateFromPath();
 
 	if (bAutoActivate)
 	{
@@ -286,10 +305,7 @@ void UParticleSystemComponent::Serialize(FArchive& Ar)
 			CurrentLODIndex = 0;
 		}
 
-		if (Template)
-		{
-			Template->BuildEmitters();
-		}
+		LoadTemplateFromPath();
 
 		MarkWorldBoundsDirty();
 	}

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Component/PrimitiveComponent.h"
+#include "Object/Ptr/SoftObjectPtr.h"
 #include "Particle/ParticleHelper.h"
 #include "Particle/ParticleEvents.h"
 #include "Core/Delegate.h"
@@ -66,6 +67,7 @@ public:
 	FParticleEmitterInstance* GetEmitterInstance(int32 Index) const;
 
 	void RebuildInstances(bool bReset = true);
+	const FString& GetTemplatePath() const { return TemplatePath.ToString(); }
 
 	// SceneProxy 가 매 프레임 쓸 dynamic data 묶음. PSC 가 소유, GetDynamicData() 가
 	// 매 호출마다 새로 build 한다 (호출자는 delete 책임).
@@ -85,12 +87,15 @@ protected:
 	void DispatchEventsToManager();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
+	void LoadTemplateFromPath();
 
 	void PushDynamicDataToProxy();
 
 protected:
-	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="UParticleSystem")
 	UParticleSystem* Template = nullptr;
+
+	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="UParticleSystem")
+	FSoftObjectPtr TemplatePath = "None";
 
 	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Auto Activate")
 	bool bAutoActivate = true;

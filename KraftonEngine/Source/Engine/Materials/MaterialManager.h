@@ -18,6 +18,7 @@ namespace MatKeys
 	static constexpr const char* RasterizerState = "RasterizerState";
 	static constexpr const char* Parameters = "Parameters";
 	static constexpr const char* Textures = "Textures";
+	static constexpr const char* Parent = "Parent"; // MaterialInstance 한정 — Parent .mat 경로
 }
 
 class FMaterialTemplate;
