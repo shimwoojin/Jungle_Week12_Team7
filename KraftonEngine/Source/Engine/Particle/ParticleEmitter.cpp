@@ -94,9 +94,8 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		{
 			Velocity->SetToSensibleDefaults(this);
 
-			// TODO: 추후 삭제 - 테스트용 기본값
-			Velocity->StartVelocityMin = { 0.0f, 0.0f, 30.0f };
-			Velocity->StartVelocityMax = { 0.0f, 0.0f, 80.0f };
+			Velocity->StartVelocityMin = { -3.0f, -3.0f, 3.0f };
+			Velocity->StartVelocityMax = { 3.0f, 3.0f, 5.0f };
 
 			LOD0->AddModule(Velocity);
 		}
@@ -120,8 +119,8 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 			Size->SetToSensibleDefaults(this);
 
 			// TODO: 추후 삭제 - 테스트용 기본값
-			Size->StartSizeMin = { 5.0f, 5.0f, 1.0f };
-			Size->StartSizeMax = { 10.0f, 10.0f, 1.0f };
+			Size->StartSizeMin = { 0.5f, 0.5f, 1.0f };
+			Size->StartSizeMax = { 1.0f, 1.0f, 1.0f };
 
 			LOD0->AddModule(Size);
 		}
