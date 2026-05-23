@@ -55,6 +55,12 @@ public:
 	// 모든 emitter 의 CacheEmitterModuleInfo() 호출.
 	void BuildEmitters();
 
+	void SetSourcePath(const FString& InPath) { SourcePath = InPath; }
+	const FString& GetSourcePath() const { return SourcePath; }
+
 private:
 	FString MakeUniqueEmitterName();
+	
+private:
+	FString SourcePath;
 };

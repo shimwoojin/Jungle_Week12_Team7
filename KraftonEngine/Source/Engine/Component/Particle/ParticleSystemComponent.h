@@ -87,7 +87,7 @@ protected:
 	void PushDynamicDataToProxy();
 
 protected:
-	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="ParticleSystem")
+	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="UParticleSystem")
 	UParticleSystem* Template = nullptr;
 
 	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Auto Activate")
