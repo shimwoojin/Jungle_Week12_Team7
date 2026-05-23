@@ -6,6 +6,7 @@
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
+#include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Math/Transform.h"
 
@@ -30,6 +31,23 @@ static EParticleReplaySortMode ToReplaySortMode(UParticleModuleRequired::ESortMo
 	case UParticleModuleRequired::ESortMode::None:
 	default:
 		return EParticleReplaySortMode::None;
+	}
+}
+
+static EParticleMeshReplayAlignment ToReplayMeshAlignment(
+	UParticleModuleTypeDataMesh::EMeshAlignment InAlignment)
+{
+	switch (InAlignment)
+	{
+	case UParticleModuleTypeDataMesh::EMeshAlignment::Velocity:
+		return EParticleMeshReplayAlignment::Velocity;
+	case UParticleModuleTypeDataMesh::EMeshAlignment::FacingCamera:
+		return EParticleMeshReplayAlignment::FacingCamera;
+	case UParticleModuleTypeDataMesh::EMeshAlignment::AxisLock:
+		return EParticleMeshReplayAlignment::AxisLock;
+	case UParticleModuleTypeDataMesh::EMeshAlignment::None:
+	default:
+		return EParticleMeshReplayAlignment::None;
 	}
 }
 
@@ -767,6 +785,20 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 	FDynamicMeshEmitterData* Data = new FDynamicMeshEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
+
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (LOD)
+	{
+		if (auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
+		{
+			Data->Source.Mesh = MeshTypeData->ResolveMesh();
+			Data->Source.Alignment = ToReplayMeshAlignment(MeshTypeData->Alignment);
+			Data->Source.bOverrideMaterial = MeshTypeData->bOverrideMaterial;
+		}
+	}
+
+	// Mesh resolve가 실패해도 emitter type 자체는 Mesh로 유지한다.
+	// RT는 nullptr mesh를 보고 기존 fallback mesh 경로를 그대로 사용할 수 있다.
 	return Data;
 }
 

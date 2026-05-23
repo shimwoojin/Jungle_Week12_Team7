@@ -367,9 +367,19 @@ struct FDynamicSpriteEmitterData : FDynamicEmitterDataBase
 };
 
 // -- Mesh ----
+enum class EParticleMeshReplayAlignment : uint8
+{
+	None = 0,
+	Velocity,
+	FacingCamera,
+	AxisLock,
+};
+
 struct FDynamicMeshEmitterReplayData : FDynamicEmitterReplayDataBase
 {
 	UStaticMesh* Mesh = nullptr;
+	EParticleMeshReplayAlignment Alignment = EParticleMeshReplayAlignment::None;
+	bool bOverrideMaterial = false;
 };
 
 struct FDynamicMeshEmitterData : FDynamicEmitterDataBase
