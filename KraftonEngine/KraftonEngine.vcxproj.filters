@@ -1442,7 +1442,7 @@
     <ClCompile Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Render\RenderPass\AlphaBlendPass.cpp">
+    <ClCompile Include="Source\Engine\Render\RenderPass\TranslucentPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\DecalPass.cpp">
@@ -2651,7 +2651,7 @@
     <ClInclude Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Render\RenderPass\AlphaBlendPass.h">
+    <ClInclude Include="Source\Engine\Render\RenderPass\TranslucentPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\RenderPass\DecalPass.h">

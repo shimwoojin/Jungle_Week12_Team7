@@ -9,8 +9,8 @@
 	- Translucent / Additive / Modulate 모두 이 단일 패스에서 처리.
 	- 패스 분리 금지 — 깊이 교차가 어긋나면 시연 망함.
 */
-class FAlphaBlendPass final : public FRenderPassBase
+class FTranslucentPass final : public FRenderPassBase
 {
 public:
-	FAlphaBlendPass();
+	FTranslucentPass();
 };

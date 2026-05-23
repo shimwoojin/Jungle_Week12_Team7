@@ -39,7 +39,7 @@ enum class ERenderPass : uint32
 	Opaque,			// 불투명 지오메트리 (StaticMesh 등)
 	Decal,			// 데칼 (DepthReadOnly)
 	AdditiveDecal,	// Additive 빌보드 등
-	AlphaBlend,		// 통합 Translucent 패스 (Font, SubUV, Billboard, Particle) — Blend는 per-DrawCommand가 결정
+	Translucent,	// 통합 Translucent 패스 (Font, SubUV, Billboard, Particle) — Blend는 per-DrawCommand가 결정
 	SelectionMask,	// 선택 스텐실 마스크
 	EditorLines,	// 디버그 라인 + 그리드 (LINELIST)
 	PostProcess,	// 아웃라인 풀스크린, Fog, SceneDepth
@@ -61,7 +61,7 @@ inline const char* GetRenderPassName(ERenderPass Pass)
 		"RenderPass::Opaque",
 		"RenderPass::Decal",
 		"RenderPass::AdditiveDecal",
-		"RenderPass::AlphaBlend",
+		"RenderPass::Translucent",
 		"RenderPass::SelectionMask",
 		"RenderPass::EditorLines",
 		"RenderPass::PostProcess",
@@ -86,7 +86,7 @@ namespace RenderStateStrings
 		{ "Opaque",        (int)ERenderPass::Opaque },
 		{ "Decal",         (int)ERenderPass::Decal },
 		{ "AdditiveDecal", (int)ERenderPass::AdditiveDecal },
-		{ "AlphaBlend",    (int)ERenderPass::AlphaBlend },
+		{ "Translucent",   (int)ERenderPass::Translucent },
 		{ "SelectionMask", (int)ERenderPass::SelectionMask },
 		{ "EditorLines",   (int)ERenderPass::EditorLines },
 		{ "PostProcess",   (int)ERenderPass::PostProcess },

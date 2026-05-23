@@ -36,7 +36,7 @@ void FTextRenderSceneProxy::UpdateMesh()
 	if (!TextMaterial)
 	{
 		TextMaterial = UMaterial::CreateTransient(
-			ERenderPass::AlphaBlend, EBlendState::AlphaBlend,
+			ERenderPass::Translucent, EBlendState::AlphaBlend,
 			EDepthStencilState::Default, ERasterizerState::SolidBackCull,
 			FShaderManager::Get().GetOrCreate(EShaderPath::Primitive));
 	}
