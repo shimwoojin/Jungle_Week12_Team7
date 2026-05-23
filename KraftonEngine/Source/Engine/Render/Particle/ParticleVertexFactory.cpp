@@ -5,6 +5,7 @@
 #include "Render/Types/VertexTypes.h"
 #include "Mesh/Static/StaticMesh.h"
 #include "Mesh/MeshManager.h"
+#include "Materials/Material.h"
 
 #include <d3d11.h>
 #include <vector>
@@ -104,7 +105,15 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		const FVector WorldCenter = GetWorldPos(i);
 
 		// SubImage → atlas tile 인덱스 (col, row). SubImagesH/V == 1이면 항상 (0, 0).
-		const int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
+		// SubUV module이 아직 SubImageIndex를 안 박는 단계라, 그리드가 2x2 이상이면
+		// lifetime 비례로 frame 회전을 fallback 적용 — SubUV 인프라 자체는 시각 검증 가능.
+		int32 RawIdx = P.SubImageIndex;
+		const int32 FrameCount = SubH * SubV;
+		if (RawIdx <= 0 && FrameCount > 1)
+		{
+			RawIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
+			if (RawIdx < 0) RawIdx = 0;
+		}
 		const int32 Col = RawIdx % SubH;
 		const int32 Row = (RawIdx / SubH) % SubV;
 
@@ -182,6 +191,19 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	FMeshBuffer* MB = Mesh->GetLODMeshBuffer(0);
 	if (!MB || !MB->IsValid()) return false;
 
+	// SubUV 인덱스 fallback — SubUV module이 SubImageIndex를 박지 않는 상태에서도
+	// Material의 SubImagesH/V × lifetime으로 frame 회전을 시각화. Sprite와 동일 정책.
+	int32 SubH = 1, SubV = 1;
+	if (MeshReplay.Material)
+	{
+		float fH = 1.0f, fV = 1.0f;
+		MeshReplay.Material->GetScalarParameter("SubImagesH", fH);
+		MeshReplay.Material->GetScalarParameter("SubImagesV", fV);
+		if (fH >= 1.0f) SubH = static_cast<int32>(fH);
+		if (fV >= 1.0f) SubV = static_cast<int32>(fV);
+	}
+	const int32 FrameCount = SubH * SubV;
+
 	// per-instance 정점 채우기.
 	std::vector<FParticleMeshInstanceVertex> Instances(N);
 	const uint8* RawBase = Replay.ParticleData.data();
@@ -205,7 +227,13 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		V.Transform2 = FVector4{ M.M[2][0], M.M[2][1], M.M[2][2], M.M[2][3] };
 		V.Transform3 = FVector4{ M.M[3][0], M.M[3][1], M.M[3][2], M.M[3][3] };
 		V.Color = P.Color;
-		V.SubImageIndex = P.SubImageIndex;
+		int32 SubIdx = P.SubImageIndex;
+		if (SubIdx <= 0 && FrameCount > 1)
+		{
+			SubIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
+			if (SubIdx < 0) SubIdx = 0;
+		}
+		V.SubImageIndex = SubIdx;
 	}
 
 	// 카메라 거리 내림차순 정렬 (back-to-front) — AlphaBlend 시 가림 정확성 보장.
