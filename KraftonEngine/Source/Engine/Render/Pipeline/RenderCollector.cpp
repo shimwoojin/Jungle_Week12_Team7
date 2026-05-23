@@ -123,6 +123,10 @@ static bool ShouldCollectProxyForView(const FPrimitiveSceneProxy* Proxy, const F
 		Proxy->HasProxyFlag(EPrimitiveProxyFlags::SkeletalMesh))
 		return false;
 
+	if (!Frame.RenderOptions.ShowFlags.bParticles &&
+		Proxy->HasProxyFlag(EPrimitiveProxyFlags::Particle))
+		return false;
+
 	return true;
 }
 
@@ -176,6 +180,13 @@ void FRenderCollector::FilterVisibleProxies(const FFrameContext& Frame, FScene& 
 		if (Occlusion && !Proxy->HasProxyFlag(EPrimitiveProxyFlags::NeverCull) && Occlusion->IsOccluded(Proxy))
 		{
 			continue;
+		}
+
+		// Particle proxy AABB 디버그 표시 — ShowFlags.bParticleBounds 토글
+		if (Frame.RenderOptions.ShowFlags.bParticleBounds &&
+			Proxy->HasProxyFlag(EPrimitiveProxyFlags::Particle))
+		{
+			Scene.AddDebugAABB(Proxy->GetCachedBounds().Min, Proxy->GetCachedBounds().Max, FColor::Yellow());
 		}
 
 		Output.RenderableProxies.push_back(Proxy);

@@ -9,6 +9,7 @@
 #include "Render/Command/DrawCommand.h"
 
 #include <vector>
+#include <cmath>
 
 // =============================================================================
 // FParticleSystemSceneProxy
@@ -24,6 +25,7 @@ FParticleSystemSceneProxy::FParticleSystemSceneProxy(UParticleSystemComponent* I
 	// 빌보드라 카메라가 움직이면 매 프레임 갱신 필요. 프러스텀 컬링은 일단 패스 (Day 6 ShowFlag에서 정교화).
 	ProxyFlags |= EPrimitiveProxyFlags::PerViewportUpdate;
 	ProxyFlags |= EPrimitiveProxyFlags::NeverCull;
+	ProxyFlags |= EPrimitiveProxyFlags::Particle;       // ShowFlags.bParticles 토글 대상
 	ProxyFlags &= ~EPrimitiveProxyFlags::SupportsOutline;
 	ProxyFlags &= ~EPrimitiveProxyFlags::ShowAABB;
 
@@ -169,36 +171,42 @@ static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FV
 
 // ---------------------------------------------------------------------------
 // Mesh stub — Replay.Mesh = nullptr → factory가 엔진 빌트인 Cube로 fallback.
-// 4개 큐브를 ±2 거리 평면 배치 (Day 5 인스턴싱 검증용).
+// Count 파라미터로 1만 입자 성능 측정 시 늘릴 수 있음.
+// 배치: sunflower seed pattern (golden angle spiral) — 입자가 겹치지 않으면서 disk 분포.
 // ---------------------------------------------------------------------------
-static void BuildStubMeshReplay(FDynamicMeshEmitterReplayData& OutReplay, const FVector& Origin)
+static void BuildStubMeshReplay(FDynamicMeshEmitterReplayData& OutReplay,
+                                 const FVector& Origin, uint32 Count)
 {
 	OutReplay.EmitterType = EDynamicEmitterType::Mesh;
-	OutReplay.ActiveParticleCount = 4;
+	OutReplay.ActiveParticleCount = Count;
 	OutReplay.ParticleStride = sizeof(FBaseParticle);
 	OutReplay.bUseLocalSpace = false;
 	OutReplay.Mesh = nullptr; // factory가 Cube fallback
-	OutReplay.ParticleData.assign(static_cast<size_t>(OutReplay.ActiveParticleCount) * OutReplay.ParticleStride, 0);
+	OutReplay.ParticleData.assign(static_cast<size_t>(Count) * OutReplay.ParticleStride, 0);
 
 	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());
 
-	static const float Off[4][3] = {
-		{ -2, 0, 0 }, {  2, 0, 0 }, { 0, -2, 0 }, { 0,  2, 0 },
-	};
-	static const FVector4 Colors[4] = {
-		{ 1, 0.5f, 0.5f, 1 }, { 0.5f, 1, 0.5f, 1 },
-		{ 0.5f, 0.5f, 1, 1 }, { 1, 1, 0.5f, 1 },
-	};
+	// Golden angle spiral — disk 패턴. 큰 N에서도 균등 분포.
+	constexpr float GoldenAngle = 2.39996323f;
+	// 1만 입자에서 size 0.1로 화면 가득 — 측정용.
+	const float ParticleSize = Count > 1000 ? 0.1f : 0.5f;
+	const float SpacingFactor = Count > 1000 ? 0.15f : 0.6f;
 
-	for (uint32 i = 0; i < 4; ++i)
+	for (uint32 i = 0; i < Count; ++i)
 	{
 		new (&P[i]) FBaseParticle();
-		P[i].Location = Origin + FVector(Off[i][0], Off[i][1], Off[i][2]);
-		P[i].Size     = { 0.5f, 0.5f, 0.5f };
-		P[i].Color    = Colors[i];
-		P[i].BaseColor = Colors[i];
+		const float Phi    = static_cast<float>(i) * GoldenAngle;
+		const float Radius = SpacingFactor * std::sqrt(static_cast<float>(i + 1));
+		const float Cosp   = std::cos(Phi);
+		const float Sinp   = std::sin(Phi);
+
+		P[i].Location  = Origin + FVector(Cosp * Radius, Sinp * Radius, 0.0f);
+		P[i].Size      = { ParticleSize, ParticleSize, ParticleSize };
 		P[i].BaseSize  = P[i].Size;
-		P[i].Rotation = 0.0f;
+		// 색상은 phase 따라 회전
+		P[i].Color     = FVector4{ 0.5f + 0.5f * Cosp, 0.5f + 0.5f * Sinp, 0.5f, 1.0f };
+		P[i].BaseColor = P[i].Color;
+		P[i].Rotation  = 0.0f;
 		P[i].RelativeTime = 0.0f;
 		P[i].OneOverMaxLifetime = 1.0f;
 	}
@@ -224,7 +232,9 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	{
 		// Day 5 검증: Mesh stub을 먼저 시도 (첫 성공 emitter 정책 하에서 Mesh 인스턴싱이 보이도록).
 		// Sprite stub은 멀티 emitter 동시 렌더 미구현이라 같이 push해도 안 그려짐 — 따로 토글로 검증 가능.
-		BuildStubMeshReplay(StubMeshReplay, CachedWorldPos);
+		// Day 6 성능 측정 시 STUB_PARTICLE_COUNT를 10000으로 변경해서 1만 입자 16ms 게이트 확인.
+		constexpr uint32 STUB_PARTICLE_COUNT = 4;
+		BuildStubMeshReplay(StubMeshReplay, CachedWorldPos, STUB_PARTICLE_COUNT);
 		Replays.push_back(&StubMeshReplay);
 	}
 
