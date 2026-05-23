@@ -78,6 +78,15 @@ struct FArrayProperty : FProperty
 		, ArrayOps(InArrayOps)
 		, InnerProperty(InInnerProperty)
 	{
+		// UPROPERTY(Instanced, Type=Array, ...) is declared on the array property,
+		// but the actual per-element serialization is performed by InnerProperty.
+		// Propagate PF_InstancedReference so arrays such as
+		// TArray<UParticleModule*> use the same ClassName + PF_Save-property
+		// deep serialization path as a single Instanced object property.
+		if ((Flags & PF_InstancedReference) != 0 && InnerProperty && InnerProperty->AsObjectProperty())
+		{
+			InnerProperty->Flags |= PF_InstancedReference;
+		}
 	}
 
 	FArrayProperty(const FArrayProperty&) = delete;

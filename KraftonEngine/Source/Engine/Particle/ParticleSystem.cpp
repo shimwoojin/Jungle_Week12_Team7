@@ -8,13 +8,38 @@
 void UParticleSystem::Serialize(FArchive& Ar)
 {
 	UObject::Serialize(Ar);
-	// TODO: Emitters / 메타 직렬화
+	SerializeProperties(Ar, PF_Save);
+
+	if (Ar.IsLoading())
+	{
+		BuildEmitters();
+	}
 }
 
 UObject* UParticleSystem::Duplicate(UObject* NewOuter) const
 {
-	// TODO: emitter / LOD / module 까지 deep duplicate
 	return UObject::Duplicate(NewOuter);
+}
+
+void UParticleSystem::PostDuplicate()
+{
+	UObject::PostDuplicate();
+
+	// Instanced 배열의 하위 객체들은 UObject::Duplicate()에서 루트처럼
+	// PostDuplicate()가 자동 호출되지 않는다. ParticleSystem이 소유한
+	// Emitter graph를 여기서 재귀적으로 정리한다.
+	for (UParticleEmitter* Emitter : Emitters)
+	{
+		if (!Emitter)
+		{
+			continue;
+		}
+
+		Emitter->SetOuter(this);
+		Emitter->PostDuplicate();
+	}
+
+	BuildEmitters();
 }
 
 UParticleEmitter* UParticleSystem::AddEmitter()      
@@ -60,7 +85,7 @@ void UParticleSystem::BuildEmitters()
 	for (UParticleEmitter* Emitter : Emitters)
 	{
 		if (!Emitter) continue;
-		Emitter->InitializeDefaultLODLevel();
+		Emitter->EnsureLOD0CoreModules();
 
 		UParticleLODLevel* LOD0 = Emitter->GetLODLevel(0);
 		if (!LOD0 || !LOD0->ValidateModules())

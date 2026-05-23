@@ -50,6 +50,7 @@ public:
 
 	void PostEditProperty(const char* PropertyName) override;
 	void PostDuplicate() override;
+	void Serialize(class FArchive& Ar) override;
 
 	// --- Bounds ---
 	void UpdateWorldAABB() const override;

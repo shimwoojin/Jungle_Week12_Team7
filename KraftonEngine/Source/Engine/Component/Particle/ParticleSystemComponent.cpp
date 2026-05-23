@@ -5,6 +5,7 @@
 #include "Particle/ParticleEmitterInstance.h"
 #include "Particle/ParticleEventManager.h"
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
+#include "Serialization/Archive.h"
 
 UParticleSystemComponent::UParticleSystemComponent()  {}
 UParticleSystemComponent::~UParticleSystemComponent()
@@ -234,7 +235,16 @@ void UParticleSystemComponent::PostEditProperty(const char* PropertyName)
 
 void UParticleSystemComponent::PostDuplicate()
 {
+	UPrimitiveComponent::PostDuplicate();
+
 	DestroyEmitterInstances();
+	AccumulatedTime = 0.0f;
+	PendingEvents = {};
+
+	if (CurrentLODIndex < 0)
+	{
+		CurrentLODIndex = 0;
+	}
 
 	if (Template)
 	{
@@ -244,6 +254,35 @@ void UParticleSystemComponent::PostDuplicate()
 	if (bAutoActivate)
 	{
 		Activate(true);
+	}
+	else
+	{
+		PushDynamicDataToProxy();
+		MarkWorldBoundsDirty();
+	}
+}
+
+void UParticleSystemComponent::Serialize(FArchive& Ar)
+{
+	Super::Serialize(Ar);
+
+	if (Ar.IsLoading())
+	{
+		DestroyEmitterInstances();
+		AccumulatedTime = 0.0f;
+		PendingEvents = {};
+
+		if (CurrentLODIndex < 0)
+		{
+			CurrentLODIndex = 0;
+		}
+
+		if (Template)
+		{
+			Template->BuildEmitters();
+		}
+
+		MarkWorldBoundsDirty();
 	}
 }
 
