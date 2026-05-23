@@ -4,6 +4,10 @@
 #include "GameFramework/AActor.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialManager.h"
+#include "Particle/ParticleSystem.h"
+#include "Particle/ParticleEmitter.h"
+#include "Particle/ParticleLODLevel.h"
+#include "Particle/Modules/ParticleModuleRequired.h"
 #include "Render/Particle/ParticleVertexFactory.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/FrameContext.h"
@@ -132,6 +136,32 @@ void FParticleSystemSceneProxy::UpdateMesh()
 	{
 		MeshMaterial = FMaterialManager::Get().GetOrCreateMaterial(
 			"Content/Material/Particle/ParticleMesh.mat");
+	}
+
+	// Template이 있으면 emitter index별 RequiredModule.Material 캐싱.
+	// 없으면 EmitterMaterials는 비고 PrepareDrawBuffer가 fallback 사용.
+	EmitterMaterials.clear();
+	UParticleSystemComponent* PSC = GetPSC();
+	if (UParticleSystem* Template = PSC ? PSC->GetTemplate() : nullptr)
+	{
+		const int32 Count = Template->GetEmitterCount();
+		EmitterMaterials.reserve(static_cast<size_t>(Count));
+		for (int32 i = 0; i < Count; ++i)
+		{
+			UMaterial* M = nullptr;
+			if (UParticleEmitter* Emitter = Template->GetEmitter(i))
+			{
+				// LOD 0 기준 — LOD 시스템 도입 시 CurrentLOD 사용.
+				if (UParticleLODLevel* LOD = Emitter->GetCurrentLODLevel(0))
+				{
+					if (LOD->RequiredModule)
+					{
+						M = LOD->RequiredModule->ResolveMaterial();
+					}
+				}
+			}
+			EmitterMaterials.push_back(M); // null도 push — index 1:1 유지, fallback 처리
+		}
 	}
 
 	// Material/IndexCount는 PrepareDrawBuffer가 매 프레임 갱신 (emitter type 따라).
@@ -268,11 +298,12 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	auto& MutableSections = const_cast<TArray<FMeshSectionDraw>&>(GetSectionDraws());
 	MutableSections.clear();
 	uint32 TotalIndexCount = 0;
+	uint32 EmitterIdx = 0;
 
 	for (const FDynamicEmitterReplayDataBase* Replay : Replays)
 	{
 		FParticleVertexFactory* Factory = GetOrCreateFactory(Replay->EmitterType, Device);
-		if (!Factory) continue;
+		if (!Factory) { ++EmitterIdx; continue; }
 
 		// emitter type별 dedicated VB (Sprite/Mesh 정점 포맷 다르니 공유 불가)
 		FDynamicVertexBuffer* EmitterVB = nullptr;
@@ -280,23 +311,33 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		{
 		case EDynamicEmitterType::Sprite: EmitterVB = &SpriteVB;       break;
 		case EDynamicEmitterType::Mesh:   EmitterVB = &MeshInstanceVB; break;
-		default: continue; // Beam/Ribbon 미구현
+		default: ++EmitterIdx; continue; // Beam/Ribbon 미구현
 		}
 
 		FParticleVertexFactory::FDrawSpec Spec;
 		if (!Factory->BuildDraw(Device, Context, *Replay,
 			CachedCameraRight, CachedCameraUp, CachedCameraPosition, *EmitterVB, Spec))
+		{
+			++EmitterIdx;
 			continue;
-		if (Spec.IndexCount == 0) continue;
+		}
+		if (Spec.IndexCount == 0) { ++EmitterIdx; continue; }
+
+		// RequiredModule.Material 우선 (Template 있을 때). 없으면 type별 fallback.
+		UMaterial* RequiredMat = (EmitterIdx < EmitterMaterials.size())
+			? EmitterMaterials[EmitterIdx] : nullptr;
+		UMaterial* FallbackMat = (Replay->EmitterType == EDynamicEmitterType::Mesh)
+			? MeshMaterial : SpriteMaterial;
+		UMaterial* SectionMat  = RequiredMat ? RequiredMat : FallbackMat;
 
 		FMeshSectionDraw Section;
 		Section.FirstIndex = 0;
 		Section.IndexCount = Spec.IndexCount;
+		Section.Material   = SectionMat;
 
 		if (Spec.InstanceCount > 0)
 		{
 			// Mesh: 정적 VB(slot 0) + IB + dynamic instance VB(slot 1)
-			Section.Material = MeshMaterial;
 			Section.BufferOverride.VB               = Spec.StaticVB;
 			Section.BufferOverride.VBStride         = Spec.StaticVBStride;
 			Section.BufferOverride.IB               = Spec.StaticIB;
@@ -319,7 +360,6 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 			SpriteIB.EnsureCapacity(Device, Spec.IndexCount);
 			SpriteIB.Update(Context, Indices.data(), Spec.IndexCount);
 
-			Section.Material = SpriteMaterial;
 			Section.BufferOverride.VB       = EmitterVB->GetBuffer();
 			Section.BufferOverride.VBStride = EmitterVB->GetStride();
 			Section.BufferOverride.IB       = SpriteIB.GetBuffer();
@@ -327,6 +367,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 
 		MutableSections.push_back(std::move(Section));
 		TotalIndexCount += Spec.IndexCount;
+		++EmitterIdx;
 	}
 
 	LastIndexCount = TotalIndexCount;

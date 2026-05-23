@@ -54,10 +54,14 @@ protected:
 	mutable FDynamicVertexBuffer MeshInstanceVB;  // FParticleMeshInstanceVertex
 	// Beam/Ribbon은 Day 7+ — 추가 시 BeamVB/RibbonVB
 
-	// emitter type별 transient Material (UpdateMaterial에서 lazy init).
-	// PrepareDrawBuffer가 디스패치 후 SectionDraws[0].Material을 type에 맞게 교체.
-	UMaterial* SpriteMaterial = nullptr;
-	UMaterial* MeshMaterial   = nullptr;
+	// emitter type별 fallback Material (Template 없을 때 사용).
+	// 자산 기반 (.mat 파일) — FMaterialManager::GetOrCreateMaterial로 로드.
+	UMaterial* SpriteMaterial = nullptr;  // fallback
+	UMaterial* MeshMaterial   = nullptr;  // fallback
+
+	// PSC.Template.Emitters[i].LODLevels[0].RequiredModule.ResolveMaterial() 결과 캐시.
+	// Template 있을 때 emitter index 1:1로 채워짐. 없는 index는 fallback 사용.
+	TArray<UMaterial*> EmitterMaterials;
 
 	// UpdatePerViewport에서 캐시한 카메라 벡터 (PrepareDrawBuffer에서 빌보드 expansion + instance sort 시 사용).
 	FVector CachedCameraRight    = { 1, 0, 0 };
