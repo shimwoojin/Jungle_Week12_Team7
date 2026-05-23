@@ -279,7 +279,36 @@ void FDrawCommandList::SubmitCommand(const FDrawCommand& Cmd,
 	Cache.bForceAll = false;
 
 	// --- Draw ---
-	if (Cmd.Buffer.IndexCount > 0)
+	if (Cmd.Buffer.InstanceCount > 0)
+	{
+		// Instanced 경로 (Mesh particle 등). Instance VB를 slot 1에 바인딩.
+		// 매 cmd 바인딩 — 캐시 미적용 (인스턴싱 cmd가 자주 안 일어난다는 가정).
+		if (Cmd.Buffer.InstanceVB)
+		{
+			UINT InstOffset = 0;
+			Ctx->IASetVertexBuffers(1, 1, &Cmd.Buffer.InstanceVB, &Cmd.Buffer.InstanceVBStride, &InstOffset);
+		}
+
+		if (Cmd.Buffer.IndexCount > 0)
+		{
+			Ctx->DrawIndexedInstanced(Cmd.Buffer.IndexCount, Cmd.Buffer.InstanceCount,
+				Cmd.Buffer.FirstIndex, Cmd.Buffer.BaseVertex, 0);
+		}
+		else if (Cmd.Buffer.VertexCount > 0)
+		{
+			Ctx->DrawInstanced(Cmd.Buffer.VertexCount, Cmd.Buffer.InstanceCount, 0, 0);
+		}
+
+		// Instance VB 슬롯 언바인드 — 다음 non-instanced cmd가 잔존 슬롯에 영향받지 않도록.
+		if (Cmd.Buffer.InstanceVB)
+		{
+			ID3D11Buffer* NullVB = nullptr;
+			UINT NullStride = 0;
+			UINT NullOffset = 0;
+			Ctx->IASetVertexBuffers(1, 1, &NullVB, &NullStride, &NullOffset);
+		}
+	}
+	else if (Cmd.Buffer.IndexCount > 0)
 	{
 		Ctx->DrawIndexed(Cmd.Buffer.IndexCount, Cmd.Buffer.FirstIndex, Cmd.Buffer.BaseVertex);
 	}

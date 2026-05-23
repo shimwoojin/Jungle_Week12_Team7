@@ -24,6 +24,12 @@ struct FDrawCommandBuffer
 	uint32 VertexCount = 0;              // IB 없을 때 Draw(VertexCount, 0)
 	int32  BaseVertex  = 0;              // DrawIndexed BaseVertexLocation
 
+	// 인스턴싱 (Mesh particle 등) — InstanceCount > 0 이면 DrawIndexedInstanced/DrawInstanced 경로.
+	// InstanceVB는 slot 1로 바인딩 (slot 0은 위 정적 VB).
+	uint32        InstanceCount    = 0;
+	ID3D11Buffer* InstanceVB       = nullptr;
+	uint32        InstanceVBStride = 0;
+
 	bool HasBuffers() const { return VB != nullptr; }
 };
 
