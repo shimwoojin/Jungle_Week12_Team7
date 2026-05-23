@@ -40,11 +40,12 @@ protected:
 	// 매 프레임 교체되는 emitter snapshot. proxy 가 소유.
 	UParticleSystemComponent::FDynamicData* DynamicData = nullptr;
 
-	// 각 type 별 vertex factory (proxy 가 소유, lazy init).
-	FParticleVertexFactory* SpriteFactory = nullptr;
-	FParticleVertexFactory* MeshFactory   = nullptr;
-	FParticleVertexFactory* BeamFactory   = nullptr;
-	FParticleVertexFactory* RibbonFactory = nullptr;
+	// EDynamicEmitterType → factory 매핑. lazy 생성 (사용된 타입만 채워짐).
+	// PrepareDrawBuffer가 const라 mutable.
+	mutable FParticleVertexFactory* Factories[(int)EDynamicEmitterType::Count] = {};
+
+	// 타입 보고 factory 반환. 없으면 lazy 생성 + InitResources.
+	FParticleVertexFactory* GetOrCreateFactory(EDynamicEmitterType Type, ID3D11Device* Device) const;
 
 	// per-proxy dynamic VB (Map(DISCARD) 통합 업로드). const PrepareDrawBuffer에서 갱신 → mutable.
 	mutable FDynamicVertexBuffer DynamicVB;

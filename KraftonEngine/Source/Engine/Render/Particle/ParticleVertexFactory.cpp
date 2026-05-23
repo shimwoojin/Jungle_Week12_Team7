@@ -20,7 +20,6 @@ void FParticleSpriteVertexFactory::ReleaseResources()
 {
 	// FShaderManager가 owning. 포인터만 nullify.
 	Shader = nullptr;
-	InputLayout = nullptr;
 }
 
 bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,

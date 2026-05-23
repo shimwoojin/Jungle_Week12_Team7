@@ -6,7 +6,6 @@
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
-struct ID3D11InputLayout;
 class FShader;
 class FDynamicVertexBuffer;
 
@@ -23,13 +22,12 @@ public:
 
 	virtual EDynamicEmitterType GetType() const = 0;
 
-	// RHI 의존 리소스 초기화/해제 (Shader/InputLayout 등). lazy-init 패턴.
+	// RHI 의존 리소스 초기화/해제 (Shader 등). lazy-init 패턴.
+	// InputLayout은 FShader가 VS reflection으로 내부 관리 — factory는 별도 보유 안 함.
 	virtual void InitResources(ID3D11Device* Device) = 0;
 	virtual void ReleaseResources() = 0;
 
-	// pipeline 의 입력 layout. 한 번 만들어 캐시.
-	virtual ID3D11InputLayout* GetInputLayout() const = 0;
-	virtual FShader*           GetShader() const = 0;
+	virtual FShader* GetShader() const = 0;
 
 	// EmitterReplayData 의 입자 buffer 를 읽어 dynamic VB 로 변환/업로드.
 	// 반환: 이 draw 의 vertex/index 카운트.
@@ -57,8 +55,7 @@ class FParticleSpriteVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Sprite; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
@@ -70,8 +67,7 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };
 
 // -----------------------------------------------------------------------------
@@ -83,8 +79,7 @@ class FParticleMeshVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Mesh; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
@@ -96,8 +91,7 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };
 
 // -----------------------------------------------------------------------------
@@ -109,8 +103,7 @@ class FParticleBeamVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Beam; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
@@ -122,16 +115,14 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };
 
 class FParticleRibbonVertexFactory : public FParticleVertexFactory
 {
 public:
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Ribbon; }
-	ID3D11InputLayout*  GetInputLayout() const override { return InputLayout; }
-	FShader*            GetShader()      const override { return Shader; }
+	FShader* GetShader() const override { return Shader; }
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
@@ -143,6 +134,5 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	ID3D11InputLayout* InputLayout = nullptr;
-	FShader*           Shader      = nullptr;
+	FShader* Shader = nullptr;
 };

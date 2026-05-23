@@ -27,24 +27,37 @@ FParticleSystemSceneProxy::FParticleSystemSceneProxy(UParticleSystemComponent* I
 	ProxyFlags &= ~EPrimitiveProxyFlags::SupportsOutline;
 	ProxyFlags &= ~EPrimitiveProxyFlags::ShowAABB;
 
-	SpriteFactory = new FParticleSpriteVertexFactory();
+	// Factories는 GetOrCreateFactory가 lazy 생성. 여기서는 빈 배열.
 }
 
 FParticleSystemSceneProxy::~FParticleSystemSceneProxy()
 {
-	if (SpriteFactory) { SpriteFactory->ReleaseResources(); }
-	if (MeshFactory)   { MeshFactory->ReleaseResources();   }
-	if (BeamFactory)   { BeamFactory->ReleaseResources();   }
-	if (RibbonFactory) { RibbonFactory->ReleaseResources(); }
-
-	delete DynamicData;   DynamicData   = nullptr;
-	delete SpriteFactory; SpriteFactory = nullptr;
-	delete MeshFactory;   MeshFactory   = nullptr;
-	delete BeamFactory;   BeamFactory   = nullptr;
-	delete RibbonFactory; RibbonFactory = nullptr;
+	for (FParticleVertexFactory*& F : Factories)
+	{
+		if (F) { F->ReleaseResources(); delete F; F = nullptr; }
+	}
+	delete DynamicData; DynamicData = nullptr;
 	DynamicVB.Release();
 	DynamicIB.Release();
 	// ParticleMaterial은 UObjectManager가 소유 — 여기서 해제 X
+}
+
+FParticleVertexFactory* FParticleSystemSceneProxy::GetOrCreateFactory(EDynamicEmitterType Type, ID3D11Device* Device) const
+{
+	const int Idx = (int)Type;
+	if (Idx <= (int)EDynamicEmitterType::Unknown || Idx >= (int)EDynamicEmitterType::Count) return nullptr;
+	if (Factories[Idx]) return Factories[Idx];
+
+	switch (Type)
+	{
+	case EDynamicEmitterType::Sprite: Factories[Idx] = new FParticleSpriteVertexFactory(); break;
+	case EDynamicEmitterType::Mesh:   Factories[Idx] = new FParticleMeshVertexFactory();   break;
+	case EDynamicEmitterType::Beam:   Factories[Idx] = new FParticleBeamVertexFactory();   break;
+	case EDynamicEmitterType::Ribbon: Factories[Idx] = new FParticleRibbonVertexFactory(); break;
+	default: return nullptr;
+	}
+	Factories[Idx]->InitResources(Device);
+	return Factories[Idx];
 }
 
 UParticleSystemComponent* FParticleSystemSceneProxy::GetPSC() const
@@ -152,38 +165,41 @@ static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FV
 bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                                   FDrawCommandBuffer& OutBuffer) const
 {
-	if (!Device || !Context || !SpriteFactory) return false;
+	if (!Device || !Context) return false;
 
-	// Lazy init — Shader 등 RHI 의존 리소스.
-	if (!SpriteFactory->GetShader())
-	{
-		SpriteFactory->InitResources(Device);
-	}
-
-	// Stub 또는 실제 Replay 선택. Day 3는 stub 위주.
+	// ---- Replay 목록 결정 (실제 DynamicData 우선, 없으면 stub) ----
 	FDynamicSpriteEmitterReplayData StubReplay;
-	const FDynamicEmitterReplayDataBase* ReplayPtr = nullptr;
+	TArray<const FDynamicEmitterReplayDataBase*> Replays;
 	if (DynamicData && !DynamicData->Emitters.empty())
 	{
-		// 첫 emitter만 시도 (Day 3 한정). Day 4+는 멀티 emitter 디스패치.
-		FDynamicEmitterDataBase* EmitterData = DynamicData->Emitters[0];
-		if (EmitterData && EmitterData->GetType() == EDynamicEmitterType::Sprite)
+		for (FDynamicEmitterDataBase* E : DynamicData->Emitters)
 		{
-			ReplayPtr = &EmitterData->GetReplayDataBase();
+			if (E) Replays.push_back(&E->GetReplayDataBase());
 		}
 	}
-	if (!ReplayPtr)
+	if (Replays.empty())
 	{
 		BuildStubReplay(StubReplay, CachedWorldPos);
-		ReplayPtr = &StubReplay;
+		Replays.push_back(&StubReplay);
 	}
 
-	// VB 채우기 — factory 내부에서 EnsureCapacity + Update(Map(DISCARD) → memcpy → Unmap).
+	// ---- 타입별 디스패치 ----
+	// Day 3 한정: 단일 SectionDraw + 첫 성공 emitter만 표시.
+	// Day 4+: 멀티 emitter면 emitter별 SectionDraw로 분리 + VB scratch accumulator 필요.
 	FParticleVertexFactory::FDrawSpec Spec;
-	const bool bOk = SpriteFactory->BuildDraw(Device, Context, *ReplayPtr,
-		CachedCameraRight, CachedCameraUp, DynamicVB, Spec);
-
-	if (!bOk || Spec.VertexCount == 0 || Spec.IndexCount == 0) return false;
+	bool bAnyDrawn = false;
+	for (const FDynamicEmitterReplayDataBase* Replay : Replays)
+	{
+		FParticleVertexFactory* Factory = GetOrCreateFactory(Replay->EmitterType, Device);
+		if (!Factory) continue;
+		if (Factory->BuildDraw(Device, Context, *Replay,
+			CachedCameraRight, CachedCameraUp, DynamicVB, Spec))
+		{
+			bAnyDrawn = true;
+			break; // 첫 성공 emitter만 그림 (다음 emitter가 VB를 overwrite하지 않도록)
+		}
+	}
+	if (!bAnyDrawn || Spec.VertexCount == 0 || Spec.IndexCount == 0) return false;
 
 	// IB 생성 — quad pattern (4 verts × N quad → 6 indices × N).
 	const uint32 N = Spec.IndexCount / 6;

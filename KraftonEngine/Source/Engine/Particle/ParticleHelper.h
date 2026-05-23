@@ -137,6 +137,7 @@ enum class EDynamicEmitterType : uint8
 	Mesh,
 	Beam,
 	Ribbon,
+	Count,	// 배열 크기 산출용 — 새 타입 추가 시 이 위에.
 };
 
 struct FDynamicEmitterReplayDataBase
