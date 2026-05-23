@@ -1,4 +1,4 @@
-#include "Editor/UI/EditorMainPanel.h"
+﻿#include "Editor/UI/EditorMainPanel.h"
 
 #include "Editor/EditorEngine.h"
 #include "Editor/Settings/EditorSettings.h"
@@ -30,6 +30,8 @@
 #include <cstdio>
 #include <random>
 #include <utility>
+
+#include "Asset/Particle/ParticleEditorWidget.h"
 
 namespace
 {
@@ -97,6 +99,7 @@ void FEditorMainPanel::Create(FWindowsWindow* InWindow, FRenderer& InRenderer, U
 	AssetEditorManager.RegisterEditor<FMeshEditorWidget>();
 	AssetEditorManager.RegisterEditor<FStaticMeshEditorWidget>();
 	AssetEditorManager.RegisterEditor<FAnimGraphEditorWidget>();
+	AssetEditorManager.RegisterEditor<FParticleEditorWidget>();
 }
 
 void FEditorMainPanel::Release()

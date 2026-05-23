@@ -105,7 +105,6 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 		return false;
 	}
 
-	LoadedParticleSystems[NormalizedPath] = Asset;
 	return true;
 }
 

@@ -1,4 +1,4 @@
-#include "ContentBrowser.h"
+﻿#include "ContentBrowser.h"
 
 #include "Asset/AssetPackage.h"
 #include "Animation/Graph/AnimGraphAsset.h"
@@ -21,6 +21,8 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+
+#include "Particle/ParticleSystemManager.h"
 
 namespace
 {
@@ -426,6 +428,9 @@ void FEditorContentBrowserWidget::RefreshContent()
 				case EAssetPackageType::AnimGraph:
 					Element = std::make_shared<AnimGraphElement>();
 					break;
+				case EAssetPackageType::ParticleSystem:
+					Element = std::make_shared<ParticleSystemElement>();
+					break;
 				default:
 					Element = std::make_shared<ContentBrowserElement>();
 					break;
@@ -580,6 +585,24 @@ void FEditorContentBrowserWidget::DrawContents()
 						if (UAnimGraphAsset* GraphAsset = FAnimGraphManager::Get().Load(CreatedPath))
 						{
 							BrowserContext.EditorEngine->OpenAssetEditorForObject(GraphAsset);
+						}
+					}
+				}
+			}
+			if (ImGui::MenuItem("Particle System"))
+			{
+				FString CreatedPath;
+				if (FAssetFactory::CreateParticleSystem(
+					FPaths::ToUtf8(BrowserContext.CurrentPath),
+					"NewParticleSystem",
+					CreatedPath))
+				{
+					Refresh();
+					if (BrowserContext.EditorEngine)
+					{
+						if (UParticleSystem* Asset = FParticleSystemManager::Get().Load(CreatedPath))
+						{
+							BrowserContext.EditorEngine->OpenAssetEditorForObject(Asset);
 						}
 					}
 				}
