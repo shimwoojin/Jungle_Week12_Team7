@@ -19,6 +19,8 @@ void UParticleModuleSpawn::GetSpawnAmount(FParticleEmitterInstance* Owner, float
 
 	if (Owner)
 	{
+		// 모듈 자산을 직접 mutate하지 않고 emitter instance payload에
+		// "직전 처리 시각"을 저장해 burst trigger를 계산한다.
 		if (FSpawnModuleInstancePayload* Payload =
 			Owner->GetModuleInstancePayload<FSpawnModuleInstancePayload>(this))
 		{

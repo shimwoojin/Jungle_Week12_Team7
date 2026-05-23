@@ -16,6 +16,8 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
                                       const FBaseParticle& B, const FVector& BWorldPos,
                                       const FVector& CameraPosition)
 {
+	// Replay.SortMode가 지정한 "입자 내부 정렬 정책"을 이 함수 하나로 모은다.
+	// SceneProxy는 정렬 필요 여부만 정하고, 실제 comparator 선택은 factory가 맡는다.
 	switch (SortMode)
 	{
 	case EParticleReplaySortMode::Age_OldestFirst:
@@ -91,6 +93,7 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
 	if (bRequiresSort)
 	{
+		// 정렬 결과를 먼저 active index 배열로 만든 뒤, quad 정점 생성 순서를 그에 맞춘다.
 		std::sort(SortedIdx.begin(), SortedIdx.end(),
 			[&GetWorldPos, &CameraPosition, RawBase, Stride, SortMode](uint32 a, uint32 b)
 			{
@@ -219,6 +222,7 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
 	if (bRequiresSort)
 	{
+		// Mesh도 Sprite와 동일한 SortMode를 쓰되, 최종 결과는 instance stream 순서로 반영한다.
 		std::sort(SortedIdx.begin(), SortedIdx.end(),
 			[&GetWorldPos, &CameraPosition, RawBase, Stride, SortMode](uint32 a, uint32 b)
 			{

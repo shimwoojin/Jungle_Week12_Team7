@@ -18,6 +18,8 @@ void UParticleModuleEventGenerator::HandleSpawnEvent(FParticleEmitterInstance* O
 		}
 
 		FParticleEventSpawnData Event = InTemplate;
+		// base event는 emitter instance가 이미 enqueue했고,
+		// EventGenerator는 이름이 붙은 추가 이벤트만 파생시킨다.
 		Event.EventName = Entry.EventName;
 		Owner->EnqueueSpawnEvent(Event);
 	}

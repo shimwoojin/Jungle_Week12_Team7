@@ -22,6 +22,8 @@ public:
 
 	struct FSpawnModuleInstancePayload
 	{
+		// burst는 자산 데이터 자체를 mutate하지 않고, emitter instance 쪽에서
+		// "이 loop에서 어디까지 처리했는가"만 추적한다.
 		float LastProcessedTime = 0.0f;
 	};
 
@@ -42,7 +44,7 @@ public:
 	{
 		float Time   = 0.0f;
 		int32 Count  = 0;
-		bool  bFired = false; // runtime flag (자동 reset)
+		bool  bFired = false; // legacy serialized field. 실제 runtime fired state는 instance payload가 관리.
 	};
 	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Bursts", Type=Array)
 	TArray<FBurstEntry> BurstList;

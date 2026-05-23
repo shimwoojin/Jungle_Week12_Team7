@@ -340,6 +340,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 			? MeshMaterial : SpriteMaterial;
 		UMaterial* SectionMat  = RequiredMat ? RequiredMat : FallbackMat;
 
+		// 정렬 필요 여부는 이제 material blend가 아니라 replay 계약의 SortMode가 결정한다.
 		const bool bRequiresSort = Replay->SortMode != EParticleReplaySortMode::None;
 
 		FParticleVertexFactory::FDrawSpec Spec;

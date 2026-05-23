@@ -109,6 +109,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		CreateEmitterInstances();
 	}
 
+	// PSC가 현재 선택한 LOD를 source of truth로 들고 있고, instance는 매 tick 그 값을 따른다.
 	ApplyCurrentLODToEmitterInstances();
 
 	// 매 프레임 Tick이 아닌, 일정 간격마다 몰아서 Tick
@@ -154,6 +155,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
 
+	// finite emitter가 모두 spawn 종료 + active particle 0 상태가 되면 시스템 완료로 본다.
 	if (IsSystemFinished())
 	{
 		bActive = false;
@@ -306,6 +308,8 @@ void UParticleSystemComponent::UpdateWorldAABB() const
 
 	if (!Template->bUseFixedRelativeBoundingBox)
 	{
+		// fixed bounds를 끄면 emitter별 dynamic bounds를 합산한다.
+		// active particle이 없는 emitter는 false를 반환하고 자연스럽게 제외된다.
 		for (const FParticleEmitterInstance* Inst : EmitterInstances)
 		{
 			if (!Inst)
@@ -339,6 +343,8 @@ void UParticleSystemComponent::UpdateWorldAABB() const
 
 	if (!bHasDynamicBounds)
 	{
+		// dynamic bounds가 없거나, 자산이 fixed relative bounding box 사용을 강제하면
+		// 기존 template bounds를 component origin 기준으로 그대로 사용한다.
 		WorldAABBMinLocation = WorldOrigin + Template->SystemBoundsMin;
 		WorldAABBMaxLocation = WorldOrigin + Template->SystemBoundsMax;
 	}
@@ -436,6 +442,7 @@ void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
 		CurrentLODIndex = 0;
 	}
 
+	// distance 기반 자동 선택은 아직 없으므로, 현재는 PSC의 수동 LOD index를 그대로 전달한다.
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
 	{
 		if (!Inst)

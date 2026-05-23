@@ -18,6 +18,7 @@ void UParticleModuleCollision::Spawn(FParticleEmitterInstance* Owner, uint32 Mod
 	if (FCollisionParticlePayload* Payload =
 		PARTICLE_PAYLOAD(Particle, ModuleOffset, FCollisionParticlePayload))
 	{
+		// collision 카운터는 particle payload에 붙어 있으므로 spawn 시점에 명시적으로 초기화.
 		*Payload = {};
 	}
 }
@@ -36,6 +37,7 @@ void UParticleModuleCollision::Update(FParticleEmitterInstance* Owner, uint32 Mo
 		{
 			(void)ActiveIndex;
 
+			// particle payload 접근은 module offset 기반의 공식 경로만 사용한다.
 			FCollisionParticlePayload* Payload =
 				PARTICLE_PAYLOAD(&Particle, ModuleOffset, FCollisionParticlePayload);
 			if (!Payload)

@@ -15,6 +15,8 @@
 
 static EParticleReplaySortMode ToReplaySortMode(UParticleModuleRequired::ESortMode InSortMode)
 {
+	// RequiredModule의 UObject enum을 replay 전용 POD enum으로 축소.
+	// RT는 이 변환 결과만 보고 정렬 comparator를 선택한다.
 	switch (InSortMode)
 	{
 	case UParticleModuleRequired::ESortMode::ViewProjDepth:
@@ -79,6 +81,8 @@ void FParticleEmitterInstance::Tick(float DeltaTime)
 	ClearPendingEvents();
 
 	float RemainingDeltaTime = DeltaTime;
+	// duration이 있는 emitter는 loop 경계에서 step을 잘라서 처리해야
+	// SpawnModule의 burst/time 누적과 LoopCount 갱신이 같은 프레임 안에서도 일관된다.
 	while (RemainingDeltaTime > 0.0f)
 	{
 		float StepDeltaTime = RemainingDeltaTime;
@@ -213,6 +217,8 @@ bool FParticleEmitterInstance::ComputeDynamicBounds(FVector& OutMin, FVector& Ou
 	const FMatrix LocalToWorld = Component ? Component->GetWorldMatrix() : FMatrix{};
 
 	bool bHasBounds = false;
+	// 현재는 sprite/mesh 공통으로 Location +/- Size 의 느슨한 근사 박스를 사용.
+	// culling/selection 용으로는 충분하고, 정확한 mesh bounds는 추후 확장 가능.
 	for (uint32 i = 0; i < ActiveParticles; ++i)
 	{
 		const FBaseParticle* Particle = GetParticleAt(i);
@@ -340,6 +346,7 @@ void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 	float SpawnAmount = 0.0f;
 	int32 BurstCount = 0;
 
+	// SpawnModule은 "현재 loop 안에서의 상대 시간"만 알면 burst trigger를 계산할 수 있다.
 	LOD->SpawnModule->GetSpawnAmount(this, DeltaTime, CurrentLoopTimeSeconds, SpawnAmount, BurstCount);
 
 	SpawnAmount = std::max(0.0f, SpawnAmount);
@@ -610,6 +617,7 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	UParticleModuleRequired* Required = LOD->RequiredModule;
 
 	OutData.Material = Required->ResolveMaterial();
+	// SortMode는 material blend와 별개로 "어떤 기준으로 particle를 재배치할지"를 RT에 알려준다.
 	OutData.SortMode = ToReplaySortMode(Required->SortMode);
 	// NOTE: Replay에 BlendState 필드 없음 — Material.GetBlendState()가 single source of truth.
 	// RequiredModule.BlendState로 Material을 override하고 싶으면 SceneProxy의
@@ -710,6 +718,7 @@ void FParticleEmitterInstance::AdvanceLoopState(float DeltaTime)
 
 	const float Duration = Required->EmitterDuration;
 	const float Epsilon = 1.0e-4f;
+	// 큰 DeltaTime이 들어와 한 프레임 안에 여러 loop를 넘길 수 있으므로 while로 처리.
 	while (CurrentLoopTimeSeconds >= Duration - Epsilon)
 	{
 		CurrentLoopTimeSeconds =

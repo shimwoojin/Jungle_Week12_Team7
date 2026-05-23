@@ -307,6 +307,8 @@ enum class EDynamicEmitterType : uint8
 
 enum class EParticleReplaySortMode : uint8
 {
+	// ReplayData가 RT에 전달하는 정렬 정책. UObject enum을 직접 끌어오지 않고
+	// GT→RT 계약만 독립적으로 유지하기 위한 경량 enum.
 	None = 0,
 	ViewProjDepth,
 	ViewDistance,
@@ -317,6 +319,8 @@ enum class EParticleReplaySortMode : uint8
 struct FDynamicEmitterReplayDataBase
 {
 	EDynamicEmitterType EmitterType = EDynamicEmitterType::Unknown;
+	// RequiredModule.SortMode를 GT에서 복사해 둔 값.
+	// RT는 이 필드만 보고 emitter 내부 입자 정렬 정책을 선택한다.
 	EParticleReplaySortMode SortMode = EParticleReplaySortMode::None;
 
 	uint32 ActiveParticleCount = 0;

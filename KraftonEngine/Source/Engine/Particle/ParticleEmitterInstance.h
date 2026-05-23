@@ -46,6 +46,8 @@ public:
 	// 활성 입자 i 의 BaseParticle 포인터.
 	FBaseParticle*       GetParticleAt(uint32 InActiveIndex);
 	const FBaseParticle* GetParticleAt(uint32 InActiveIndex) const;
+	// emitter-level instance payload block의 시작 주소. Spawn burst state 같이
+	// "입자별이 아닌 emitter별 런타임 상태"를 여기에 둔다.
 	void*                GetInstancePayloadData();
 	const void*          GetInstancePayloadData() const;
 
@@ -99,9 +101,13 @@ public:
 
 	uint32 GetActiveParticleCount() const { return ActiveParticles; }
 	uint32 GetMaxParticleCount()    const { return MaxActiveParticles; }
+	// finite loop emitter가 더 이상 spawn하지 않는 상태인지 / 실제로 완전히 끝났는지.
 	bool   IsSpawningComplete()     const;
 	bool   IsFinished()             const;
+	// active particle 기준의 느슨한 world-space bounds. 없으면 false를 반환해
+	// PSC가 template fixed bounds로 fallback 할 수 있게 한다.
 	bool   ComputeDynamicBounds(FVector& OutMin, FVector& OutMax) const;
+	// PSC가 선택한 현재 LOD를 런타임 instance에 전달하는 entry point.
 	void   SetCurrentLODIndex(int32 InLODIndex);
 	int32  GetCurrentLODIndex() const { return CurrentLODIndex; }
 
