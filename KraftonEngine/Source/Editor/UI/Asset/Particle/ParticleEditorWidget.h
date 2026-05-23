@@ -1,23 +1,31 @@
 #pragma once
 
 #include "Editor/UI/Asset/AssetEditorWidget.h"
+#include "Editor/Viewport/Asset/StaticMeshEditorViewportClient.h"
+#include "Object/FName.h"
 
 class UParticleSystem;
 class UParticleEmitter;
 class UParticleLODLevel;
 class UParticleModule;
+class UParticleSystemComponent;
+class AActor;
 class IEditorPreviewViewportClient;
 struct ImVec2;
 
 // =============================================================================
 // FParticleEditorWidget (Cascade)
 //   UParticleSystem 에셋 편집기.
-//   레이아웃 (좌→우):
-//     [Emitter Strip] : emitter 1개당 세로 열, 위→아래로 Required / TypeData /
-//                       Spawn / 기타 module 슬롯이 카드처럼 쌓인다.
-//     [Property Panel]: 선택된 module 의 UPROPERTY 편집 UI.
-//     [Preview Viewport] : PSC 1개를 띄운 별도 viewport 에 입자 재생.
-//     [Curve Editor (옵션)]: distribution/curve 편집 (선택 사항이라 인터페이스만).
+//   레이아웃 (Cascade 참고):
+//     [Toolbar]
+//     [Preview Viewport] [Emitter Strip]
+//     [Details Panel]    [Curve Editor]
+//
+//   현재 엔진에 구현되어 있는 기능을 우선 연결한다.
+//   - Preview: 별도 EditorPreview World + UParticleSystemComponent 재생
+//   - Emitter Strip: Emitter/LOD0 Required/Spawn/TypeData/일반 Module 표시, 선택, 활성 토글
+//   - Details: System / Emitter / LOD / Module 의 지원 필드 직접 편집
+//   - Curve Editor: 아직 Distribution/Curve 백엔드가 없으므로 placeholder grid
 // =============================================================================
 class FParticleEditorWidget : public FAssetEditorWidget
 {
@@ -42,7 +50,7 @@ private:
 	void RenderEmitterStrip(ImVec2 Size);
 	void RenderPropertyPanel(ImVec2 Size);
 	void RenderPreviewViewport(ImVec2 Size);
-	void RenderCurveEditor(ImVec2 Size); // 옵션 — stub
+	void RenderCurveEditor(ImVec2 Size); // 현재는 backend 미구현 placeholder
 
 	// emitter strip 의 1 column 렌더
 	void RenderEmitterColumn(UParticleEmitter* Emitter, int32 EmitterIndex);
@@ -51,15 +59,44 @@ private:
 	// 토큰 작업 (메뉴/단축키)
 	void AddEmitter();
 	void RemoveSelectedEmitter();
-	void AddModuleToSelectedEmitter(/* category */);
+	void AddModuleToSelectedEmitter();
+	void RenderAddModulePopup();
 	void DuplicateSelectedModule();
 	void RemoveSelectedModule();
+
+	void SelectSystem();
+	void SelectEmitter(int32 EmitterIndex);
+	void SelectModule(int32 EmitterIndex, int32 ModuleIndex);
+
+	void RebuildPreview(bool bResetSimulation = true);
+	void RestartPreview();
+	void NotifyParticleAssetChanged(bool bResetSimulation = true);
+
+	UParticleEmitter* GetSelectedEmitter() const;
+	UParticleLODLevel* GetSelectedLOD() const;
+	UParticleModule* GetSelectedModule() const;
 
 	// 선택 상태
 	UParticleSystem* GetEditedSystem() const;
 
 private:
+	FStaticMeshEditorViewportClient ViewportClient;
+	FName   PreviewWorldHandle = FName::None;
+	FString WindowIdSuffix;
+	AActor* PreviewActor = nullptr;
+	UParticleSystemComponent* PreviewParticleComponent = nullptr;
+
+	int32 InstanceId = 0;
 	int32 SelectedEmitterIndex = -1;
-	int32 SelectedModuleIndex  = -1; // LOD0.Modules 인덱스 (Required/Spawn/TypeData 은 음수 토큰)
+	int32 SelectedModuleIndex  = -1; // -1=Emitter, -100/-101/-102=Required/Spawn/TypeData, 0..=LOD.Modules
 	int32 CurrentLODIndex      = 0;
+
+	float EmitterStripHeight = 280.0f;
+	float DetailsWidth       = 420.0f;
+	float CurvePanelHeight   = 190.0f;
+	float SimulationSpeed    = 1.0f;
+	bool  bSimPlaying        = true;
+	bool  bPendingClose      = false;
+	bool  bShowBounds        = false;
+	bool  bShowOriginAxis    = true;
 };
