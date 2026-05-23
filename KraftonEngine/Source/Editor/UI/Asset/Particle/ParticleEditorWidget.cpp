@@ -959,7 +959,11 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Required", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= MaterialComboField("Material", Required->MaterialSlot);
+					if (MaterialComboField("Material", Required->MaterialSlot))
+					{
+						Required->CachedMaterial = nullptr;
+						bChanged = true;
+					}
 					static const char* BlendNames[] = { "Opaque", "AlphaBlend", "Additive", "Modulate", "NoColor" };
 					int32 Blend = static_cast<int32>(Required->BlendState);
 					if (ComboInt("Blend State", Blend, BlendNames, 5)) { Required->BlendState = static_cast<EBlendState>(Blend); bChanged = true; }
