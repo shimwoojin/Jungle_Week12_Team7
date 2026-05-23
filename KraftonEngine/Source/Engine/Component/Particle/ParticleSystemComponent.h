@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Component/PrimitiveComponent.h"
 #include "Particle/ParticleHelper.h"
@@ -50,6 +50,7 @@ public:
 
 	void PostEditProperty(const char* PropertyName) override;
 	void PostDuplicate() override;
+	void Serialize(class FArchive& Ar) override;
 
 	// --- Bounds ---
 	void UpdateWorldAABB() const override;
@@ -63,6 +64,8 @@ public:
 	// --- Emitter Instance 접근 ---
 	int32 GetEmitterInstanceCount() const { return static_cast<int32>(EmitterInstances.size()); }
 	FParticleEmitterInstance* GetEmitterInstance(int32 Index) const;
+
+	void RebuildInstances(bool bReset = true);
 
 	// SceneProxy 가 매 프레임 쓸 dynamic data 묶음. PSC 가 소유, GetDynamicData() 가
 	// 매 호출마다 새로 build 한다 (호출자는 delete 책임).
@@ -81,8 +84,10 @@ protected:
 	void DestroyEmitterInstances();
 	void DispatchEventsToManager();
 
+	void PushDynamicDataToProxy();
+
 protected:
-	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="ParticleSystem")
+	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="UParticleSystem")
 	UParticleSystem* Template = nullptr;
 
 	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Auto Activate")

@@ -4,6 +4,47 @@
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
+#include "Serialization/Archive.h"
+
+void UParticleLODLevel::Serialize(FArchive& Ar)
+{
+	UObject::Serialize(Ar);
+	SerializeProperties(Ar, PF_Save);
+}
+
+void UParticleLODLevel::PostDuplicate()
+{
+	UObject::PostDuplicate();
+
+	if (RequiredModule)
+	{
+		RequiredModule->SetOuter(this);
+		RequiredModule->PostDuplicate();
+	}
+
+	if (SpawnModule)
+	{
+		SpawnModule->SetOuter(this);
+		SpawnModule->PostDuplicate();
+	}
+
+	if (TypeDataModule)
+	{
+		TypeDataModule->SetOuter(this);
+		TypeDataModule->PostDuplicate();
+	}
+
+	for (UParticleModule* Module : Modules)
+	{
+		if (!Module)
+		{
+			continue;
+		}
+
+		Module->SetOuter(this);
+		Module->PostDuplicate();
+	}
+}
 
 void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 {
@@ -113,14 +154,12 @@ bool UParticleLODLevel::RemoveModule(UParticleModule* InModule)
 
 	if (RequiredModule == InModule)
 	{
-		RequiredModule = nullptr;
-		return true;
+		return false;	// 삭제 불가
 	}
 
 	if (SpawnModule == InModule)
 	{
-		SpawnModule = nullptr;
-		return true;
+		return false;	// 삭제 불가
 	}
 
 	if (TypeDataModule == InModule)

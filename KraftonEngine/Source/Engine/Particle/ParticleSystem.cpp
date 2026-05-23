@@ -1,5 +1,6 @@
 ﻿#include "ParticleSystem.h"
 
+#include "ParticleLODLevel.h"
 #include "Particle/ParticleEmitter.h"
 #include "Object/Reflection/ObjectFactory.h"
 #include "Serialization/Archive.h"
@@ -7,13 +8,38 @@
 void UParticleSystem::Serialize(FArchive& Ar)
 {
 	UObject::Serialize(Ar);
-	// TODO: Emitters / 메타 직렬화
+	SerializeProperties(Ar, PF_Save);
+
+	if (Ar.IsLoading())
+	{
+		BuildEmitters();
+	}
 }
 
 UObject* UParticleSystem::Duplicate(UObject* NewOuter) const
 {
-	// TODO: emitter / LOD / module 까지 deep duplicate
 	return UObject::Duplicate(NewOuter);
+}
+
+void UParticleSystem::PostDuplicate()
+{
+	UObject::PostDuplicate();
+
+	// Instanced 배열의 하위 객체들은 UObject::Duplicate()에서 루트처럼
+	// PostDuplicate()가 자동 호출되지 않는다. ParticleSystem이 소유한
+	// Emitter graph를 여기서 재귀적으로 정리한다.
+	for (UParticleEmitter* Emitter : Emitters)
+	{
+		if (!Emitter)
+		{
+			continue;
+		}
+
+		Emitter->SetOuter(this);
+		Emitter->PostDuplicate();
+	}
+
+	BuildEmitters();
 }
 
 UParticleEmitter* UParticleSystem::AddEmitter()      
@@ -21,8 +47,7 @@ UParticleEmitter* UParticleSystem::AddEmitter()
 	UParticleEmitter* NewEmitter = UObjectManager::Get().CreateObject<UParticleEmitter>(this);
 	if (!NewEmitter) return nullptr;
 
-	// TODO: 이름이 겹칠 수 있음.
-	NewEmitter->EmitterName = "Emitter " + std::to_string(Emitters.size());
+	NewEmitter->EmitterName = MakeUniqueEmitterName();
 	NewEmitter->InitializeDefaultLODLevel();
 
 	Emitters.push_back(NewEmitter);
@@ -60,7 +85,41 @@ void UParticleSystem::BuildEmitters()
 	for (UParticleEmitter* Emitter : Emitters)
 	{
 		if (!Emitter) continue;
-		Emitter->InitializeDefaultLODLevel();
+		Emitter->EnsureLOD0CoreModules();
+
+		UParticleLODLevel* LOD0 = Emitter->GetLODLevel(0);
+		if (!LOD0 || !LOD0->ValidateModules())
+		{
+			continue;
+		}
+
 		Emitter->CacheEmitterModuleInfo();
+	}
+}
+
+FString UParticleSystem::MakeUniqueEmitterName()
+{
+	int32 Index = 0;
+
+	while (true)
+	{
+		FString Candidate = "Emitter " + std::to_string(Index);
+
+		bool bExists = false;
+		for (UParticleEmitter* Emitter : Emitters)
+		{
+			if (Emitter && Emitter->EmitterName == Candidate)
+			{
+				bExists = true;
+				break;
+			}
+		}
+
+		if (!bExists)
+		{
+			return Candidate;
+		}
+
+		++Index;
 	}
 }

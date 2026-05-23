@@ -1,4 +1,4 @@
-#include "Editor/Subsystem/AssetFactory.h"
+﻿#include "Editor/Subsystem/AssetFactory.h"
 
 #include "Animation/Graph/AnimGraphAsset.h"
 #include "Animation/Graph/AnimGraphManager.h"
@@ -10,6 +10,11 @@
 #include "Platform/Paths.h"
 
 #include <filesystem>
+
+#include "Core/Logging/Log.h"
+#include "Particle/ParticleSystemManager.h"
+#include "Particle/ParticleEmitter.h"
+#include "Particle/ParticleLODLevel.h"
 
 namespace
 {
@@ -41,6 +46,7 @@ namespace
 			++Suffix;
 		}
 	}
+
 }
 
 bool FAssetFactory::CreateFloatCurve(const FString& DirectoryPath, const FString& AssetName, FString& OutCreatedPath)
@@ -124,5 +130,61 @@ bool FAssetFactory::CreateAnimGraph(const FString& DirectoryPath, const FString&
 	}
 
 	OutCreatedPath = FPaths::ToUtf8(AssetPath.wstring());
+	return true;
+}
+
+bool FAssetFactory::CreateParticleSystem(
+	const FString& DirectoryPath,
+	const FString& AssetName,
+	FString& OutCreatedPath)
+{
+	const std::filesystem::path Directory(FPaths::ToWide(DirectoryPath));
+	if (!std::filesystem::exists(Directory) || !std::filesystem::is_directory(Directory))
+	{
+		UE_LOG("[ParticleSystemFactory] Create failed: invalid directory. DirectoryPath=%s", DirectoryPath.c_str());
+		return false;
+	}
+
+	const std::filesystem::path AssetPath = BuildUniqueAssetPath(
+		Directory,
+		AssetName.empty() ? "NewParticleSystem" : AssetName,
+		L".uasset"
+	);
+	const FString CreatedPath = FPaths::ToUtf8(AssetPath.wstring());
+
+	UE_LOG("[ParticleSystemFactory] Create start. Directory=%s AssetName=%s CreatedPath=%s",
+		DirectoryPath.c_str(),
+		AssetName.c_str(),
+		CreatedPath.c_str());
+
+	UParticleSystem* NewAsset = UObjectManager::Get().CreateObject<UParticleSystem>();
+	if (!NewAsset)
+	{
+		UE_LOG("[ParticleSystemFactory] CreateObject<UParticleSystem> returned NULL. Path=%s", CreatedPath.c_str());
+		return false;
+	}
+
+	NewAsset->SetSourcePath(CreatedPath);
+	NewAsset->AddEmitter();
+	NewAsset->BuildEmitters();
+
+	const bool bSaved = FParticleSystemManager::Get().Save(NewAsset);
+	UObjectManager::Get().DestroyObject(NewAsset);
+
+	if (!bSaved)
+	{
+		UE_LOG("[ParticleSystemFactory] Save failed. Path=%s", CreatedPath.c_str());
+		return false;
+	}
+
+	UParticleSystem* Loaded = FParticleSystemManager::Get().Load(CreatedPath);
+	if (!Loaded)
+	{
+		UE_LOG("[ParticleSystemFactory] Load FAILED after Save. Path=%s", CreatedPath.c_str());
+		return false;
+	}
+
+	OutCreatedPath = CreatedPath;
+	UE_LOG("[ParticleSystemFactory] Create success. Path=%s", OutCreatedPath.c_str());
 	return true;
 }

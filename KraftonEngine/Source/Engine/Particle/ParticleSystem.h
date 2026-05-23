@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Object/Object.h"
 #include "Math/Vector.h"
@@ -20,7 +20,7 @@ public:
 	UParticleSystem() = default;
 	~UParticleSystem() override = default;
 
-	UPROPERTY(Edit, Save, Category="System", DisplayName="Emitters", Type=Array)
+	UPROPERTY(Edit, Save, Instanced, Category="System", DisplayName="Emitters", Type=Array, AllowedClass=UParticleEmitter)
 	TArray<UParticleEmitter*> Emitters;
 
 	// 시스템 자체의 재시작 정책.
@@ -42,6 +42,7 @@ public:
 	// 직렬화 / Duplicate
 	void Serialize(class FArchive& Ar) override;
 	UObject* Duplicate(UObject* NewOuter = nullptr) const override;
+	void PostDuplicate() override;
 
 	// 에디터/런타임 헬퍼
 	UParticleEmitter* AddEmitter();
@@ -53,4 +54,13 @@ public:
 
 	// 모든 emitter 의 CacheEmitterModuleInfo() 호출.
 	void BuildEmitters();
+
+	void SetSourcePath(const FString& InPath) { SourcePath = InPath; }
+	const FString& GetSourcePath() const { return SourcePath; }
+
+private:
+	FString MakeUniqueEmitterName();
+	
+private:
+	FString SourcePath;
 };

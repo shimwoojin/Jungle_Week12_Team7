@@ -202,9 +202,18 @@ void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
 
 		Particle->Flags = ActiveFlag | SpawnedFlag;
 
+		bool bUseLocalSpace = false;
+
+		if (LOD && LOD->RequiredModule)
+		{
+			bUseLocalSpace = LOD->RequiredModule->bUseLocalSpace;
+		}
+
 		if (Component)
 		{
-			Particle->Location = Component->GetWorldLocation();
+			if (bUseLocalSpace) Particle->Location = FVector{ 0, 0, 0 };
+			else Particle->Location = Component->GetWorldLocation();
+
 			Particle->OldLocation = Particle->Location;
 		}
 

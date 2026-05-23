@@ -21,7 +21,9 @@ void UParticleModuleVelocity::Spawn(FParticleEmitterInstance* Owner, uint32 Modu
 	Velocity.Z = StartVelocityMin.Z + (StartVelocityMax.Z - StartVelocityMin.Z) * AlphaZ;
 
 	// TODO: bInWorldSpace는 지금은 보류.
-	// 제대로 하려면 Component transform의 rotation만 적용해야 함.
+	// Required.bUseLocalSpace == true면 local velocity,
+	// false면 world velocity로 해석된다.
+	// bInWorldSpace 변환은 추후 구현.
 	Particle->Velocity = Velocity;
 	Particle->BaseVelocity = Velocity;
 }

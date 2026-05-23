@@ -1,4 +1,4 @@
-#include "ContentBrowserElement.h"
+﻿#include "ContentBrowserElement.h"
 
 #include "Asset/AssetPackage.h"
 #include "Editor/EditorEngine.h"
@@ -29,6 +29,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <utility>
+
+#include "Particle/ParticleSystem.h"
+#include "Particle/ParticleSystemManager.h"
 
 static FString FormatBytes(uint64 Bytes)
 {
@@ -790,6 +793,19 @@ void SkeletonElement::OnDoubleLeftClicked(ContentBrowserContext& Context)
 	{
 		FMeshEditorWidget::ClearImportDurationForAsset(Mesh->GetAssetPathFileName());
 		Context.EditorEngine->OpenAssetEditorForObject(Mesh);
+	}
+}
+
+void ParticleSystemElement::OnDoubleLeftClicked(ContentBrowserContext& Context)
+{
+	if (!Context.EditorEngine)
+	{
+		return;
+	}
+	const FString FilePath = FPaths::ToUtf8(ContentItem.Path.wstring());
+	if (UParticleSystem* ParticleSystem = FParticleSystemManager::Get().Load(FilePath))
+	{
+		Context.EditorEngine->OpenAssetEditorForObject(ParticleSystem);
 	}
 }
 
