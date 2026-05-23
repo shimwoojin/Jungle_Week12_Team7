@@ -39,6 +39,13 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const uint32 VertCount  = N * 4;
 	const uint32 IndexCount = N * 6;
 
+	// SubUV atlas tile 크기 — Sprite ReplayData에서 가져옴 (caller가 type 보장).
+	const auto& SpriteReplay = static_cast<const FDynamicSpriteEmitterReplayData&>(Replay);
+	const int32 SubH = SpriteReplay.SubImagesHorizontal > 0 ? SpriteReplay.SubImagesHorizontal : 1;
+	const int32 SubV = SpriteReplay.SubImagesVertical   > 0 ? SpriteReplay.SubImagesVertical   : 1;
+	const float TileW = 1.0f / static_cast<float>(SubH);
+	const float TileH = 1.0f / static_cast<float>(SubV);
+
 	// CPU 측 임시 버퍼에 모두 채운 뒤 한 번에 GPU 업로드.
 	std::vector<FVertexPNCT> Vertices(VertCount);
 
@@ -71,15 +78,23 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 			WorldCenter = Replay.LocalToWorld.TransformPositionWithW(WorldCenter);
 		}
 
+		// SubImage → atlas tile 인덱스 (col, row). SubImagesH/V == 1이면 항상 (0, 0).
+		const int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
+		const int32 Col = RawIdx % SubH;
+		const int32 Row = (RawIdx / SubH) % SubV;
+
 		for (int c = 0; c < 4; ++c)
 		{
 			const float Dx = CornerSign[c][0] * (HalfW * 2.0f); // CornerSign이 ±0.5라 *2 보정
 			const float Dy = CornerSign[c][1] * (HalfH * 2.0f);
 			FVector Corner = WorldCenter + CameraRight * Dx + CameraUp * Dy;
+			// Atlas tile 좌표로 변환: (col + cornerU) * TileW.
+			const float U = (static_cast<float>(Col) + CornerUV[c][0]) * TileW;
+			const float V = (static_cast<float>(Row) + CornerUV[c][1]) * TileH;
 			Vertices[i * 4 + c].Position = Corner;
 			Vertices[i * 4 + c].Normal   = { 0, 0, 0 };
 			Vertices[i * 4 + c].Color    = P.Color;
-			Vertices[i * 4 + c].UV       = { CornerUV[c][0], CornerUV[c][1] };
+			Vertices[i * 4 + c].UV       = { U, V };
 		}
 	}
 

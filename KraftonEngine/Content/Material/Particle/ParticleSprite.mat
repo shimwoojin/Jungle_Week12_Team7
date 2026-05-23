@@ -8,7 +8,11 @@
   "Parameters" : {
     "BaseColor" : [1.000000, 1.000000, 1.000000, 1.000000],
     "Opacity" : 1.000000,
-    "_pad" : [0.000000, 0.000000, 0.000000]
+    "UseTexture" : 0.000000,
+    "_pad" : [0.000000, 0.000000]
+  },
+  "Textures" : {
+    "DiffuseTexture" : ""
   },
   "Origin" : "Particle"
 }

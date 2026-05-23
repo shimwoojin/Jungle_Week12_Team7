@@ -1,15 +1,21 @@
 #include "Common/Functions.hlsli"
+#include "Common/SystemSamplers.hlsli"
 
 // Particle Mesh — 정적 mesh + per-instance transform/color로 DrawIndexedInstanced.
 // slot 0: 정적 mesh VB (FVertexPNCT layout, 기존 StaticMesh와 동일)
 // slot 1: per-instance VB (FParticleMeshInstanceVertex) — INSTANCE_ prefix로 reflection에서 자동 분리
 
-// b2 (PerShader0): .mat의 Parameters 키에서 자동 매핑 — BaseColor / Opacity
+// t0: Material.CachedSRVs[Diffuse] (Atlas 텍스처)
+Texture2D DiffuseTexture : register(t0);
+
+// b2 (PerShader0): .mat의 Parameters 키에서 자동 매핑
 cbuffer ParticleMeshParams : register(b2)
 {
-    float4 BaseColor;   // 추가 tint (.mat에서 조정)
-    float  Opacity;     // [0,1] (.mat에서 조정)
-    float3 _pad;        // 16-byte 정렬
+    float4 BaseColor;      // 추가 tint
+    float  Opacity;        // [0,1]
+    float  UseTexture;     // 0=텍스처 무시, 1=사용
+    float  SubImagesH;     // atlas 가로 분할 (1 = SubUV 비활성)
+    float  SubImagesV;     // atlas 세로 분할
 }
 
 struct VS_Input_MeshParticle
@@ -33,7 +39,8 @@ struct PS_Input_MeshParticle
 {
     float4 position : SV_POSITION;
     float4 color    : COLOR;
-    float2 texcoord : TEXCOORD;
+    float2 texcoord : TEXCOORD0;
+    nointerpolation int subImage : TEXCOORD1;   // per-instance — interpolation 안 함
 };
 
 PS_Input_MeshParticle VS(VS_Input_MeshParticle input)
@@ -49,14 +56,32 @@ PS_Input_MeshParticle VS(VS_Input_MeshParticle input)
 
     PS_Input_MeshParticle output;
     output.position = ApplyVP(worldPos.xyz);
-    output.color    = input.color * input.instColor;  // mesh 정점 color × instance tint
+    output.color    = input.color * input.instColor;
     output.texcoord = input.texcoord;
+    output.subImage = input.subImage;
     return output;
 }
 
 float4 PS(PS_Input_MeshParticle input) : SV_TARGET
 {
-    float3 rgb = input.color.rgb * BaseColor.rgb;
-    float  a   = input.color.a * BaseColor.a * Opacity;
+    // SubImage → atlas tile UV 변환.
+    // SubImagesH/V == 1이면 tile 1개 = 텍스처 전체 (SubUV 비활성).
+    const int SubH = max(1, (int)SubImagesH);
+    const int SubV = max(1, (int)SubImagesV);
+    const float TileW = 1.0 / (float)SubH;
+    const float TileH = 1.0 / (float)SubV;
+    const int Col = input.subImage % SubH;
+    const int Row = (input.subImage / SubH) % SubV;
+    const float2 AtlasUV = float2(
+        ((float)Col + input.texcoord.x) * TileW,
+        ((float)Row + input.texcoord.y) * TileH
+    );
+
+    float4 sampled = DiffuseTexture.Sample(LinearClampSampler, AtlasUV);
+    float3 texRgb = lerp(float3(1,1,1), sampled.rgb, UseTexture);
+    float  texA   = lerp(1.0,            sampled.a,   UseTexture);
+
+    float3 rgb = input.color.rgb * BaseColor.rgb * texRgb;
+    float  a   = input.color.a   * BaseColor.a   * Opacity * texA;
     return float4(ApplyWireframe(rgb), a);
 }
