@@ -94,8 +94,8 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		{
 			Velocity->SetToSensibleDefaults(this);
 
-			Velocity->StartVelocityMin = { -3.0f, -3.0f, 3.0f };
-			Velocity->StartVelocityMax = { 3.0f, 3.0f, 5.0f };
+			Velocity->StartVelocityMin = { -3.0f, -3.0f, 1.0f };
+			Velocity->StartVelocityMax = { 3.0f, 3.0f, 3.0f };
 
 			LOD0->AddModule(Velocity);
 		}
