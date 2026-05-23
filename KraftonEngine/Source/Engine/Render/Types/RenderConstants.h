@@ -2,6 +2,7 @@
 #include "Render/Types/RenderTypes.h"
 #include "Render/Resource/Buffer.h"
 #include "Render/Device/D3DDevice.h"
+#include "Render/Command/DrawCommand.h"
 #include "Core/Types/EngineTypes.h"
 #include "Core/Types/ResourceTypes.h"
 #include "Render/Types/MaterialTextureSlot.h"
@@ -331,11 +332,14 @@ struct FConstantBufferBinding
 
 class UMaterial;
 
-// 섹션별 드로우 정보 — 머티리얼 포인터 + 인덱스 범위만 보관
+// 섹션별 드로우 정보 — 머티리얼 포인터 + 인덱스 범위
+// BufferOverride.HasBuffers()면 BuildCommandForProxy가 proxy의 공유 buffer 대신 이걸 사용
+// (Particle 같은 멀티 emitter 케이스 — emitter별 다른 VB/IB)
 struct FMeshSectionDraw
 {
 	UMaterial* Material = nullptr;
 	uint32 FirstIndex = 0;
 	uint32 IndexCount = 0;
+	FDrawCommandBuffer BufferOverride; // optional — default 빈 buffer
 };
 
