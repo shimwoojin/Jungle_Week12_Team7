@@ -10,8 +10,7 @@
 
 FParticleEmitterInstance::~FParticleEmitterInstance()
 {
-	ParticleData.clear();
-	ParticleIndices.clear();
+	RuntimeStorage.Release();
 }
 
 void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystemComponent* InComponent)
@@ -70,7 +69,7 @@ void FParticleEmitterInstance::Reset()
 
 	for (uint32 i = 0; i < MaxActiveParticles; ++i)
 	{
-		ParticleIndices[i] = static_cast<uint16>(i);
+		RuntimeStorage.ParticleIndices[i] = static_cast<uint16>(i);
 	}
 }
 
@@ -91,15 +90,15 @@ uint32 FParticleEmitterInstance::GetModuleDataOffset(const UParticleModule* InMo
 FBaseParticle* FParticleEmitterInstance::GetParticleAt(uint32 InActiveIndex)
 {
 	if (InActiveIndex >= ActiveParticles) return nullptr;
-	const uint16 Slot = ParticleIndices[InActiveIndex];
-	return reinterpret_cast<FBaseParticle*>(ParticleData.data() + Slot * ParticleStride);
+	const uint16 Slot = RuntimeStorage.ParticleIndices[InActiveIndex];
+	return reinterpret_cast<FBaseParticle*>(RuntimeStorage.ParticleData + Slot * ParticleStride);
 }
 
 const FBaseParticle* FParticleEmitterInstance::GetParticleAt(uint32 InActiveIndex) const
 {
 	if (InActiveIndex >= ActiveParticles) return nullptr;
-	const uint16 Slot = ParticleIndices[InActiveIndex];
-	return reinterpret_cast<const FBaseParticle*>(ParticleData.data() + Slot * ParticleStride);
+	const uint16 Slot = RuntimeStorage.ParticleIndices[InActiveIndex];
+	return reinterpret_cast<const FBaseParticle*>(RuntimeStorage.ParticleData + Slot * ParticleStride);
 }
 
 UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
@@ -192,7 +191,7 @@ void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
 		if (ActiveParticles >= MaxActiveParticles) break;
 
 		const uint32 Slot = ActiveParticles;
-		uint8* ParticleBytes = ParticleData.data() + Slot * ParticleStride;
+		uint8* ParticleBytes = RuntimeStorage.ParticleData + Slot * ParticleStride;
 
 		std::memset(ParticleBytes, 0, ParticleStride);
 
@@ -216,7 +215,7 @@ void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
 			Particle->OldLocation = Particle->Location;
 		}
 
-		ParticleIndices[ActiveParticles] = static_cast<uint16>(Slot);
+		RuntimeStorage.ParticleIndices[ActiveParticles] = static_cast<uint16>(Slot);
 		++ActiveParticles;
 
 		for (UParticleModule* Module : LOD->Modules)
@@ -285,12 +284,12 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 		if (WriteIndex != ReadIndex)
 		{
 			FBaseParticle* WriteParticle =
-				reinterpret_cast<FBaseParticle*>(ParticleData.data() + WriteIndex * ParticleStride);
+				reinterpret_cast<FBaseParticle*>(RuntimeStorage.ParticleData + WriteIndex * ParticleStride);
 
 			std::memmove(WriteParticle, Particle, ParticleStride);
 		}
 
-		ParticleIndices[WriteIndex] = static_cast<uint16>(WriteIndex);
+		RuntimeStorage.ParticleIndices[WriteIndex] = static_cast<uint16>(WriteIndex);
 		++WriteIndex;
 	}
 
@@ -303,12 +302,11 @@ void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)
 
 	MaxActiveParticles = NewMax;
 
-	ParticleData.resize(MaxActiveParticles * ParticleStride, 0);
-	ParticleIndices.resize(MaxActiveParticles, 0);
+	RuntimeStorage.Allocate(MaxActiveParticles * ParticleStride, MaxActiveParticles, 0);
 
 	for (uint32 i = 0; i < MaxActiveParticles; ++i)
 	{
-		ParticleIndices[i] = static_cast<uint16>(i);
+		RuntimeStorage.ParticleIndices[i] = static_cast<uint16>(i);
 	}
 
 	if (ActiveParticles > MaxActiveParticles)

@@ -94,11 +94,10 @@ protected:
 	const TMap<const UParticleModule*, uint32>* ModuleOffsetMap = nullptr;
 
 	// 입자 buffer (BaseParticle + payload) flat layout.
-	uint32         ParticleStride       = sizeof(FBaseParticle);
-	uint32         MaxActiveParticles   = 0;
-	uint32         ActiveParticles      = 0;
-	TArray<uint8>  ParticleData;       // size = MaxActiveParticles * ParticleStride
-	TArray<uint16> ParticleIndices;    // active → slot 매핑
+	uint32           ParticleStride       = sizeof(FBaseParticle);
+	uint32           MaxActiveParticles   = 0;
+	uint32           ActiveParticles      = 0;
+	FParticleStorage RuntimeStorage;
 
 	// Spawn 누적 (분수 입자 carry-over)
 	float SpawnFraction      = 0.0f;
