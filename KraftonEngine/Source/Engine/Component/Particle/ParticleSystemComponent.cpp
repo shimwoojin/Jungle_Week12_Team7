@@ -270,7 +270,7 @@ FParticleEmitterInstance* UParticleSystemComponent::GetEmitterInstance(int32 Ind
 	return EmitterInstances[Index];
 }
 
-void UParticleSystemComponent::RebuildInstance(bool bReset)
+void UParticleSystemComponent::RebuildInstances(bool bReset)
 {
 	if (Template)
 	{

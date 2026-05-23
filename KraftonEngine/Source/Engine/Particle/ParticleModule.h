@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Object/Object.h"
 #include "Particle/ParticleHelper.h"
@@ -98,5 +98,6 @@ public:
 	void SetEnabled(bool b) { bEnabled = b; }
 
 protected:
+	UPROPERTY(Edit, Save, Category = "Module", DisplayName = "Enabled")
 	bool bEnabled = true;
 };

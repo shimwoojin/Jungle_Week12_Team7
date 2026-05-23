@@ -64,7 +64,7 @@ public:
 	int32 GetEmitterInstanceCount() const { return static_cast<int32>(EmitterInstances.size()); }
 	FParticleEmitterInstance* GetEmitterInstance(int32 Index) const;
 
-	void RebuildInstance(bool bReset = true);
+	void RebuildInstances(bool bReset = true);
 
 	// SceneProxy 가 매 프레임 쓸 dynamic data 묶음. PSC 가 소유, GetDynamicData() 가
 	// 매 호출마다 새로 build 한다 (호출자는 delete 책임).
