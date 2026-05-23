@@ -338,7 +338,9 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	UParticleModuleRequired* Required = LOD->RequiredModule;
 
 	OutData.Material = Required->ResolveMaterial();
-	OutData.BlendState = Required->BlendState;
+	// NOTE: Replay에 BlendState 필드 없음 — Material.GetBlendState()가 single source of truth.
+	// RequiredModule.BlendState로 Material을 override하고 싶으면 SceneProxy의
+	// Material 캐싱 단계에서 SetBlendState 같은 API 추가 필요 (현재 RequiredModule.SubImagesH/V와 동일 패턴).
 	OutData.bUseLocalSpace = Required->bUseLocalSpace;
 
 	if (Component)
