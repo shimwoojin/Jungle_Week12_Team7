@@ -4,6 +4,14 @@
 // slot 0: 정적 mesh VB (FVertexPNCT layout, 기존 StaticMesh와 동일)
 // slot 1: per-instance VB (FParticleMeshInstanceVertex) — INSTANCE_ prefix로 reflection에서 자동 분리
 
+// b2 (PerShader0): .mat의 Parameters 키에서 자동 매핑 — BaseColor / Opacity
+cbuffer ParticleMeshParams : register(b2)
+{
+    float4 BaseColor;   // 추가 tint (.mat에서 조정)
+    float  Opacity;     // [0,1] (.mat에서 조정)
+    float3 _pad;        // 16-byte 정렬
+}
+
 struct VS_Input_MeshParticle
 {
     // ---- slot 0 (per-vertex) ----
@@ -48,8 +56,7 @@ PS_Input_MeshParticle VS(VS_Input_MeshParticle input)
 
 float4 PS(PS_Input_MeshParticle input) : SV_TARGET
 {
-    // Day 6 검증: alpha 1.0 강제 — vertex alpha 자산 의존성 제거 + 같은 proxy 내
-    // instance 간 정렬 미구현으로 인한 AlphaBlend artifact 회피.
-    // 진짜 반투명 필요 시 (1) instance buffer를 CameraDistance로 sort + (2) PS alpha 복원.
-    return float4(ApplyWireframe(input.color.rgb), 1.0);
+    float3 rgb = input.color.rgb * BaseColor.rgb;
+    float  a   = input.color.a * BaseColor.a * Opacity;
+    return float4(ApplyWireframe(rgb), a);
 }

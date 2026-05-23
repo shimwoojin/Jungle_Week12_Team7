@@ -1,0 +1,14 @@
+{
+  "PathFileName" : "Content/Material/Particle/ParticleMesh.mat",
+  "ShaderPath" : "Shaders/Particle/Mesh.hlsl",
+  "RenderPass" : "Translucent",
+  "BlendState" : "AlphaBlend",
+  "DepthStencilState" : "DepthReadOnly",
+  "RasterizerState" : "SolidBackCull",
+  "Parameters" : {
+    "BaseColor" : [1.000000, 1.000000, 1.000000, 1.000000],
+    "Opacity" : 0.500000,
+    "_pad" : [0.000000, 0.000000, 0.000000]
+  },
+  "Origin" : "Particle"
+}

@@ -3,6 +3,7 @@
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "GameFramework/AActor.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialManager.h"
 #include "Render/Particle/ParticleVertexFactory.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/FrameContext.h"
@@ -119,25 +120,26 @@ void FParticleSystemSceneProxy::UpdateMesh()
 	// Particle 프록시는 정적 MeshBuffer 없음 — 매 프레임 dynamic VB/IB로 그림.
 	MeshBuffer = nullptr;
 
+	// 자산 기반 Material 로드 — Template + ConstantBufferMap 자동 빌드되어 SetScalarParameter 작동.
+	// .mat에서 Opacity / BaseColor / RenderPass / BlendState 등 손쉽게 조정.
 	if (!SpriteMaterial)
 	{
-		SpriteMaterial = UMaterial::CreateTransient(
-			ERenderPass::Translucent, EBlendState::AlphaBlend,
-			EDepthStencilState::DepthReadOnly, ERasterizerState::SolidNoCull,
-			FShaderManager::Get().GetOrCreate(EShaderPath::ParticleSprite));
+		SpriteMaterial = FMaterialManager::Get().GetOrCreateMaterial(
+			"Content/Material/Particle/ParticleSprite.mat");
 	}
 	if (!MeshMaterial)
 	{
-		MeshMaterial = UMaterial::CreateTransient(
-			ERenderPass::Translucent, EBlendState::AlphaBlend,
-			EDepthStencilState::DepthReadOnly, ERasterizerState::SolidBackCull,
-			FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh));
+		MeshMaterial = FMaterialManager::Get().GetOrCreateMaterial(
+			"Content/Material/Particle/ParticleMesh.mat");
 	}
 
 	// Material/IndexCount는 PrepareDrawBuffer가 매 프레임 갱신 (emitter type 따라).
 	// 여기선 placeholder 1개만 등록 — Sprite를 default로.
 	SectionDraws.clear();
-	SectionDraws.push_back({ SpriteMaterial, /*FirstIndex*/0, /*IndexCount*/0 });
+	if (SpriteMaterial)
+	{
+		SectionDraws.push_back({ SpriteMaterial, /*FirstIndex*/0, /*IndexCount*/0 });
+	}
 }
 
 void FParticleSystemSceneProxy::UpdatePerViewport(const FFrameContext& Frame)

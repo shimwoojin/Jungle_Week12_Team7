@@ -2,8 +2,15 @@
 #include "Common/VertexLayouts.hlsli"
 
 // Particle Sprite — CPU에서 이미 월드 좌표로 빌보드 expansion된 정점을 받는다.
-// 텍스처 없이 정점 Color를 그대로 출력 (Day 3 단색 먼지 검증용).
-// 추후 Day 4에서 Material 텍스처 흘림 + SubUV 추가 예정.
+// 텍스처 없이 정점 Color × BaseColor × Opacity 출력.
+
+// b2 (PerShader0): .mat의 Parameters 키에서 자동 매핑 — BaseColor / Opacity
+cbuffer ParticleSpriteParams : register(b2)
+{
+    float4 BaseColor;   // 추가 tint (.mat에서 조정)
+    float  Opacity;     // [0,1] (.mat에서 조정)
+    float3 _pad;        // 16-byte 정렬
+}
 
 PS_Input_Color VS(VS_Input_PNCT input)
 {
@@ -16,5 +23,7 @@ PS_Input_Color VS(VS_Input_PNCT input)
 
 float4 PS(PS_Input_Color input) : SV_TARGET
 {
-    return float4(ApplyWireframe(input.color.rgb), input.color.a);
+    float3 rgb = input.color.rgb * BaseColor.rgb;
+    float  a   = input.color.a * BaseColor.a * Opacity;
+    return float4(ApplyWireframe(rgb), a);
 }
