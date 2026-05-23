@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Types/CoreTypes.h"
+#include "Math/Vector.h"
 #include "Particle/ParticleHelper.h"
 
 struct ID3D11Device;
@@ -22,12 +23,17 @@ public:
 
 	virtual EDynamicEmitterType GetType() const = 0;
 
+	// RHI 의존 리소스 초기화/해제 (Shader/InputLayout 등). lazy-init 패턴.
+	virtual void InitResources(ID3D11Device* Device) = 0;
+	virtual void ReleaseResources() = 0;
+
 	// pipeline 의 입력 layout. 한 번 만들어 캐시.
 	virtual ID3D11InputLayout* GetInputLayout() const = 0;
 	virtual FShader*           GetShader() const = 0;
 
 	// EmitterReplayData 의 입자 buffer 를 읽어 dynamic VB 로 변환/업로드.
 	// 반환: 이 draw 의 vertex/index 카운트.
+	// CameraRight/CameraUp: 빌보드 expansion에 사용 (Mesh/Beam/Ribbon은 무시 가능).
 	struct FDrawSpec
 	{
 		uint32 VertexCount = 0;
@@ -37,6 +43,7 @@ public:
 	};
 	virtual bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	                       const FDynamicEmitterReplayDataBase& Replay,
+	                       const FVector& CameraRight, const FVector& CameraUp,
 	                       FParticleDynamicVertexBuffer& InOutVB,
 	                       FDrawSpec& OutDraw) = 0;
 };
@@ -55,11 +62,12 @@ public:
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
+	               const FVector& CameraRight, const FVector& CameraUp,
 	               FParticleDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
-	void InitResources(ID3D11Device* Device);
-	void ReleaseResources();
+	void InitResources(ID3D11Device* Device) override;
+	void ReleaseResources() override;
 
 protected:
 	ID3D11InputLayout* InputLayout = nullptr;
@@ -80,11 +88,12 @@ public:
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
+	               const FVector& CameraRight, const FVector& CameraUp,
 	               FParticleDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
-	void InitResources(ID3D11Device* Device);
-	void ReleaseResources();
+	void InitResources(ID3D11Device* Device) override;
+	void ReleaseResources() override;
 
 protected:
 	ID3D11InputLayout* InputLayout = nullptr;
@@ -105,11 +114,12 @@ public:
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
+	               const FVector& CameraRight, const FVector& CameraUp,
 	               FParticleDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
-	void InitResources(ID3D11Device* Device);
-	void ReleaseResources();
+	void InitResources(ID3D11Device* Device) override;
+	void ReleaseResources() override;
 
 protected:
 	ID3D11InputLayout* InputLayout = nullptr;
@@ -125,11 +135,12 @@ public:
 
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
+	               const FVector& CameraRight, const FVector& CameraUp,
 	               FParticleDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
-	void InitResources(ID3D11Device* Device);
-	void ReleaseResources();
+	void InitResources(ID3D11Device* Device) override;
+	void ReleaseResources() override;
 
 protected:
 	ID3D11InputLayout* InputLayout = nullptr;

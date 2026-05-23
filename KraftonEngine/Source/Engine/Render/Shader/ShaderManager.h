@@ -107,6 +107,8 @@ namespace EShaderPath
 	inline constexpr const char* SubUV = "Shaders/UI/SubUV.hlsl";
 	inline constexpr const char* Billboard = "Shaders/UI/Billboard.hlsl";
 
+	inline constexpr const char* ParticleSprite = "Shaders/Particle/Sprite.hlsl";
+
 	inline constexpr const char* ShadowDepth = "Shaders/Lighting/ShadowDepth.hlsl";
 	inline constexpr const char* VSMBlur = "Shaders/Lighting/VSMBlur.hlsl";
 	inline constexpr const char* ShadowMapVis = "Shaders/PostProcess/ShadowMapVis.hlsl";
