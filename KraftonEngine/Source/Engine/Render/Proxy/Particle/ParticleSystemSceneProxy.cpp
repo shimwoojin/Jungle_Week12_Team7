@@ -3,6 +3,7 @@
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "GameFramework/AActor.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInstance.h"
 #include "Materials/MaterialManager.h"
 #include "Particle/ParticleSystem.h"
 #include "Particle/ParticleEmitter.h"
@@ -163,10 +164,11 @@ void FParticleSystemSceneProxy::UpdateMesh()
 				}
 			}
 
-			// RequiredModule.SubImagesH/V를 Material cbuffer에 흘림 (Cascade 패턴).
-			// Sprite Material엔 해당 파라미터 없으면 SetScalarParameter가 silent fail (무시).
-			// emitter끼리 다른 SubImages가 필요하면 .mat에 "Parent" 키를 지정해 UMaterialInstance로 분리하면 자체 CB라 충돌 없음.
-			if (M && Required)
+			// RequiredModule.SubImagesH/V → Material cbuffer 동기화 (Cascade 패턴).
+			// UMaterialInstance인 경우엔 .mat의 override 값을 우선해야 하므로 skip.
+			// base Material만 RequiredModule 값에 동기화 — 자산 1개를 여러 emitter가 공유할 때
+			// 마지막 set이 적용되는 한계는 그대로지만, 분리가 필요하면 instance 자산을 만들면 된다.
+			if (M && Required && !Cast<UMaterialInstance>(M))
 			{
 				M->SetScalarParameter("SubImagesH", static_cast<float>(Required->SubImagesHorizontal));
 				M->SetScalarParameter("SubImagesV", static_cast<float>(Required->SubImagesVertical));
