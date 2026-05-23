@@ -3,10 +3,15 @@
 #include "Particle/ParticleEmitter.h"
 #include "Particle/ParticleLODLevel.h"
 #include "Particle/ParticleModule.h"
+#include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Math/Transform.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 
 FParticleEmitterInstance::~FParticleEmitterInstance()
 {
@@ -21,6 +26,7 @@ void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystem
 	CurrentLODIndex = 0;
 	SpawnFraction = 0.0f;
 	EmitterTimeSeconds = 0.0f;
+	CurrentLoopTimeSeconds = 0.0f;
 	LoopCount = 0;
 	ActiveParticles = 0;
 
@@ -32,12 +38,14 @@ void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystem
 		Emitter->CacheEmitterModuleInfo();
 
 		ModuleOffsetMap = &Emitter->GetModuleOffsetMap();
+		ModuleInstanceOffsetMap = &Emitter->GetParticleLayout().InstanceModuleOffsets;
 
 		ParticleStride = std::max<uint32>(Emitter->GetParticleSize(), sizeof(FBaseParticle));
 	}
 	else
 	{
 		ModuleOffsetMap = nullptr;
+		ModuleInstanceOffsetMap = nullptr;
 		ParticleStride = sizeof(FBaseParticle);
 	}
 
@@ -52,10 +60,36 @@ void FParticleEmitterInstance::Tick(float DeltaTime)
 
 	ClearPendingEvents();
 
-	SpawnParticles(DeltaTime);
-	UpdateParticles(DeltaTime);
+	float RemainingDeltaTime = DeltaTime;
+	while (RemainingDeltaTime > 0.0f)
+	{
+		float StepDeltaTime = RemainingDeltaTime;
 
-	EmitterTimeSeconds += DeltaTime;
+		if (const UParticleModuleRequired* Required = GetRequiredModule())
+		{
+			if (Required->EmitterDuration > 0.0f && IsSpawningAllowed())
+			{
+				const float TimeUntilLoopEnd =
+					std::max(0.0f, Required->EmitterDuration - CurrentLoopTimeSeconds);
+				StepDeltaTime = std::min(StepDeltaTime, TimeUntilLoopEnd);
+			}
+		}
+
+		if (StepDeltaTime <= 0.0f)
+		{
+			AdvanceLoopState(0.0f);
+			break;
+		}
+
+		if (IsSpawningAllowed())
+		{
+			SpawnParticles(StepDeltaTime);
+		}
+
+		UpdateParticles(StepDeltaTime);
+		AdvanceLoopState(StepDeltaTime);
+		RemainingDeltaTime -= StepDeltaTime;
+	}
 }
 
 void FParticleEmitterInstance::Reset()
@@ -63,6 +97,7 @@ void FParticleEmitterInstance::Reset()
 	ActiveParticles = 0;
 	SpawnFraction = 0.0f;
 	EmitterTimeSeconds = 0.0f;
+	CurrentLoopTimeSeconds = 0.0f;
 	LoopCount = 0;
 
 	ClearPendingEvents();
@@ -70,6 +105,11 @@ void FParticleEmitterInstance::Reset()
 	for (uint32 i = 0; i < MaxActiveParticles; ++i)
 	{
 		RuntimeStorage.ParticleIndices[i] = static_cast<uint16>(i);
+	}
+
+	if (RuntimeStorage.InstanceData && RuntimeStorage.InstanceDataBytes > 0)
+	{
+		std::memset(RuntimeStorage.InstanceData, 0, RuntimeStorage.InstanceDataBytes);
 	}
 }
 
@@ -101,10 +141,100 @@ const FBaseParticle* FParticleEmitterInstance::GetParticleAt(uint32 InActiveInde
 	return reinterpret_cast<const FBaseParticle*>(RuntimeStorage.ParticleData + Slot * ParticleStride);
 }
 
+void* FParticleEmitterInstance::GetInstancePayloadData()
+{
+	return RuntimeStorage.InstanceData;
+}
+
+const void* FParticleEmitterInstance::GetInstancePayloadData() const
+{
+	return RuntimeStorage.InstanceData;
+}
+
 UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
 {
 	if (!Emitter) return nullptr;
 	return Emitter->GetCurrentLODLevel(CurrentLODIndex);
+}
+
+void FParticleEmitterInstance::SetCurrentLODIndex(int32 InLODIndex)
+{
+	CurrentLODIndex = std::max(0, InLODIndex);
+}
+
+bool FParticleEmitterInstance::IsSpawningComplete() const
+{
+	const UParticleModuleRequired* Required = GetRequiredModule();
+	if (!Required)
+	{
+		return false;
+	}
+
+	if (Required->EmitterDuration <= 0.0f || Required->EmitterLoops <= 0)
+	{
+		return false;
+	}
+
+	return LoopCount >= Required->EmitterLoops;
+}
+
+bool FParticleEmitterInstance::IsFinished() const
+{
+	return IsSpawningComplete() && ActiveParticles == 0;
+}
+
+bool FParticleEmitterInstance::ComputeDynamicBounds(FVector& OutMin, FVector& OutMax) const
+{
+	if (ActiveParticles == 0)
+	{
+		return false;
+	}
+
+	const UParticleModuleRequired* Required = GetRequiredModule();
+	const bool bUseLocalSpace = Required ? Required->bUseLocalSpace : false;
+	const FMatrix LocalToWorld = Component ? Component->GetWorldMatrix() : FMatrix{};
+
+	bool bHasBounds = false;
+	for (uint32 i = 0; i < ActiveParticles; ++i)
+	{
+		const FBaseParticle* Particle = GetParticleAt(i);
+		if (!Particle)
+		{
+			continue;
+		}
+
+		FVector Position = Particle->Location;
+		if (bUseLocalSpace && Component)
+		{
+			Position = LocalToWorld.TransformPositionWithW(Position);
+		}
+
+		const FVector Extent{
+			std::abs(Particle->Size.X),
+			std::abs(Particle->Size.Y),
+			std::abs(Particle->Size.Z)
+		};
+
+		const FVector ParticleMin = Position - Extent;
+		const FVector ParticleMax = Position + Extent;
+
+		if (!bHasBounds)
+		{
+			OutMin = ParticleMin;
+			OutMax = ParticleMax;
+			bHasBounds = true;
+			continue;
+		}
+
+		OutMin.X = std::min(OutMin.X, ParticleMin.X);
+		OutMin.Y = std::min(OutMin.Y, ParticleMin.Y);
+		OutMin.Z = std::min(OutMin.Z, ParticleMin.Z);
+		OutMax.X = std::max(OutMax.X, ParticleMax.X);
+		OutMax.Y = std::max(OutMax.Y, ParticleMax.Y);
+		OutMax.Z = std::max(OutMax.Z, ParticleMax.Z);
+	}
+
+	return bHasBounds;
 }
 
 FTransform FParticleEmitterInstance::GetComponentToWorld() const
@@ -121,17 +251,78 @@ void FParticleEmitterInstance::ClearPendingEvents()
 	BurstEvents.clear();
 }
 
+void FParticleEmitterInstance::EnqueueSpawnEvent(const FParticleEventSpawnData& InEvent)
+{
+	SpawnEvents.push_back(InEvent);
+}
+
+void FParticleEmitterInstance::EnqueueDeathEvent(const FParticleEventDeathData& InEvent)
+{
+	DeathEvents.push_back(InEvent);
+}
+
+void FParticleEmitterInstance::EnqueueCollisionEvent(const FParticleEventCollideData& InEvent)
+{
+	CollisionEvents.push_back(InEvent);
+}
+
+void FParticleEmitterInstance::EnqueueBurstEvent(const FParticleEventBurstData& InEvent)
+{
+	BurstEvents.push_back(InEvent);
+}
+
+void FParticleEmitterInstance::EmitSpawnEvent(const FParticleEventSpawnData& InEvent)
+{
+	EnqueueSpawnEvent(InEvent);
+
+	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
+	{
+		EventGenerator->HandleSpawnEvent(this, InEvent);
+	}
+}
+
+void FParticleEmitterInstance::EmitDeathEvent(const FParticleEventDeathData& InEvent)
+{
+	EnqueueDeathEvent(InEvent);
+
+	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
+	{
+		EventGenerator->HandleDeathEvent(this, InEvent);
+	}
+}
+
+void FParticleEmitterInstance::EmitCollisionEvent(const FParticleEventCollideData& InEvent)
+{
+	EnqueueCollisionEvent(InEvent);
+
+	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
+	{
+		EventGenerator->HandleCollisionEvent(this, InEvent);
+	}
+}
+
+void FParticleEmitterInstance::EmitBurstEvent(const FParticleEventBurstData& InEvent)
+{
+	EnqueueBurstEvent(InEvent);
+
+	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
+	{
+		EventGenerator->HandleBurstEvent(this, InEvent);
+	}
+}
+
 void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 {
 	UParticleLODLevel* LOD = GetCurrentLOD();
 	if (!LOD || !LOD->bEnabled) return;
 	if (!LOD->SpawnModule) return;
+	if (!IsSpawningAllowed()) return;
 
 	// 초당 생성되는 입자 개수
 	float SpawnAmount = 0.0f;
 	int32 BurstCount = 0;
 
-	LOD->SpawnModule->GetSpawnAmount(DeltaTime, EmitterTimeSeconds,SpawnAmount,BurstCount);
+	LOD->SpawnModule->GetSpawnAmount(this, DeltaTime, CurrentLoopTimeSeconds, SpawnAmount, BurstCount);
 
 	SpawnAmount = std::max(0.0f, SpawnAmount);
 	BurstCount = std::max(0, BurstCount);
@@ -161,6 +352,22 @@ void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 	if (static_cast<uint32>(SpawnCount) > FreeCount)
 	{
 		SpawnCount = static_cast<int32>(FreeCount);
+	}
+
+	const int32 ActualBurstCount = std::min(BurstCount, SpawnCount);
+	if (ActualBurstCount > 0)
+	{
+		FParticleEventBurstData BurstEvent;
+		BurstEvent.Type = EParticleEventType::Burst;
+		BurstEvent.TimeSeconds = EmitterTimeSeconds;
+		BurstEvent.ParticleCount = ActualBurstCount;
+
+		if (Component)
+		{
+			BurstEvent.Location = Component->GetWorldLocation();
+		}
+
+		EmitBurstEvent(BurstEvent);
 	}
 
 	// Spawn 진행
@@ -232,7 +439,7 @@ void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
 		SpawnEvent.Location = Particle->Location;
 		SpawnEvent.Velocity = Particle->Velocity;
 		SpawnEvent.ParticleCount = 1;
-		SpawnEvents.push_back(SpawnEvent);
+		EmitSpawnEvent(SpawnEvent);
 	}
 }
 
@@ -274,7 +481,7 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 			DeathEvent.Location = Particle->Location;
 			DeathEvent.Velocity = Particle->Velocity;
 			DeathEvent.ParticleAge = Particle->RelativeTime;
-			DeathEvents.push_back(DeathEvent);
+			EmitDeathEvent(DeathEvent);
 
 			continue;
 		}
@@ -300,11 +507,52 @@ void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)
 {
 	NewMax = std::min<uint32>(NewMax, ParticleConstants::MaxParticlesPerEmitter);
 
+	FParticleStorage OldStorage = std::move(RuntimeStorage);
+	const uint32 OldActiveParticles = ActiveParticles;
+
 	MaxActiveParticles = NewMax;
+	const uint32 InstancePayloadBytes = Emitter ? Emitter->GetReqInstanceBytes() : 0;
 
-	RuntimeStorage.Allocate(MaxActiveParticles * ParticleStride, MaxActiveParticles, 0);
+	RuntimeStorage.Allocate(
+		MaxActiveParticles * ParticleStride,
+		MaxActiveParticles,
+		InstancePayloadBytes);
 
-	for (uint32 i = 0; i < MaxActiveParticles; ++i)
+	if (OldStorage.ParticleData && RuntimeStorage.ParticleData)
+	{
+		const uint32 PreservedActiveParticles = std::min(OldActiveParticles, MaxActiveParticles);
+		const uint32 BytesToCopy = std::min(
+			OldStorage.ParticleDataBytes,
+			PreservedActiveParticles * ParticleStride);
+
+		if (BytesToCopy > 0)
+		{
+			std::memcpy(RuntimeStorage.ParticleData, OldStorage.ParticleData, BytesToCopy);
+		}
+	}
+
+	if (OldStorage.InstanceData && RuntimeStorage.InstanceData)
+	{
+		const uint32 InstanceBytesToCopy = std::min(
+			OldStorage.InstanceDataBytes,
+			RuntimeStorage.InstanceDataBytes);
+
+		if (InstanceBytesToCopy > 0)
+		{
+			std::memcpy(RuntimeStorage.InstanceData, OldStorage.InstanceData, InstanceBytesToCopy);
+		}
+	}
+
+	const uint32 PreservedIndexCount = std::min(
+		ActiveParticles,
+		std::min(OldStorage.ParticleIndexCount, RuntimeStorage.ParticleIndexCount));
+
+	for (uint32 i = 0; i < PreservedIndexCount; ++i)
+	{
+		RuntimeStorage.ParticleIndices[i] = OldStorage.ParticleIndices[i];
+	}
+
+	for (uint32 i = PreservedIndexCount; i < MaxActiveParticles; ++i)
 	{
 		RuntimeStorage.ParticleIndices[i] = static_cast<uint16>(i);
 	}
@@ -386,6 +634,85 @@ void FParticleEmitterInstance::ClearSpawnedFlag(FBaseParticle* Particle) const
 
 	const uint32 SpawnedFlag = static_cast<uint32>(EParticleStateFlags::Spawned);
 	Particle->Flags &= ~SpawnedFlag;
+}
+
+const UParticleModuleEventGenerator* FParticleEmitterInstance::GetEventGeneratorModule() const
+{
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD)
+	{
+		return nullptr;
+	}
+
+	for (UParticleModule* Module : LOD->Modules)
+	{
+		if (!Module || !Module->IsEnabled())
+		{
+			continue;
+		}
+
+		if (const auto* EventGenerator = Cast<UParticleModuleEventGenerator>(Module))
+		{
+			return EventGenerator;
+		}
+	}
+
+	return nullptr;
+}
+
+const UParticleModuleRequired* FParticleEmitterInstance::GetRequiredModule() const
+{
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD)
+	{
+		return nullptr;
+	}
+
+	return LOD->RequiredModule;
+}
+
+bool FParticleEmitterInstance::IsSpawningAllowed() const
+{
+	return !IsSpawningComplete();
+}
+
+void FParticleEmitterInstance::AdvanceLoopState(float DeltaTime)
+{
+	EmitterTimeSeconds += DeltaTime;
+
+	const UParticleModuleRequired* Required = GetRequiredModule();
+	if (!Required || Required->EmitterDuration <= 0.0f)
+	{
+		CurrentLoopTimeSeconds += DeltaTime;
+		return;
+	}
+
+	CurrentLoopTimeSeconds += DeltaTime;
+
+	const float Duration = Required->EmitterDuration;
+	const float Epsilon = 1.0e-4f;
+	while (CurrentLoopTimeSeconds >= Duration - Epsilon)
+	{
+		CurrentLoopTimeSeconds =
+			(CurrentLoopTimeSeconds > Duration) ? (CurrentLoopTimeSeconds - Duration) : 0.0f;
+		SpawnFraction = 0.0f;
+		++LoopCount;
+
+		UParticleLODLevel* LOD = GetCurrentLOD();
+		if (LOD && LOD->SpawnModule)
+		{
+			if (auto* Payload =
+				GetModuleInstancePayload<UParticleModuleSpawn::FSpawnModuleInstancePayload>(LOD->SpawnModule))
+			{
+				Payload->LastProcessedTime = 0.0f;
+			}
+		}
+
+		if (Duration <= Epsilon)
+		{
+			break;
+		}
+	}
 }
 
 // -- Sprite ----

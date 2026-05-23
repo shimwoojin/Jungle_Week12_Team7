@@ -148,6 +148,7 @@ struct FParticleLayout
 	uint32 ParticleStride = ParticleUtils::AlignParticleDataSize(sizeof(FBaseParticle));
 	uint32 InstancePayloadSize = 0;
 	TMap<const UParticleModule*, uint32> ModuleOffsets;
+	TMap<const UParticleModule*, uint32> InstanceModuleOffsets;
 };
 
 struct FParticleStorage

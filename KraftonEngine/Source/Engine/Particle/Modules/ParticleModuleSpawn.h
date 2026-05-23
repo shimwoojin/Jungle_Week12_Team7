@@ -20,11 +20,18 @@ public:
 	const char*     GetDisplayName() const override { return "Spawn"; }
 	bool            IsUnique() const override { return true; }
 
+	struct FSpawnModuleInstancePayload
+	{
+		float LastProcessedTime = 0.0f;
+	};
+
 	// 매 step 호출 — DeltaTime 동안 누적 spawn 분수와 burst count 계산.
 	//   OutSpawnAmount   : 정수 + 분수 (예 12.4) — Instance 가 누적 carry.
 	//   OutBurstCount    : 이 프레임 1회 burst (없으면 0).
-	virtual void GetSpawnAmount(float DeltaTime, float EmitterTime,
+	virtual void GetSpawnAmount(FParticleEmitterInstance* Owner, float DeltaTime, float EmitterTime,
 	                            float& OutSpawnAmount, int32& OutBurstCount) const;
+	uint32 RequiredBytesPerInstance() const override { return sizeof(FSpawnModuleInstancePayload); }
+
 
 	// --- Rate ---
 	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Rate (particles/sec)", Min=0.0f, Max=10000.0f)

@@ -235,6 +235,7 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 	CachedLayout.ParticleStride = ParticleUtils::AlignParticleDataSize(sizeof(FBaseParticle));
 	CachedLayout.InstancePayloadSize = 0;
 	CachedLayout.ModuleOffsets.clear();
+	CachedLayout.InstanceModuleOffsets.clear();
 
 	UParticleLODLevel* LOD0 = GetLODLevel(0);
 	if (!LOD0) return;
@@ -251,7 +252,15 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 					ParticleUtils::AlignParticleDataSize(CachedLayout.ParticleStride + Bytes);
 			}
 
-			CachedLayout.InstancePayloadSize += Module->RequiredBytesPerInstance();
+			const uint32 InstanceBytes = Module->RequiredBytesPerInstance();
+			if (InstanceBytes > 0)
+			{
+				CachedLayout.InstancePayloadSize =
+					ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize);
+				CachedLayout.InstanceModuleOffsets[Module] = CachedLayout.InstancePayloadSize;
+				CachedLayout.InstancePayloadSize =
+					ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize + InstanceBytes);
+			}
 		};
 
 	CacheModule(LOD0->RequiredModule);

@@ -7,6 +7,8 @@
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
 #include "Serialization/Archive.h"
 
+#include <algorithm>
+
 UParticleSystemComponent::UParticleSystemComponent()  {}
 UParticleSystemComponent::~UParticleSystemComponent()
 {
@@ -107,6 +109,8 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		CreateEmitterInstances();
 	}
 
+	ApplyCurrentLODToEmitterInstances();
+
 	// 매 프레임 Tick이 아닌, 일정 간격마다 몰아서 Tick
 	// 실제로 시뮬레이션에 넘길 DeltaTime
 	float StepDeltaTime = DeltaTime;
@@ -149,6 +153,12 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
+
+	if (IsSystemFinished())
+	{
+		bActive = false;
+		OnSystemFinished.Broadcast(this);
+	}
 }
 
 void UParticleSystemComponent::CreateRenderState()
@@ -199,11 +209,7 @@ void UParticleSystemComponent::PostEditProperty(const char* PropertyName)
 			CurrentLODIndex = 0;
 		}
 
-		// TODO: LOD시스템 완성 시 수정 필요
-		if (Template)
-		{
-			CreateEmitterInstances();
-		}
+		ApplyCurrentLODToEmitterInstances();
 
 		PushDynamicDataToProxy();
 		MarkWorldBoundsDirty();
@@ -296,9 +302,46 @@ void UParticleSystemComponent::UpdateWorldAABB() const
 	}
 
 	const FVector WorldOrigin = GetWorldLocation();
+	bool bHasDynamicBounds = false;
 
-	WorldAABBMinLocation = WorldOrigin + Template->SystemBoundsMin;
-	WorldAABBMaxLocation = WorldOrigin + Template->SystemBoundsMax;
+	if (!Template->bUseFixedRelativeBoundingBox)
+	{
+		for (const FParticleEmitterInstance* Inst : EmitterInstances)
+		{
+			if (!Inst)
+			{
+				continue;
+			}
+
+			FVector EmitterBoundsMin;
+			FVector EmitterBoundsMax;
+			if (!Inst->ComputeDynamicBounds(EmitterBoundsMin, EmitterBoundsMax))
+			{
+				continue;
+			}
+
+			if (!bHasDynamicBounds)
+			{
+				WorldAABBMinLocation = EmitterBoundsMin;
+				WorldAABBMaxLocation = EmitterBoundsMax;
+				bHasDynamicBounds = true;
+				continue;
+			}
+
+			WorldAABBMinLocation.X = std::min(WorldAABBMinLocation.X, EmitterBoundsMin.X);
+			WorldAABBMinLocation.Y = std::min(WorldAABBMinLocation.Y, EmitterBoundsMin.Y);
+			WorldAABBMinLocation.Z = std::min(WorldAABBMinLocation.Z, EmitterBoundsMin.Z);
+			WorldAABBMaxLocation.X = std::max(WorldAABBMaxLocation.X, EmitterBoundsMax.X);
+			WorldAABBMaxLocation.Y = std::max(WorldAABBMaxLocation.Y, EmitterBoundsMax.Y);
+			WorldAABBMaxLocation.Z = std::max(WorldAABBMaxLocation.Z, EmitterBoundsMax.Z);
+		}
+	}
+
+	if (!bHasDynamicBounds)
+	{
+		WorldAABBMinLocation = WorldOrigin + Template->SystemBoundsMin;
+		WorldAABBMaxLocation = WorldOrigin + Template->SystemBoundsMax;
+	}
 
 	bWorldAABBDirty = false;
 	bHasValidWorldAABB = true;
@@ -365,6 +408,7 @@ void UParticleSystemComponent::CreateEmitterInstances()
 		if (!Inst) continue;
 
 		Inst->Init(Emitter, this);
+		Inst->SetCurrentLODIndex(CurrentLODIndex);
 		EmitterInstances.push_back(Inst);
 	}
 }
@@ -383,6 +427,42 @@ void UParticleSystemComponent::DispatchEventsToManager()
 	EventManager->HandleParticleCollisionEvents(this, PendingEvents.Collision);
 	EventManager->HandleParticleBurstEvents    (this, PendingEvents.Burst);
 	PendingEvents = {};
+}
+
+void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
+{
+	if (CurrentLODIndex < 0)
+	{
+		CurrentLODIndex = 0;
+	}
+
+	for (FParticleEmitterInstance* Inst : EmitterInstances)
+	{
+		if (!Inst)
+		{
+			continue;
+		}
+
+		Inst->SetCurrentLODIndex(CurrentLODIndex);
+	}
+}
+
+bool UParticleSystemComponent::IsSystemFinished() const
+{
+	if (EmitterInstances.empty())
+	{
+		return false;
+	}
+
+	for (const FParticleEmitterInstance* Inst : EmitterInstances)
+	{
+		if (!Inst || !Inst->IsFinished())
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void UParticleSystemComponent::PushDynamicDataToProxy()

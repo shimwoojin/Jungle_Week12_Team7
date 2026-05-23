@@ -83,6 +83,8 @@ protected:
 	void CreateEmitterInstances();
 	void DestroyEmitterInstances();
 	void DispatchEventsToManager();
+	void ApplyCurrentLODToEmitterInstances();
+	bool IsSystemFinished() const;
 
 	void PushDynamicDataToProxy();
 

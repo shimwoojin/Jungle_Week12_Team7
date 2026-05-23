@@ -24,6 +24,8 @@ public:
 	EModuleCategory GetCategory() const override { return EModuleCategory::Collision; }
 	const char*     GetDisplayName() const override { return "Collision"; }
 
+	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
+	           float SpawnTime, FBaseParticle* Particle) override;
 	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	            float DeltaTime) override;
 

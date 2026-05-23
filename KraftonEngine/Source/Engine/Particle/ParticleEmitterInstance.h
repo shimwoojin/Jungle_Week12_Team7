@@ -8,6 +8,7 @@ class UParticleEmitter;
 class UParticleLODLevel;
 class UParticleSystemComponent;
 class UParticleModule;
+class UParticleModuleEventGenerator;
 struct FBaseParticle;
 struct FDynamicEmitterDataBase;
 
@@ -45,9 +46,64 @@ public:
 	// 활성 입자 i 의 BaseParticle 포인터.
 	FBaseParticle*       GetParticleAt(uint32 InActiveIndex);
 	const FBaseParticle* GetParticleAt(uint32 InActiveIndex) const;
+	void*                GetInstancePayloadData();
+	const void*          GetInstancePayloadData() const;
+
+	template<typename T>
+	T* GetModuleInstancePayload(const UParticleModule* InModule)
+	{
+		if (!InModule) return nullptr;
+		if (!RuntimeStorage.InstanceData) return nullptr;
+		if (!ModuleInstanceOffsetMap) return nullptr;
+
+		auto It = ModuleInstanceOffsetMap->find(InModule);
+		if (It == ModuleInstanceOffsetMap->end()) return nullptr;
+		return reinterpret_cast<T*>(RuntimeStorage.InstanceData + It->second);
+	}
+
+	template<typename T>
+	const T* GetModuleInstancePayload(const UParticleModule* InModule) const
+	{
+		if (!InModule) return nullptr;
+		if (!RuntimeStorage.InstanceData) return nullptr;
+		if (!ModuleInstanceOffsetMap) return nullptr;
+
+		auto It = ModuleInstanceOffsetMap->find(InModule);
+		if (It == ModuleInstanceOffsetMap->end()) return nullptr;
+		return reinterpret_cast<const T*>(RuntimeStorage.InstanceData + It->second);
+	}
+
+	template<typename Func>
+	void ForEachActiveParticle(Func&& InFunc)
+	{
+		for (uint32 i = 0; i < ActiveParticles; ++i)
+		{
+			if (FBaseParticle* Particle = GetParticleAt(i))
+			{
+				InFunc(i, *Particle);
+			}
+		}
+	}
+
+	template<typename Func>
+	void ForEachActiveParticleReverse(Func&& InFunc)
+	{
+		for (int32 i = static_cast<int32>(ActiveParticles) - 1; i >= 0; --i)
+		{
+			if (FBaseParticle* Particle = GetParticleAt(static_cast<uint32>(i)))
+			{
+				InFunc(static_cast<uint32>(i), *Particle);
+			}
+		}
+	}
 
 	uint32 GetActiveParticleCount() const { return ActiveParticles; }
 	uint32 GetMaxParticleCount()    const { return MaxActiveParticles; }
+	bool   IsSpawningComplete()     const;
+	bool   IsFinished()             const;
+	bool   ComputeDynamicBounds(FVector& OutMin, FVector& OutMax) const;
+	void   SetCurrentLODIndex(int32 InLODIndex);
+	int32  GetCurrentLODIndex() const { return CurrentLODIndex; }
 
 	// EventManager 가 디스패치할 큐. EventGenerator 모듈이 push.
 	const TArray<FParticleEventSpawnData>&     GetSpawnEvents()     const { return SpawnEvents; }
@@ -56,6 +112,14 @@ public:
 	const TArray<FParticleEventBurstData>&     GetBurstEvents()     const { return BurstEvents; }
 
 	void ClearPendingEvents();
+	void EnqueueSpawnEvent(const FParticleEventSpawnData& InEvent);
+	void EnqueueDeathEvent(const FParticleEventDeathData& InEvent);
+	void EnqueueCollisionEvent(const FParticleEventCollideData& InEvent);
+	void EnqueueBurstEvent(const FParticleEventBurstData& InEvent);
+	void EmitSpawnEvent(const FParticleEventSpawnData& InEvent);
+	void EmitDeathEvent(const FParticleEventDeathData& InEvent);
+	void EmitCollisionEvent(const FParticleEventCollideData& InEvent);
+	void EmitBurstEvent(const FParticleEventBurstData& InEvent);
 
 	UParticleEmitter*           GetEmitter()       const { return Emitter; }
 	UParticleSystemComponent*   GetComponent()     const { return Component; }
@@ -85,6 +149,10 @@ private:
 	uint32 GrowParticleCapacity(uint32 Current, uint32 Required) const;
 	bool IsParticleKilled(const FBaseParticle* Particle) const;
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
+	const UParticleModuleEventGenerator* GetEventGeneratorModule() const;
+	const class UParticleModuleRequired* GetRequiredModule() const;
+	bool IsSpawningAllowed() const;
+	void AdvanceLoopState(float DeltaTime);
 
 protected:
 	UParticleEmitter*         Emitter     = nullptr;
@@ -92,6 +160,7 @@ protected:
 
 	// 모듈 payload offset 캐시 — emitter 가 미리 계산해 둔 것을 가져와 빠른 조회.
 	const TMap<const UParticleModule*, uint32>* ModuleOffsetMap = nullptr;
+	const TMap<const UParticleModule*, uint32>* ModuleInstanceOffsetMap = nullptr;
 
 	// 입자 buffer (BaseParticle + payload) flat layout.
 	uint32           ParticleStride       = sizeof(FBaseParticle);
@@ -101,7 +170,8 @@ protected:
 
 	// Spawn 누적 (분수 입자 carry-over)
 	float SpawnFraction      = 0.0f;
-	float EmitterTimeSeconds = 0.0f; // 자신의 sim time
+	float EmitterTimeSeconds = 0.0f; // 누적 sim time
+	float CurrentLoopTimeSeconds = 0.0f;
 	int32 LoopCount          = 0;
 	int32 CurrentLODIndex    = 0;
 
