@@ -146,8 +146,9 @@ void FParticleSystemSceneProxy::UpdatePerViewport(const FFrameContext& Frame)
 {
 	if (!bVisible) return;
 
-	CachedCameraRight = Frame.CameraRight;
-	CachedCameraUp    = Frame.CameraUp;
+	CachedCameraRight    = Frame.CameraRight;
+	CachedCameraUp       = Frame.CameraUp;
+	CachedCameraPosition = Frame.CameraPosition;
 	// Model = Identity 유지 (정점이 이미 월드 좌표).
 	PerObjectConstants = FPerObjectConstants::FromWorldMatrix(FMatrix::Identity);
 	MarkPerObjectCBDirty();
@@ -268,7 +269,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		FParticleVertexFactory* Factory = GetOrCreateFactory(Replay->EmitterType, Device);
 		if (!Factory) continue;
 		if (Factory->BuildDraw(Device, Context, *Replay,
-			CachedCameraRight, CachedCameraUp, DynamicVB, Spec))
+			CachedCameraRight, CachedCameraUp, CachedCameraPosition, DynamicVB, Spec))
 		{
 			DrawnType = Replay->EmitterType;
 			break;

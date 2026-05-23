@@ -32,6 +32,7 @@ public:
 	// EmitterReplayData 의 입자 buffer 를 읽어 dynamic VB 로 변환/업로드.
 	// 반환: 이 draw 의 vertex/index 카운트.
 	// CameraRight/CameraUp: 빌보드 expansion에 사용 (Mesh/Beam/Ribbon은 무시 가능).
+	// CameraPosition: 같은 proxy 내 입자 간 back-to-front sort에 사용 (Mesh particle).
 	struct FDrawSpec
 	{
 		uint32 VertexCount = 0;
@@ -49,6 +50,7 @@ public:
 	virtual bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	                       const FDynamicEmitterReplayDataBase& Replay,
 	                       const FVector& CameraRight, const FVector& CameraUp,
+	                       const FVector& CameraPosition,
 	                       FDynamicVertexBuffer& InOutVB,
 	                       FDrawSpec& OutDraw) = 0;
 };
@@ -67,6 +69,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -93,6 +96,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -120,6 +124,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 
@@ -139,6 +144,7 @@ public:
 	bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	               const FDynamicEmitterReplayDataBase& Replay,
 	               const FVector& CameraRight, const FVector& CameraUp,
+	               const FVector& CameraPosition,
 	               FDynamicVertexBuffer& InOutVB,
 	               FDrawSpec& OutDraw) override;
 

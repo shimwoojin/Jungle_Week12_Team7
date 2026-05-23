@@ -8,6 +8,7 @@
 
 #include <d3d11.h>
 #include <vector>
+#include <algorithm>
 
 // =============================================================================
 // Sprite — CPU 빌보드 expansion: 입자 1개 → 4 corner 정점 (FVertexPNCT)
@@ -27,6 +28,7 @@ void FParticleSpriteVertexFactory::ReleaseResources()
 bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                              const FDynamicEmitterReplayDataBase& Replay,
                                              const FVector& CameraRight, const FVector& CameraUp,
+                                             const FVector& /*CameraPosition*/,
                                              FDynamicVertexBuffer& InOutVB,
                                              FDrawSpec& OutDraw)
 {
@@ -123,6 +125,7 @@ void FParticleMeshVertexFactory::ReleaseResources()
 bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                            const FDynamicEmitterReplayDataBase& Replay,
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
+                                           const FVector& CameraPosition,
                                            FDynamicVertexBuffer& InOutVB,
                                            FDrawSpec& OutDraw)
 {
@@ -164,6 +167,20 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		V.SubImageIndex = P.SubImageIndex;
 	}
 
+	// 카메라 거리 내림차순 정렬 (back-to-front) — alpha 블렌딩 시 가림 정확성 보장.
+	// Transform3.xyz가 입자 world position (row 3 = translation).
+	std::sort(Instances.begin(), Instances.end(),
+		[&CameraPosition](const FParticleMeshInstanceVertex& A, const FParticleMeshInstanceVertex& B)
+		{
+			const float Ax = A.Transform3.X - CameraPosition.X;
+			const float Ay = A.Transform3.Y - CameraPosition.Y;
+			const float Az = A.Transform3.Z - CameraPosition.Z;
+			const float Bx = B.Transform3.X - CameraPosition.X;
+			const float By = B.Transform3.Y - CameraPosition.Y;
+			const float Bz = B.Transform3.Z - CameraPosition.Z;
+			return (Ax*Ax + Ay*Ay + Az*Az) > (Bx*Bx + By*By + Bz*Bz);
+		});
+
 	// Dynamic instance VB upload.
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 	{
@@ -190,6 +207,7 @@ void FParticleBeamVertexFactory::ReleaseResources() {}
 bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
                                            const FDynamicEmitterReplayDataBase& /*Replay*/,
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
+                                           const FVector& /*CameraPosition*/,
                                            FDynamicVertexBuffer& /*InOutVB*/,
                                            FDrawSpec& OutDraw)
 {
@@ -202,6 +220,7 @@ void FParticleRibbonVertexFactory::ReleaseResources() {}
 bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
                                              const FDynamicEmitterReplayDataBase& /*Replay*/,
                                              const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
+                                             const FVector& /*CameraPosition*/,
                                              FDynamicVertexBuffer& /*InOutVB*/,
                                              FDrawSpec& OutDraw)
 {

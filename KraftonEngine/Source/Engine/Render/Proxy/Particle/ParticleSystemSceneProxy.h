@@ -58,9 +58,10 @@ protected:
 	UMaterial* SpriteMaterial = nullptr;
 	UMaterial* MeshMaterial   = nullptr;
 
-	// UpdatePerViewport에서 캐시한 카메라 벡터 (PrepareDrawBuffer에서 빌보드 expansion 시 사용).
-	FVector CachedCameraRight = { 1, 0, 0 };
-	FVector CachedCameraUp    = { 0, 1, 0 };
+	// UpdatePerViewport에서 캐시한 카메라 벡터 (PrepareDrawBuffer에서 빌보드 expansion + instance sort 시 사용).
+	FVector CachedCameraRight    = { 1, 0, 0 };
+	FVector CachedCameraUp       = { 0, 1, 0 };
+	FVector CachedCameraPosition = { 0, 0, 0 };
 
 	// 가장 최근에 생성된 index 수 — SectionDraws[0].IndexCount 갱신용 (mutable: PrepareDrawBuffer에서 갱신).
 	mutable uint32 LastIndexCount = 0;
