@@ -1,12 +1,31 @@
-#include "ParticleModuleLocation.h"
+﻿#include "ParticleModuleLocation.h"
 
 #include "Particle/ParticleEmitterInstance.h"
 
 void UParticleModuleLocation::Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
                                     float SpawnTime, FBaseParticle* Particle)
 {
+	(void)Owner;
+	(void)ModuleOffset;
+	(void)SpawnTime;
+
 	if (!Particle) return;
-	// TODO: [Min, Max] 균등 샘플 → bWorldSpaceOverride 따라 local/world 변환.
-	Particle->Location    = StartLocationMin;
-	Particle->OldLocation = Particle->Location;
+
+	const float AlphaX = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+	const float AlphaY = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+	const float AlphaZ = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+
+	FVector Offset;
+	Offset.X = StartLocationMin.X + (StartLocationMax.X - StartLocationMin.X) * AlphaX;
+	Offset.Y = StartLocationMin.Y + (StartLocationMax.Y - StartLocationMin.Y) * AlphaY;
+	Offset.Z = StartLocationMin.Z + (StartLocationMax.Z - StartLocationMin.Z) * AlphaZ;
+
+	if (bWorldSpaceOverride)
+	{
+		Particle->Location = Offset;
+	}
+	else
+	{
+		Particle->Location = Particle->Location;
+	}
 }

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core/Types/CoreTypes.h"
 #include "Math/Vector.h"
@@ -37,6 +37,15 @@ namespace ParticleConstants
 
 	// Spawn 모듈이 매 프레임 누적할 수 있는 최대 보너스 (burst safety).
 	constexpr uint32 MaxBurstCountPerFrame = 4096;
+}
+
+namespace ParticleUtils
+{
+	inline uint32 AlignParticleDataSize(uint32 Size)
+	{
+		constexpr uint32 Align = ParticleConstants::ParticleDataAlignment;
+		return (Size + Align - 1) & ~(Align - 1);
+	}
 }
 
 // -----------------------------------------------------------------------------
