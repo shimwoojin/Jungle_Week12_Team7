@@ -113,14 +113,12 @@ bool UParticleLODLevel::RemoveModule(UParticleModule* InModule)
 
 	if (RequiredModule == InModule)
 	{
-		RequiredModule = nullptr;
-		return true;
+		return false;	// 삭제 불가
 	}
 
 	if (SpawnModule == InModule)
 	{
-		SpawnModule = nullptr;
-		return true;
+		return false;	// 삭제 불가
 	}
 
 	if (TypeDataModule == InModule)

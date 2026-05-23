@@ -1,5 +1,6 @@
 ﻿#include "ParticleSystem.h"
 
+#include "ParticleLODLevel.h"
 #include "Particle/ParticleEmitter.h"
 #include "Object/Reflection/ObjectFactory.h"
 #include "Serialization/Archive.h"
@@ -21,8 +22,7 @@ UParticleEmitter* UParticleSystem::AddEmitter()
 	UParticleEmitter* NewEmitter = UObjectManager::Get().CreateObject<UParticleEmitter>(this);
 	if (!NewEmitter) return nullptr;
 
-	// TODO: 이름이 겹칠 수 있음.
-	NewEmitter->EmitterName = "Emitter " + std::to_string(Emitters.size());
+	NewEmitter->EmitterName = MakeUniqueEmitterName();
 	NewEmitter->InitializeDefaultLODLevel();
 
 	Emitters.push_back(NewEmitter);
@@ -61,6 +61,40 @@ void UParticleSystem::BuildEmitters()
 	{
 		if (!Emitter) continue;
 		Emitter->InitializeDefaultLODLevel();
+
+		UParticleLODLevel* LOD0 = Emitter->GetLODLevel(0);
+		if (!LOD0 || !LOD0->ValidateModules())
+		{
+			continue;
+		}
+
 		Emitter->CacheEmitterModuleInfo();
+	}
+}
+
+FString UParticleSystem::MakeUniqueEmitterName()
+{
+	int32 Index = 0;
+
+	while (true)
+	{
+		FString Candidate = "Emitter " + std::to_string(Index);
+
+		bool bExists = false;
+		for (UParticleEmitter* Emitter : Emitters)
+		{
+			if (Emitter && Emitter->EmitterName == Candidate)
+			{
+				bExists = true;
+				break;
+			}
+		}
+
+		if (!bExists)
+		{
+			return Candidate;
+		}
+
+		++Index;
 	}
 }

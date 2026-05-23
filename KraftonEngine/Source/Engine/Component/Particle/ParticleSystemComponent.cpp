@@ -18,10 +18,12 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 
 	Template = InTemplate;
 	AccumulatedTime = 0.0f;
+	PendingEvents = {};
 
 	if (Template)
 	{
 		Template->BuildEmitters();
+		CreateEmitterInstances();
 	}
 
 	if (bResetOnActivate)
@@ -29,28 +31,26 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 		ResetParticles();
 	}
 
-	if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
-	{
-		FParticleSystemSceneProxy* ParticleProxy = static_cast<FParticleSystemSceneProxy*>(Proxy);
-		ParticleProxy->SetDynamicData(BuildDynamicData());
-		MarkProxyDirty(EDirtyFlag::Mesh);
-	}
-
+	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
 }
 
 void UParticleSystemComponent::Activate(bool bReset)
 {
+	bActive = true;
+
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		CreateEmitterInstances();
 	}
 
-	bActive = true;
 	if (bReset || bResetOnActivate)
 	{
 		ResetParticles();
 	}
+
+	PushDynamicDataToProxy();
 }
 
 void UParticleSystemComponent::Deactivate()
@@ -66,6 +66,9 @@ void UParticleSystemComponent::ResetParticles()
 	}
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+
+	PushDynamicDataToProxy();
+	MarkWorldBoundsDirty();
 }
 
 void UParticleSystemComponent::BeginPlay()
@@ -142,13 +145,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	DispatchEventsToManager();
 
-	if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
-	{
-		FParticleSystemSceneProxy* ParticleProxy = static_cast<FParticleSystemSceneProxy*>(Proxy);
-		ParticleProxy->SetDynamicData(BuildDynamicData());
-		MarkProxyDirty(EDirtyFlag::Mesh);
-	}
-
+	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
 }
 
@@ -161,12 +158,7 @@ void UParticleSystemComponent::CreateRenderState()
 	}
 	UPrimitiveComponent::CreateRenderState();
 
-	if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
-	{
-		FParticleSystemSceneProxy* ParticleProxy = static_cast<FParticleSystemSceneProxy*>(Proxy);
-		ParticleProxy->SetDynamicData(BuildDynamicData());
-		MarkProxyDirty(EDirtyFlag::Mesh);
-	}
+	PushDynamicDataToProxy();
 }
 
 void UParticleSystemComponent::DestroyRenderState()
@@ -211,13 +203,7 @@ void UParticleSystemComponent::PostEditProperty(const char* PropertyName)
 			CreateEmitterInstances();
 		}
 
-		if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
-		{
-			FParticleSystemSceneProxy* ParticleProxy = static_cast<FParticleSystemSceneProxy*>(Proxy);
-			ParticleProxy->SetDynamicData(BuildDynamicData());
-			MarkProxyDirty(EDirtyFlag::Mesh);
-		}
-
+		PushDynamicDataToProxy();
 		MarkWorldBoundsDirty();
 		return;
 	}
@@ -284,6 +270,27 @@ FParticleEmitterInstance* UParticleSystemComponent::GetEmitterInstance(int32 Ind
 	return EmitterInstances[Index];
 }
 
+void UParticleSystemComponent::RebuildInstance(bool bReset)
+{
+	if (Template)
+	{
+		Template->BuildEmitters();
+		CreateEmitterInstances();
+	}
+	else
+	{
+		DestroyEmitterInstances();
+	}
+
+	if (bReset)
+	{
+		ResetParticles();
+	}
+
+	PushDynamicDataToProxy();
+	MarkWorldBoundsDirty();
+}
+
 UParticleSystemComponent::FDynamicData* UParticleSystemComponent::BuildDynamicData()
 {
 	FDynamicData* Data = new FDynamicData();
@@ -336,4 +343,14 @@ void UParticleSystemComponent::DispatchEventsToManager()
 	EventManager->HandleParticleCollisionEvents(this, PendingEvents.Collision);
 	EventManager->HandleParticleBurstEvents    (this, PendingEvents.Burst);
 	PendingEvents = {};
+}
+
+void UParticleSystemComponent::PushDynamicDataToProxy()
+{
+	if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
+	{
+		FParticleSystemSceneProxy* ParticleProxy = static_cast<FParticleSystemSceneProxy*>(Proxy);
+		ParticleProxy->SetDynamicData(BuildDynamicData());
+		MarkProxyDirty(EDirtyFlag::Mesh);
+	}
 }

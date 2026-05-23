@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Object/Object.h"
 #include "Math/Vector.h"
@@ -53,4 +53,7 @@ public:
 
 	// 모든 emitter 의 CacheEmitterModuleInfo() 호출.
 	void BuildEmitters();
+
+private:
+	FString MakeUniqueEmitterName();
 };
