@@ -1,15 +1,150 @@
-#include "ParticleEmitter.h"
+﻿#include "ParticleEmitter.h"
 
+#include "Modules/ParticleModuleRequired.h"
+#include "Modules/ParticleModuleSpawn.h"
 #include "Particle/ParticleLODLevel.h"
 #include "Particle/ParticleModule.h"
 #include "Particle/ParticleEmitterInstance.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
 #include "Object/Reflection/ObjectFactory.h"
+#include "Modules/ParticleModuleLifetime.h"
+#include "Modules/ParticleModuleLocation.h"
+#include "Modules/ParticleModuleVelocity.h"
+#include "Modules/ParticleModuleColor.h"
+#include "Modules/ParticleModuleSize.h"
 
-void UParticleEmitter::InitializeDefaultLODLevel() {}
+void UParticleEmitter::InitializeDefaultLODLevel()
+{
+	UParticleLODLevel* LOD0 = nullptr;
 
-UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)      { return nullptr; }
-void               UParticleEmitter::RemoveLODLevel(int32 InLevel)      {}
+	if (LODLevels.empty())
+	{
+		LOD0 = CreateLODLevel(0);
+	}
+	else
+	{
+		LOD0 = LODLevels[0];
+	}
+
+	if (!LOD0)
+	{
+		return;
+	}
+
+	if (!LOD0->RequiredModule)
+	{
+		auto* Required = UObjectManager::Get().CreateObject<UParticleModuleRequired>(LOD0);
+		Required->SetToSensibleDefaults(this);
+		LOD0->RequiredModule = Required;
+	}
+
+	if (!LOD0->SpawnModule)
+	{
+		auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(LOD0);
+		LOD0->SpawnModule = Spawn;
+	}
+
+	auto HasModuleCategory = [LOD0](UParticleModule::EModuleCategory Category) ->bool
+		{
+			for (UParticleModule* Module : LOD0->Modules)
+			{
+				if (Module && Module->GetCategory() == Category)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Lifetime))
+	{
+		auto* Lifetime = UObjectManager::Get().CreateObject<UParticleModuleLifetime>(LOD0);
+		LOD0->AddModule(Lifetime);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Location))
+	{
+		auto* Location = UObjectManager::Get().CreateObject<UParticleModuleLocation>(LOD0);
+		LOD0->AddModule(Location);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Velocity))
+	{
+		auto* Velocity = UObjectManager::Get().CreateObject<UParticleModuleVelocity>(LOD0);
+
+		//TODO: 추후 삭제 - 테스트용
+		Velocity->StartVelocityMin = {0.0f, 0.0f, 30.0f};
+		Velocity->StartVelocityMax = {0.0f, 0.0f, 80.0f};
+
+		LOD0->AddModule(Velocity);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Color))
+	{
+		auto* Color = UObjectManager::Get().CreateObject<UParticleModuleColor>(LOD0);
+		LOD0->AddModule(Color);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Size))
+	{
+		auto* Size = UObjectManager::Get().CreateObject<UParticleModuleSize>(LOD0);
+
+		//TODO: 추후 삭제 - 테스트용
+		Size->StartSizeMin = {5.0f, 5.0f, 1.0f};
+		Size->StartSizeMax = {10.0f, 10.0f, 1.0f};
+
+		LOD0->AddModule(Size);
+	}
+}
+
+UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)     
+{ 
+	if (InLevel < 0) InLevel = 0;
+
+	if (UParticleLODLevel* Existing = GetLODLevel(InLevel))
+	{
+		return Existing;
+	}
+
+	UParticleLODLevel* NewLOD = UObjectManager::Get().CreateObject<UParticleLODLevel>(this);
+	if (!NewLOD) return nullptr;
+
+	NewLOD->Level = InLevel;
+	NewLOD->bEnabled = true;
+
+	auto* Required = UObjectManager::Get().CreateObject<UParticleModuleRequired>(NewLOD);
+	Required->SetToSensibleDefaults(this);
+	NewLOD->RequiredModule = Required;
+
+	auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(NewLOD);
+	NewLOD->SpawnModule = Spawn;
+
+	if (InLevel >= static_cast<int32>(LODLevels.size()))
+	{
+		LODLevels.push_back(NewLOD);
+	}
+	else
+	{
+		LODLevels.insert(LODLevels.begin() + InLevel, NewLOD);
+	}
+
+	return NewLOD;
+}
+
+void  UParticleEmitter::RemoveLODLevel(int32 InLevel)
+{
+	if (InLevel < 0 || InLevel >= static_cast<int32>(LODLevels.size())) return;
+
+	LODLevels.erase(LODLevels.begin() + InLevel);
+
+	for (int32 i = 0; i < static_cast<int32>(LODLevels.size()); ++i)
+	{
+		if (LODLevels[i])
+		{
+			LODLevels[i]->Level = i;
+		}
+	}
+}
 
 UParticleLODLevel* UParticleEmitter::GetLODLevel(int32 InLevel) const
 {
@@ -28,11 +163,35 @@ UParticleLODLevel* UParticleEmitter::GetCurrentLODLevel(int32 InCurrentLODIdx) c
 
 void UParticleEmitter::CacheEmitterModuleInfo()
 {
-	// TODO: LOD0 의 RequiredModule / Modules 를 순회하며 RequiredBytes 누적
-	//       → ParticleSize, ModuleOffsetMap, RequiredBytesPerInstance 채움.
-	ParticleSize             = sizeof(FBaseParticle);
+	ParticleSize = ParticleUtils::AlignParticleDataSize(sizeof(FBaseParticle));
 	RequiredBytesPerInstance = 0;
 	ModuleOffsetMap.clear();
+
+	UParticleLODLevel* LOD0 = GetLODLevel(0);
+	if (!LOD0) return;
+
+	auto CacheModule = [this, LOD0](UParticleModule* Module)
+		{
+			if (!Module) return;
+
+			const uint32 Bytes = Module->RequiredBytes(LOD0);
+			if (Bytes > 0)
+			{
+				ModuleOffsetMap[Module] = ParticleSize;
+				ParticleSize = ParticleUtils::AlignParticleDataSize(ParticleSize + Bytes);
+			}
+
+			RequiredBytesPerInstance += Module->RequiredBytesPerInstance();
+		};
+
+	CacheModule(LOD0->RequiredModule);
+	CacheModule(LOD0->SpawnModule);
+	CacheModule(LOD0->TypeDataModule);
+
+	for (UParticleModule* Module : LOD0->Modules)
+	{
+		CacheModule(Module);
+	}
 }
 
 uint32 UParticleEmitter::GetModuleOffset(const UParticleModule* M) const
@@ -44,7 +203,15 @@ uint32 UParticleEmitter::GetModuleOffset(const UParticleModule* M) const
 
 FParticleEmitterInstance* UParticleEmitter::CreateInstance(UParticleSystemComponent* InComponent)
 {
-	// TODO: LOD0.TypeDataModule 이 nullptr 이 아니면 그쪽 CreateInstance.
-	//       아니면 FParticleSpriteEmitterInstance 폴백.
-	return nullptr;
+	UParticleLODLevel* LOD0 = GetLODLevel(0);
+
+	if (LOD0 && LOD0->TypeDataModule)
+	{
+		if (FParticleEmitterInstance* Inst = LOD0->TypeDataModule->CreateInstance(InComponent))
+		{
+			return Inst;
+		}
+	}
+
+	return new FParticleSpriteEmitterInstance();
 }

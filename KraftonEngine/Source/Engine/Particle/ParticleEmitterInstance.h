@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Particle/ParticleHelper.h"
 #include "Particle/ParticleEvents.h"
@@ -77,6 +77,14 @@ protected:
 
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.
 	void ResizeParticleData(uint32 NewMax);
+
+	void FillReplayData(FDynamicEmitterReplayDataBase& OutData) const;
+
+private:
+	uint32 GetInitialParticleCapacity() const;
+	uint32 GrowParticleCapacity(uint32 Current, uint32 Required) const;
+	bool IsParticleKilled(const FBaseParticle* Particle) const;
+	void ClearSpawnedFlag(FBaseParticle* Particle) const;
 
 protected:
 	UParticleEmitter*         Emitter     = nullptr;

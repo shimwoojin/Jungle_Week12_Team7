@@ -1,4 +1,4 @@
-#include "Editor/Viewport/Level/FLevelViewportLayout.h"
+﻿#include "Editor/Viewport/Level/FLevelViewportLayout.h"
 
 #include "Editor/EditorEngine.h"
 #include "Editor/Viewport/Level/LevelEditorViewportClient.h"
@@ -42,6 +42,8 @@
 #include "Engine/Runtime/ActorPlacementRegistry.h"
 
 #include <algorithm>
+
+#include "GameFramework/Actor/ParticleSystemActor.h"
 
 namespace
 {
@@ -1732,7 +1734,8 @@ void FLevelViewportLayout::RenderViewportPlaceActorPopup()
 		PlaceActorMenuItem("Trigger Volume", EViewportPlaceActorType::TriggerVolume);
 		PlaceActorMenuItem("Skeletal Mesh Actor", EViewportPlaceActorType::SkeletalMesh);
 		PlaceActorMenuItem("Character",           EViewportPlaceActorType::Character);
-		PlaceActorMenuItem("Lua Character",       EViewportPlaceActorType::LuaCharacter);
+		PlaceActorMenuItem("Lua Character", EViewportPlaceActorType::LuaCharacter);
+		PlaceActorMenuItem("Particle System",       EViewportPlaceActorType::ParticleSystem);
 
 		// Game 모듈이 등록한 액터들 (예: ACarPawn). 등록 순서대로 표시.
 		const auto& RegistryEntries = FActorPlacementRegistry::Get().GetEntries();
@@ -2015,6 +2018,18 @@ AActor* FLevelViewportLayout::SpawnActorFromViewportMenu(EViewportPlaceActorType
 			// Mesh 는 default. ULuaScriptComponent 의 ScriptFile 은 사용자가
 			// PropertyWidget 에서 콤보로 지정 (Content/Script/*.lua).
 			Actor->InitDefaultComponents("Content/Data/Samba Dancing (10).fbx", FString());
+			SpawnedActor = Actor;
+		}
+		break;
+	}
+	case EViewportPlaceActorType::ParticleSystem:
+	{
+		AParticleSystemActor* Actor = World->SpawnActor<AParticleSystemActor>();
+		if (Actor)
+		{
+			// Mesh 는 default. ULuaScriptComponent 의 ScriptFile 은 사용자가
+			// PropertyWidget 에서 콤보로 지정 (Content/Script/*.lua).
+			Actor->InitDefaultComponents();
 			SpawnedActor = Actor;
 		}
 		break;
