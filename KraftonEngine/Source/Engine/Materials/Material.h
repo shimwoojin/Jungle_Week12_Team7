@@ -14,6 +14,7 @@
 class UTexture2D;
 class FArchive;
 class FShader;
+class UMaterialInstance;
 
 // 파라미터 이름 → 상수 버퍼 내 위치 매핑
 struct FMaterialParameterInfo
@@ -74,7 +75,10 @@ struct FMaterialConstantBuffer
 UCLASS()
 class UMaterial : public UObject
 {
-private:
+	// UMaterialInstance가 Parent의 Template/CBMap을 깊은 복사할 때 직접 접근.
+	friend class UMaterialInstance;
+
+protected:
 	FString PathFileName;// 어떤 Material인지 판별하는 고유 이름
 	uint32 MaterialInstanceID; // 고유 ID
 	FMaterialTemplate* Template; // 공유
@@ -96,7 +100,7 @@ private:
 	// SRV 캐시 — SetTextureParameter 시 갱신, BuildCommandForProxy에서 map lookup 회피
 	ID3D11ShaderResourceView* CachedSRVs[(int)EMaterialTextureSlot::Max] = {};
 
-	bool SetParameter(const FString& Name, const void* Data, uint32 Size);
+	virtual bool SetParameter(const FString& Name, const void* Data, uint32 Size);
 
 public:
 	GENERATED_BODY()
