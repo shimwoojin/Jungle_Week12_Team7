@@ -1,6 +1,7 @@
 ﻿#include "ParticleModuleRequired.h"
 
 #include "Materials/Material.h"
+#include "Materials/MaterialManager.h"
 
 void UParticleModuleRequired::SetToSensibleDefaults(UParticleEmitter* Owner)
 {
@@ -22,6 +23,11 @@ void UParticleModuleRequired::SetToSensibleDefaults(UParticleEmitter* Owner)
 
 UMaterial* UParticleModuleRequired::ResolveMaterial()
 {
-	// TODO: MaterialSlot 으로부터 MaterialManager 에서 resolve 후 캐시.
+	if (CachedMaterial) return CachedMaterial;
+
+	const FString& Path = MaterialSlot.ToString();
+	if (Path.empty() || Path == "None") return nullptr;
+
+	CachedMaterial = FMaterialManager::Get().GetOrCreateMaterial(Path);
 	return CachedMaterial;
 }

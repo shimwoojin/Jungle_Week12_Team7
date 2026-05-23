@@ -5,6 +5,7 @@
 #include "Particle/ParticleModule.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
+#include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Math/Transform.h"
 
@@ -383,11 +384,12 @@ void FParticleEmitterInstance::ClearSpawnedFlag(FBaseParticle* Particle) const
 }
 
 // -- Sprite ----
-FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()    
-{ 
+FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
+{
 	FDynamicSpriteEmitterData* Data = new FDynamicSpriteEmitterData();
 
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Sprite;
 
 	UParticleLODLevel* LOD = GetCurrentLOD();
 	if (LOD && LOD->RequiredModule)
@@ -400,19 +402,31 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 }
 
 // -- Mesh ----
-FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData() 
-{ 
+FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
+{
 	FDynamicMeshEmitterData* Data = new FDynamicMeshEmitterData();
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
+
+	// TypeData에서 mesh 자산 가져와 ReplayData에 박음 — SceneProxy/Factory가 정적 mesh 사용.
+	// null이면 SceneProxy의 Cube.OBJ fallback이 작동.
+	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	{
+		if (auto* TypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
+		{
+			Data->Source.Mesh = TypeData->ResolveMesh();
+		}
+	}
 	return Data;
 }
 
 // -- Beam ----
-FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()     
-{ 
+FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
+{
 	FDynamicBeamEmitterData* Data = new FDynamicBeamEmitterData();
 
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Beam;
 
 	Data->Source.SourcePoint = SourcePoint;
 	Data->Source.TargetPoint = TargetPoint;
@@ -426,9 +440,10 @@ void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const F
 }
 
 // -- Ribbon ----
-FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()   
-{ 
+FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
+{
 	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;
 	return Data;
 }
