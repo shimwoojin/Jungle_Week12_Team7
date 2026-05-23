@@ -219,7 +219,7 @@ EBlendState FMaterialManager::StringToBlendState(const FString& Str, ERenderPass
 	// 문자열이 비어있으면 Pass 기반 기본값
 	switch (Pass)
 	{
-	case ERenderPass::AlphaBlend:
+	case ERenderPass::Translucent:
 	case ERenderPass::Decal:
 	case ERenderPass::EditorLines:
 	case ERenderPass::PostProcess:

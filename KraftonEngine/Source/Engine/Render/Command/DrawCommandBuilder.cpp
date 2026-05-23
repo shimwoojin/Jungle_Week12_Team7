@@ -745,9 +745,9 @@ void FDrawCommandBuilder::BuildFontCommands(EViewMode ViewMode)
 	if (FontGeometry.GetWorldQuadCount() > 0 && FontGeometry.UploadWorldBuffers(Ctx))
 	{
 		FDrawCommand& Cmd = DrawCommandList.AddCommand();
-		Cmd.Pass = ERenderPass::AlphaBlend;
+		Cmd.Pass = ERenderPass::Translucent;
 		Cmd.Shader = FShaderManager::Get().GetOrCreate(EShaderPath::Font);
-		Cmd.RenderState = PassRenderStateTable->ToDrawCommandState(ERenderPass::AlphaBlend, ViewMode);
+		Cmd.RenderState = PassRenderStateTable->ToDrawCommandState(ERenderPass::Translucent, ViewMode);
 		Cmd.Buffer = { FontGeometry.GetWorldVBBuffer(), FontGeometry.GetWorldVBStride(), FontGeometry.GetWorldIBBuffer() };
 		Cmd.Buffer.IndexCount = FontGeometry.GetWorldIndexCount();
 		Cmd.Bindings.SRVs[(int)EMaterialTextureSlot::Diffuse] = FontRes->SRV;

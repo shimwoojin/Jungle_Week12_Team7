@@ -28,6 +28,9 @@
     <Filter Include="Shaders\UI">
       <UniqueIdentifier>{d5ecceb8-43e5-4a35-05e8-acc2ba7da782}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders\Particle">
+      <UniqueIdentifier>{a1b2c3d4-e5f6-4781-89ab-cdef01234567}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source">
       <UniqueIdentifier>{1ee46e81-363c-7c61-8681-bee8655fa7d6}</UniqueIdentifier>
     </Filter>
@@ -605,6 +608,9 @@
     </FxCompile>
     <FxCompile Include="Shaders\UI\Billboard.hlsl">
       <Filter>Shaders\UI</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Particle\Sprite.hlsl">
+      <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\UI\Font.hlsl">
       <Filter>Shaders\UI</Filter>
@@ -1388,9 +1394,6 @@
     <ClCompile Include="Source\Engine\Render\Geometry\LineGeometry.cpp">
       <Filter>Source\Engine\Render\Geometry</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Render\Particle\ParticleDynamicVertexBuffer.cpp">
-      <Filter>Source\Engine\Render\Particle</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Engine\Render\Particle\ParticleVertexFactory.cpp">
       <Filter>Source\Engine\Render\Particle</Filter>
     </ClCompile>
@@ -1442,7 +1445,7 @@
     <ClCompile Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Render\RenderPass\AlphaBlendPass.cpp">
+    <ClCompile Include="Source\Engine\Render\RenderPass\TranslucentPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\DecalPass.cpp">
@@ -2592,9 +2595,6 @@
     <ClInclude Include="Source\Engine\Render\Geometry\LineGeometry.h">
       <Filter>Source\Engine\Render\Geometry</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Render\Particle\ParticleDynamicVertexBuffer.h">
-      <Filter>Source\Engine\Render\Particle</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Engine\Render\Particle\ParticleVertexFactory.h">
       <Filter>Source\Engine\Render\Particle</Filter>
     </ClInclude>
@@ -2652,7 +2652,7 @@
     <ClInclude Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Render\RenderPass\AlphaBlendPass.h">
+    <ClInclude Include="Source\Engine\Render\RenderPass\TranslucentPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\RenderPass\DecalPass.h">

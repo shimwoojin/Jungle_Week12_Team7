@@ -661,7 +661,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Render\Device\D3DDevice.cpp" />
     <ClCompile Include="Source\Engine\Render\Geometry\FontGeometry.cpp" />
     <ClCompile Include="Source\Engine\Render\Geometry\LineGeometry.cpp" />
-    <ClCompile Include="Source\Engine\Render\Particle\ParticleDynamicVertexBuffer.cpp" />
     <ClCompile Include="Source\Engine\Render\Particle\ParticleVertexFactory.cpp" />
     <ClCompile Include="Source\Engine\Render\Pipeline\DefaultRenderPipeline.cpp" />
     <ClCompile Include="Source\Engine\Render\Pipeline\RenderCollector.cpp" />
@@ -679,7 +678,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Render\Proxy\TextRenderSceneProxy.cpp" />
     <ClCompile Include="Source\Engine\Render\Proxy\Particle\ParticleSystemSceneProxy.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.cpp" />
-    <ClCompile Include="Source\Engine\Render\RenderPass\AlphaBlendPass.cpp" />
+    <ClCompile Include="Source\Engine\Render\RenderPass\TranslucentPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\DecalPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\EditorLinesPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\FXAAPass.cpp" />
@@ -1065,7 +1064,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Render\Device\D3DDevice.h" />
     <ClInclude Include="Source\Engine\Render\Geometry\FontGeometry.h" />
     <ClInclude Include="Source\Engine\Render\Geometry\LineGeometry.h" />
-    <ClInclude Include="Source\Engine\Render\Particle\ParticleDynamicVertexBuffer.h" />
     <ClInclude Include="Source\Engine\Render\Particle\ParticleVertexFactory.h" />
     <ClInclude Include="Source\Engine\Render\Pipeline\DefaultRenderPipeline.h" />
     <ClInclude Include="Source\Engine\Render\Pipeline\IRenderPipeline.h" />
@@ -1085,7 +1083,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Render\Proxy\TextRenderSceneProxy.h" />
     <ClInclude Include="Source\Engine\Render\Proxy\Particle\ParticleSystemSceneProxy.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.h" />
-    <ClInclude Include="Source\Engine\Render\RenderPass\AlphaBlendPass.h" />
+    <ClInclude Include="Source\Engine\Render\RenderPass\TranslucentPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\DecalPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\EditorLinesPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\FXAAPass.h" />
@@ -1973,6 +1971,13 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Demo|x64'">true</ExcludedFromBuild>
     </FxCompile>
     <FxCompile Include="Shaders\UI\Billboard.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Game|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ObjViewDebug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Demo|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Shaders\Particle\Sprite.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Game|x64'">true</ExcludedFromBuild>

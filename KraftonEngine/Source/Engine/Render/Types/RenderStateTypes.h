@@ -26,6 +26,7 @@ enum class EBlendState
 	Opaque,
 	AlphaBlend,
 	Additive,
+	Modulate,	// Dest × Src — 곱셈 블렌딩 (반투명 파티클 모듈레이트)
 	NoColor,
 	MAX
 };
@@ -56,6 +57,7 @@ namespace RenderStateStrings
 		{ "Opaque",     (int)EBlendState::Opaque },
 		{ "AlphaBlend", (int)EBlendState::AlphaBlend },
 		{ "Additive",   (int)EBlendState::Additive },
+		{ "Modulate",   (int)EBlendState::Modulate },
 		{ "NoColor",    (int)EBlendState::NoColor },
 	};
 
