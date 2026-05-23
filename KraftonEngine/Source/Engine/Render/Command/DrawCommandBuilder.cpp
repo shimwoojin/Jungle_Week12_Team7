@@ -216,7 +216,6 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 		Cmd.PerObjectCB = PerObjCB;
 		Cmd.bIsSkeletal = bSkeletal;
 		Cmd.bIsGpuSkinned = bGPUSkinning;
-		Cmd.CameraDistSquared = DistSq;
 		Cmd.Buffer.FirstIndex = Section.FirstIndex;
 		Cmd.Buffer.IndexCount = Section.IndexCount;
 		Cmd.Bindings.SkinMatrixSRV = bGPUSkinning && SkeletalProxy
@@ -244,7 +243,7 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 				ApplyMaterialRenderState(Cmd.RenderState, Mat, BaseRenderState);
 		}
 
-		Cmd.BuildSortKey();
+		Cmd.BuildSortKey(0, DistSq);
 	}
 }
 

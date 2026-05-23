@@ -74,10 +74,6 @@ struct FDrawCommand
 	// ===== Sort =====
 	uint64 SortKey = 0;                              // 정렬 키 (Pass → Shader → MeshBuffer → SRV)
 
-	// Translucent 깊이 정렬용 — 카메라와 객체 사이 거리². Pass != Translucent면 무시.
-	// BuildCommandForProxy가 채움. 별도 패스에서 무시되어도 cost는 4바이트.
-	float CameraDistSquared = 0.0f;
-
 	// ===== Profiling =====
 	bool bIsSkeletal = false;
 	bool bIsGpuSkinned = false;
@@ -93,7 +89,8 @@ struct FDrawCommand
 
 	// Cmd의 Pass/Shader/Buffer.VB/Bindings.SRVs[Diffuse]로부터 SortKey 자동 생성.
 	// Pass == Translucent면 depth-first 정렬 키 (back-to-front), 그 외엔 상태 그룹핑 키.
-	void BuildSortKey(uint16 UserBits = 0)
+	// CameraDistSquared는 Translucent 경로에서만 사용 — 다른 패스에선 0 전달해도 무방.
+	void BuildSortKey(uint16 UserBits = 0, float CameraDistSquared = 0.0f)
 	{
 		if (Pass == ERenderPass::Translucent)
 		{
