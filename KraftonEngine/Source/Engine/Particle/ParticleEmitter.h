@@ -31,11 +31,17 @@ public:
 	UPROPERTY(Edit, Save, Category="Emitter", DisplayName="Enabled")
 	bool bEnabled = true;
 
-	UPROPERTY(Save, Category="LOD", DisplayName="LOD Levels", Type=Array)
+	UPROPERTY(Save, Instanced, Category="LOD", DisplayName="LOD Levels", Type=Array, AllowedClass=UParticleLODLevel)
 	TArray<UParticleLODLevel*> LODLevels;
 
-	// 디폴트 LOD 0 + Required + Spawn 까지 만들어 emitter 를 사용 가능 상태로.
+	// 직렬화
+	void Serialize(class FArchive& Ar) override;
+	void PostDuplicate() override;
+
+	// 새 Emitter생성 시 1회 호출
 	void InitializeDefaultLODLevel();
+	// 필수 슬롯만 보장
+	void EnsureLOD0CoreModules();
 
 	// 새 LOD level 을 생성. 현재는 Required + Spawn 기본 모듈만 생성.
 	// LOD0 모듈 복사/보간은 UpdateFromLOD0() 구현 시 처리.

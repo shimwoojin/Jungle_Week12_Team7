@@ -20,12 +20,10 @@ void UParticleModuleLocation::Spawn(FParticleEmitterInstance* Owner, uint32 Modu
 	Offset.Y = StartLocationMin.Y + (StartLocationMax.Y - StartLocationMin.Y) * AlphaY;
 	Offset.Z = StartLocationMin.Z + (StartLocationMax.Z - StartLocationMin.Z) * AlphaZ;
 
-	if (bWorldSpaceOverride)
-	{
-		Particle->Location = Offset;
-	}
-	else
-	{
-		Particle->Location = Particle->Location;
-	}
+	// TODO: bWorldSpaceOverride는 LocalSpace 정책 정리 후 구현.
+	// 현재는 emitter origin 기준 offset만 적용.
+	if (bWorldSpaceOverride) Particle->Location = Offset;
+	else Particle->Location = Particle->Location + Offset;
+
+	Particle->OldLocation = Particle->Location;
 }

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Object/Object.h"
 #include "Particle/ParticleHelper.h"
@@ -27,6 +27,10 @@ public:
 	GENERATED_BODY()
 	UParticleModule() = default;
 	~UParticleModule() override = default;
+
+	// 직렬화
+	void Serialize(class FArchive& Ar) override;
+	void PostDuplicate() override;
 
 	// --- 카테고리/식별 ----------------------------------------------------------
 	// 카테고리 enum (Required/Spawn/Lifetime/...) — 에디터 그룹화 & 동일 카테고리
@@ -98,5 +102,6 @@ public:
 	void SetEnabled(bool b) { bEnabled = b; }
 
 protected:
+	UPROPERTY(Edit, Save, Category = "Module", DisplayName = "Enabled")
 	bool bEnabled = true;
 };

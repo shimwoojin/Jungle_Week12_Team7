@@ -31,20 +31,24 @@ public:
 	bool bEnabled = true;
 
 	// Required: emitter 의 필수 설정 (Material, Sub UV, Sort 등) — 항상 존재.
-	UPROPERTY(Save, Category="Modules", DisplayName="Required Module")
+	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Required Module", Type=ObjectRef, AllowedClass=UParticleModuleRequired)
 	UParticleModuleRequired* RequiredModule = nullptr;
 
 	// Spawn: 분당 spawn rate / Burst — 항상 존재.
-	UPROPERTY(Save, Category="Modules", DisplayName="Spawn Module")
+	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Spawn Module", Type=ObjectRef, AllowedClass=UParticleModuleSpawn)
 	UParticleModuleSpawn* SpawnModule = nullptr;
 
 	// TypeData: 입자가 Sprite/Mesh/Beam/Ribbon 중 무엇인지 결정. nullptr 이면 Sprite.
-	UPROPERTY(Save, Category="Modules", DisplayName="Type Data")
+	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Type Data", Type=ObjectRef, AllowedClass=UParticleModuleTypeDataBase)
 	UParticleModuleTypeDataBase* TypeDataModule = nullptr;
 
 	// 그 외 (Lifetime, Location, Velocity, Color, Size, Collision, EventGenerator, ...)
-	UPROPERTY(Save, Category="Modules", DisplayName="Modules", Type=Array)
+	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Modules", Type=Array, AllowedClass=UParticleModule)
 	TArray<UParticleModule*> Modules;
+
+	// 직렬화
+	void Serialize(class FArchive& Ar) override;
+	void PostDuplicate() override;
 
 	// --- API ---
 	// LOD 변경 시 LOD 0 으로부터 본인 값을 재추출.
