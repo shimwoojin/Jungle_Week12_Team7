@@ -16,6 +16,7 @@
 #include "Render/Scene/FScene.h"
 
 #include "Materials/MaterialManager.h"
+#include "Mesh/MeshManager.h"
 #include "Particle/ParticleSystem.h"
 #include "Particle/ParticleSystemManager.h"
 #include "Particle/ParticleEmitter.h"
@@ -123,7 +124,8 @@ namespace
 		return false;
 	}
 
-	bool MaterialComboField(const char* Label, FSoftObjectPtr& Value)
+	template<typename TAssetItem>
+	bool AssetComboField(const char* Label, FSoftObjectPtr& Value, const TArray<TAssetItem>& Assets)
 	{
 		FString CurrentPath = Value.ToString();
 		if (CurrentPath.empty())
@@ -147,8 +149,7 @@ namespace
 				ImGui::SetItemDefaultFocus();
 			}
 
-			const TArray<FMaterialAssetListItem>& Materials = FMaterialManager::Get().GetAvailableMaterialFiles();
-			for (const FMaterialAssetListItem& Item : Materials)
+			for (const TAssetItem& Item : Assets)
 			{
 				const bool bSelected = (CurrentPath == Item.FullPath);
 				if (ImGui::Selectable(Item.DisplayName.c_str(), bSelected))
@@ -169,6 +170,16 @@ namespace
 			ImGui::EndCombo();
 		}
 		return bChanged;
+	}
+
+	bool MaterialComboField(const char* Label, FSoftObjectPtr& Value)
+	{
+		return AssetComboField(Label, Value, FMaterialManager::Get().GetAvailableMaterialFiles());
+	}
+
+	bool MeshComboField(const char* Label, FSoftObjectPtr& Value)
+	{
+		return AssetComboField(Label, Value, FMeshManager::Get().GetAvailableStaticMeshFiles());
 	}
 
 	bool DragFloat3Field(const char* Label, FVector& Value, float Speed = 0.1f, float Min = 0.0f, float Max = 0.0f)
@@ -1113,7 +1124,11 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("TypeData Mesh", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= InputTextSoftObject("Static Mesh", Mesh->MeshSlot);
+					if (MeshComboField("Static Mesh", Mesh->MeshSlot))
+					{
+						Mesh->CachedMesh = nullptr;
+						bChanged = true;
+					}
 					static const char* AlignmentNames[] = { "None", "Velocity", "FacingCamera", "AxisLock" };
 					int32 Alignment = static_cast<int32>(Mesh->Alignment);
 					if (ComboInt("Alignment", Alignment, AlignmentNames, 4)) { Mesh->Alignment = static_cast<UParticleModuleTypeDataMesh::EMeshAlignment>(Alignment); bChanged = true; }
