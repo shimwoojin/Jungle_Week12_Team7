@@ -85,6 +85,7 @@ void FDrawCommandBuilder::BeginCollect(const FFrameContext& Frame)
 	CollectViewMode = Frame.RenderOptions.ViewMode;
 	bCollectWeightBoneHeatMap = Frame.RenderOptions.bWeightBoneHeatMap;
 	CollectWeightBoneHeatMapBoneIndex = Frame.RenderOptions.WeightBoneHeatMapBoneIndex;
+	CollectCameraPosition = Frame.CameraPosition;
 
 	bHasSelectionMaskCommands = false;
 
@@ -169,6 +170,11 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 	// PassState → RenderState 변환 (Wireframe 오버라이드 포함)
 	const FDrawCommandRenderState BaseRenderState = PassRenderStateTable->ToDrawCommandState(Pass, CollectViewMode);
 
+	// Translucent depth-first 정렬용 거리² (Pass != Translucent면 SortKey에서 무시)
+	const FVector& ObjPos = Proxy.GetCachedWorldPos();
+	const FVector  ToCam  = CollectCameraPosition - ObjPos;
+	const float    DistSq = ToCam.Dot(ToCam);
+
 	// PerObjectCB 업데이트
 	FConstantBuffer* PerObjCB = GetPerObjectCBForProxy(&Scene, Proxy);
 	if (PerObjCB && Proxy.NeedsPerObjectCBUpload())
@@ -210,6 +216,7 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 		Cmd.PerObjectCB = PerObjCB;
 		Cmd.bIsSkeletal = bSkeletal;
 		Cmd.bIsGpuSkinned = bGPUSkinning;
+		Cmd.CameraDistSquared = DistSq;
 		Cmd.Buffer.FirstIndex = Section.FirstIndex;
 		Cmd.Buffer.IndexCount = Section.IndexCount;
 		Cmd.Bindings.SkinMatrixSRV = bGPUSkinning && SkeletalProxy

@@ -74,6 +74,10 @@ struct FDrawCommand
 	// ===== Sort =====
 	uint64 SortKey = 0;                              // 정렬 키 (Pass → Shader → MeshBuffer → SRV)
 
+	// Translucent 깊이 정렬용 — 카메라와 객체 사이 거리². Pass != Translucent면 무시.
+	// BuildCommandForProxy가 채움. 별도 패스에서 무시되어도 cost는 4바이트.
+	float CameraDistSquared = 0.0f;
+
 	// ===== Profiling =====
 	bool bIsSkeletal = false;
 	bool bIsGpuSkinned = false;
@@ -87,15 +91,24 @@ struct FDrawCommand
 		Buffer.VertexCount = 3;
 	}
 
-	// Cmd의 Pass/Shader/Buffer.VB/Bindings.SRVs[Diffuse]로부터 SortKey 자동 생성
+	// Cmd의 Pass/Shader/Buffer.VB/Bindings.SRVs[Diffuse]로부터 SortKey 자동 생성.
+	// Pass == Translucent면 depth-first 정렬 키 (back-to-front), 그 외엔 상태 그룹핑 키.
 	void BuildSortKey(uint16 UserBits = 0)
 	{
-		SortKey = ComputeSortKey(Pass, Shader, Buffer.VB,
-			Bindings.SRVs[(int)EMaterialTextureSlot::Diffuse], UserBits);
+		if (Pass == ERenderPass::Translucent)
+		{
+			SortKey = ComputeTranslucentSortKey(Pass, Shader, CameraDistSquared, UserBits);
+		}
+		else
+		{
+			SortKey = ComputeSortKey(Pass, Shader, Buffer.VB,
+				Bindings.SRVs[(int)EMaterialTextureSlot::Diffuse], UserBits);
+		}
 	}
 
 	// ===== SortKey 생성 유틸리티 (정적) =====
-	// Pass(4bit) | ShaderHash(16bit) | MeshHash(16bit) | SRVHash(16bit) | UserBits(12bit)
+	// 일반 패스: Pass(4) | ShaderHash(16) | MeshHash(16) | SRVHash(16) | UserBits(12)
+	// 상태 전환(셰이더/메시/텍스처) 그룹핑 위주.
 	static uint64 ComputeSortKey(ERenderPass InPass, const FShader* InShader,
 		const void* InMeshId, const ID3D11ShaderResourceView* InSRV,
 		uint16 UserBits = 0)
@@ -113,6 +126,36 @@ struct FDrawCommand
 		Key |= (static_cast<uint64>(PtrHash16(InMeshId))) << 28;      // [43:28] MeshBuffer
 		Key |= (static_cast<uint64>(PtrHash16(InSRV))) << 12;        // [27:12] SRV
 		Key |= (static_cast<uint64>(UserBits) & 0xFFF);              // [11:0]  User
+		return Key;
+	}
+
+	// Translucent 전용: Pass(4) | DepthBucket(28) | ShaderHash(16) | UserBits(16)
+	// DepthBucket = MAX_28BIT - quantize(CameraDistSquared) — 멀수록 작은 키 → 먼저 그림 (back-to-front).
+	// 같은 깊이 버킷 내에선 Shader로 묶어 상태 전환 최소화.
+	static uint64 ComputeTranslucentSortKey(ERenderPass InPass, const FShader* InShader,
+		float CameraDistSquared, uint16 UserBits = 0)
+	{
+		auto PtrHash16 = [](const void* Ptr) -> uint16
+		{
+			uintptr_t Val = reinterpret_cast<uintptr_t>(Ptr);
+			return static_cast<uint16>((Val >> 4) ^ (Val >> 20));
+		};
+
+		// 거리² → 28-bit 양자화. 100,000 unit (10^5) 이상은 saturate.
+		// MaxDistSq = (10^5)² = 10^10
+		constexpr uint32 MAX_BUCKET = 0x0FFFFFFFu;
+		constexpr float  MAX_DIST_SQ = 1.0e10f;
+		const float Scaled = CameraDistSquared * (static_cast<float>(MAX_BUCKET) / MAX_DIST_SQ);
+		const uint32 Q = Scaled >= static_cast<float>(MAX_BUCKET)
+			? MAX_BUCKET
+			: (CameraDistSquared <= 0.0f ? 0u : static_cast<uint32>(Scaled));
+		const uint32 Bucket = MAX_BUCKET - Q;  // 멀면 작은 키 → 먼저 그림
+
+		uint64 Key = 0;
+		Key |= (static_cast<uint64>(InPass) & 0xF) << 60;                 // [63:60] Pass
+		Key |= (static_cast<uint64>(Bucket) & 0x0FFFFFFFull) << 32;        // [59:32] DepthBucket (역양자화)
+		Key |= (static_cast<uint64>(PtrHash16(InShader))) << 16;           // [31:16] ShaderHash
+		Key |= (static_cast<uint64>(UserBits));                            // [15:0]  UserBits
 		return Key;
 	}
 };

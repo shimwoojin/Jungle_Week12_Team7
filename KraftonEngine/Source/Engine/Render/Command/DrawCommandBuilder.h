@@ -73,6 +73,9 @@ private:
 	bool bCollectWeightBoneHeatMap = false;
 	int32 CollectWeightBoneHeatMapBoneIndex = -1;
 
+	// Translucent depth-first 정렬용 — BeginCollect에서 캐싱.
+	FVector CollectCameraPosition = { 0, 0, 0 };
+
 	bool bHasSelectionMaskCommands = false;
 
 	// 동적 지오메트리
