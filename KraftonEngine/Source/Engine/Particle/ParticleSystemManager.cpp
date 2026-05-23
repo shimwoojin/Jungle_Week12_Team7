@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <filesystem>
 
+#include "Core/Logging/Log.h"
+
 UParticleSystem* FParticleSystemManager::Load(const FString& Path)
 {
 	const FString NormalizedPath = FPaths::MakeProjectRelative(Path);
@@ -72,20 +74,28 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 {
 	if (!Asset)
 	{
+		UE_LOG("[ParticleSystemManager] Save failed: Asset is NULL");
 		return false;
 	}
 
 	const FString& Path = Asset->GetSourcePath();
 	if (Path.empty())
 	{
+		UE_LOG("[ParticleSystemManager] Save failed: SourcePath is empty. Asset=%p", Asset);
 		return false;
 	}
 
 	const FString NormalizedPath = FPaths::MakeProjectRelative(Path);
+	UE_LOG("[ParticleSystemManager] Save requested. SourcePath=%s NormalizedPath=%s Asset=%p EmitterCount=%d",
+		Path.c_str(),
+		NormalizedPath.c_str(),
+		Asset,
+		Asset->GetEmitterCount());
 
 	FWindowsBinWriter Ar(NormalizedPath);
 	if (!Ar.IsValid())
 	{
+		UE_LOG("[ParticleSystemManager] Save failed: file open failed. Path=%s", NormalizedPath.c_str());
 		return false;
 	}
 
@@ -102,9 +112,11 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 
 	if (!Ar.IsValid())
 	{
+		UE_LOG("[ParticleSystemManager] Save failed: archive invalid after asset serialize. Path=%s", NormalizedPath.c_str());
 		return false;
 	}
 
+	UE_LOG("[ParticleSystemManager] Save success. Path=%s", NormalizedPath.c_str());
 	return true;
 }
 

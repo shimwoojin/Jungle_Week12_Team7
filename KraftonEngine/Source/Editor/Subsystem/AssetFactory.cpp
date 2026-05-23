@@ -11,7 +11,10 @@
 
 #include <filesystem>
 
+#include "Core/Logging/Log.h"
 #include "Particle/ParticleSystemManager.h"
+#include "Particle/ParticleEmitter.h"
+#include "Particle/ParticleLODLevel.h"
 
 namespace
 {
@@ -43,6 +46,7 @@ namespace
 			++Suffix;
 		}
 	}
+
 }
 
 bool FAssetFactory::CreateFloatCurve(const FString& DirectoryPath, const FString& AssetName, FString& OutCreatedPath)
@@ -137,6 +141,7 @@ bool FAssetFactory::CreateParticleSystem(
 	const std::filesystem::path Directory(FPaths::ToWide(DirectoryPath));
 	if (!std::filesystem::exists(Directory) || !std::filesystem::is_directory(Directory))
 	{
+		UE_LOG("[ParticleSystemFactory] Create failed: invalid directory. DirectoryPath=%s", DirectoryPath.c_str());
 		return false;
 	}
 
@@ -145,9 +150,21 @@ bool FAssetFactory::CreateParticleSystem(
 		AssetName.empty() ? "NewParticleSystem" : AssetName,
 		L".uasset"
 	);
+	const FString CreatedPath = FPaths::ToUtf8(AssetPath.wstring());
+
+	UE_LOG("[ParticleSystemFactory] Create start. Directory=%s AssetName=%s CreatedPath=%s",
+		DirectoryPath.c_str(),
+		AssetName.c_str(),
+		CreatedPath.c_str());
 
 	UParticleSystem* NewAsset = UObjectManager::Get().CreateObject<UParticleSystem>();
-	NewAsset->SetSourcePath(FPaths::ToUtf8(AssetPath.wstring()));
+	if (!NewAsset)
+	{
+		UE_LOG("[ParticleSystemFactory] CreateObject<UParticleSystem> returned NULL. Path=%s", CreatedPath.c_str());
+		return false;
+	}
+
+	NewAsset->SetSourcePath(CreatedPath);
 	NewAsset->AddEmitter();
 	NewAsset->BuildEmitters();
 
@@ -156,9 +173,18 @@ bool FAssetFactory::CreateParticleSystem(
 
 	if (!bSaved)
 	{
+		UE_LOG("[ParticleSystemFactory] Save failed. Path=%s", CreatedPath.c_str());
 		return false;
 	}
 
-	OutCreatedPath = FPaths::ToUtf8(AssetPath.wstring());
+	UParticleSystem* Loaded = FParticleSystemManager::Get().Load(CreatedPath);
+	if (!Loaded)
+	{
+		UE_LOG("[ParticleSystemFactory] Load FAILED after Save. Path=%s", CreatedPath.c_str());
+		return false;
+	}
+
+	OutCreatedPath = CreatedPath;
+	UE_LOG("[ParticleSystemFactory] Create success. Path=%s", OutCreatedPath.c_str());
 	return true;
 }
