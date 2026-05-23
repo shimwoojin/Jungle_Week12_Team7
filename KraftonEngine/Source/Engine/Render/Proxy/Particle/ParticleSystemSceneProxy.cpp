@@ -86,20 +86,25 @@ void FParticleSystemSceneProxy::UpdateTransform()
 
 void FParticleSystemSceneProxy::UpdateMaterial()
 {
-	if (!ParticleMaterial)
+	if (!SpriteMaterial)
 	{
-		ParticleMaterial = UMaterial::CreateTransient(
+		SpriteMaterial = UMaterial::CreateTransient(
 			ERenderPass::Translucent, EBlendState::AlphaBlend,
 			EDepthStencilState::DepthReadOnly, ERasterizerState::SolidNoCull,
 			FShaderManager::Get().GetOrCreate(EShaderPath::ParticleSprite));
 	}
-
-	// LastIndexCount는 PrepareDrawBuffer가 갱신. Section 등록만 여기서.
-	SectionDraws.clear();
-	if (ParticleMaterial)
+	if (!MeshMaterial)
 	{
-		SectionDraws.push_back({ ParticleMaterial, /*FirstIndex*/0, /*IndexCount*/0 });
+		MeshMaterial = UMaterial::CreateTransient(
+			ERenderPass::Translucent, EBlendState::AlphaBlend,
+			EDepthStencilState::DepthReadOnly, ERasterizerState::SolidBackCull,
+			FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh));
 	}
+
+	// Material/IndexCount는 PrepareDrawBuffer가 매 프레임 갱신 (emitter type 따라).
+	// 여기선 placeholder 1개만 등록 — Sprite를 default로.
+	SectionDraws.clear();
+	SectionDraws.push_back({ SpriteMaterial, /*FirstIndex*/0, /*IndexCount*/0 });
 }
 
 void FParticleSystemSceneProxy::UpdateVisibility()
@@ -162,13 +167,51 @@ static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FV
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Mesh stub — Replay.Mesh = nullptr → factory가 엔진 빌트인 Cube로 fallback.
+// 4개 큐브를 ±2 거리 평면 배치 (Day 5 인스턴싱 검증용).
+// ---------------------------------------------------------------------------
+static void BuildStubMeshReplay(FDynamicMeshEmitterReplayData& OutReplay, const FVector& Origin)
+{
+	OutReplay.EmitterType = EDynamicEmitterType::Mesh;
+	OutReplay.ActiveParticleCount = 4;
+	OutReplay.ParticleStride = sizeof(FBaseParticle);
+	OutReplay.bUseLocalSpace = false;
+	OutReplay.Mesh = nullptr; // factory가 Cube fallback
+	OutReplay.ParticleData.assign(static_cast<size_t>(OutReplay.ActiveParticleCount) * OutReplay.ParticleStride, 0);
+
+	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());
+
+	static const float Off[4][3] = {
+		{ -2, 0, 0 }, {  2, 0, 0 }, { 0, -2, 0 }, { 0,  2, 0 },
+	};
+	static const FVector4 Colors[4] = {
+		{ 1, 0.5f, 0.5f, 1 }, { 0.5f, 1, 0.5f, 1 },
+		{ 0.5f, 0.5f, 1, 1 }, { 1, 1, 0.5f, 1 },
+	};
+
+	for (uint32 i = 0; i < 4; ++i)
+	{
+		new (&P[i]) FBaseParticle();
+		P[i].Location = Origin + FVector(Off[i][0], Off[i][1], Off[i][2]);
+		P[i].Size     = { 0.5f, 0.5f, 0.5f };
+		P[i].Color    = Colors[i];
+		P[i].BaseColor = Colors[i];
+		P[i].BaseSize  = P[i].Size;
+		P[i].Rotation = 0.0f;
+		P[i].RelativeTime = 0.0f;
+		P[i].OneOverMaxLifetime = 1.0f;
+	}
+}
+
 bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                                   FDrawCommandBuffer& OutBuffer) const
 {
 	if (!Device || !Context) return false;
 
 	// ---- Replay 목록 결정 (실제 DynamicData 우선, 없으면 stub) ----
-	FDynamicSpriteEmitterReplayData StubReplay;
+	FDynamicSpriteEmitterReplayData StubSpriteReplay;
+	FDynamicMeshEmitterReplayData   StubMeshReplay;
 	TArray<const FDynamicEmitterReplayDataBase*> Replays;
 	if (DynamicData && !DynamicData->Emitters.empty())
 	{
@@ -179,15 +222,15 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	}
 	if (Replays.empty())
 	{
-		BuildStubReplay(StubReplay, CachedWorldPos);
-		Replays.push_back(&StubReplay);
+		// Day 5 검증: Mesh stub을 먼저 시도 (첫 성공 emitter 정책 하에서 Mesh 인스턴싱이 보이도록).
+		// Sprite stub은 멀티 emitter 동시 렌더 미구현이라 같이 push해도 안 그려짐 — 따로 토글로 검증 가능.
+		BuildStubMeshReplay(StubMeshReplay, CachedWorldPos);
+		Replays.push_back(&StubMeshReplay);
 	}
 
-	// ---- 타입별 디스패치 ----
-	// Day 3 한정: 단일 SectionDraw + 첫 성공 emitter만 표시.
-	// Day 4+: 멀티 emitter면 emitter별 SectionDraw로 분리 + VB scratch accumulator 필요.
+	// ---- 타입별 디스패치 (첫 성공 emitter만 그림 — 멀티 emitter는 Day 5 후반/Day 6에서 정리) ----
 	FParticleVertexFactory::FDrawSpec Spec;
-	bool bAnyDrawn = false;
+	EDynamicEmitterType DrawnType = EDynamicEmitterType::Unknown;
 	for (const FDynamicEmitterReplayDataBase* Replay : Replays)
 	{
 		FParticleVertexFactory* Factory = GetOrCreateFactory(Replay->EmitterType, Device);
@@ -195,40 +238,59 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		if (Factory->BuildDraw(Device, Context, *Replay,
 			CachedCameraRight, CachedCameraUp, DynamicVB, Spec))
 		{
-			bAnyDrawn = true;
-			break; // 첫 성공 emitter만 그림 (다음 emitter가 VB를 overwrite하지 않도록)
+			DrawnType = Replay->EmitterType;
+			break;
 		}
 	}
-	if (!bAnyDrawn || Spec.VertexCount == 0 || Spec.IndexCount == 0) return false;
+	if (DrawnType == EDynamicEmitterType::Unknown) return false;
+	if (Spec.IndexCount == 0) return false;
 
-	// IB 생성 — quad pattern (4 verts × N quad → 6 indices × N).
-	const uint32 N = Spec.IndexCount / 6;
-	std::vector<uint32> Indices;
-	Indices.resize(Spec.IndexCount);
-	for (uint32 q = 0; q < N; ++q)
+	OutBuffer = {};
+	UMaterial* SectionMat = SpriteMaterial;
+
+	if (Spec.InstanceCount > 0)
 	{
-		const uint32 Base = q * 4;
-		uint32* Dst = Indices.data() + q * 6;
-		Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
-		Dst[3] = Base + 0; Dst[4] = Base + 2; Dst[5] = Base + 3;
+		// ---- Mesh particle 인스턴싱 경로 ----
+		// 정적 mesh VB(slot 0) + dynamic instance VB(slot 1). 정적 IB 그대로 사용.
+		OutBuffer.VB              = Spec.StaticVB;
+		OutBuffer.VBStride        = Spec.StaticVBStride;
+		OutBuffer.IB              = Spec.StaticIB;
+		OutBuffer.InstanceCount   = Spec.InstanceCount;
+		OutBuffer.InstanceVB      = DynamicVB.GetBuffer();
+		OutBuffer.InstanceVBStride = DynamicVB.GetStride();
+		SectionMat = MeshMaterial;
 	}
-	DynamicIB.EnsureCapacity(Device, Spec.IndexCount);
-	DynamicIB.Update(Context, Indices.data(), Spec.IndexCount);
+	else
+	{
+		// ---- Sprite 경로 (CPU 빌보드 expansion + quad IB) ----
+		const uint32 NumQuads = Spec.IndexCount / 6;
+		std::vector<uint32> Indices;
+		Indices.resize(Spec.IndexCount);
+		for (uint32 q = 0; q < NumQuads; ++q)
+		{
+			const uint32 Base = q * 4;
+			uint32* Dst = Indices.data() + q * 6;
+			Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
+			Dst[3] = Base + 0; Dst[4] = Base + 2; Dst[5] = Base + 3;
+		}
+		DynamicIB.EnsureCapacity(Device, Spec.IndexCount);
+		DynamicIB.Update(Context, Indices.data(), Spec.IndexCount);
 
-	// SectionDraws[0].IndexCount를 현재 프레임에 맞춰 갱신 (mutable cast).
-	// const 메서드지만 SectionDraws는 직접 수정 불가 → const_cast로 우회.
-	// (BuildCommandForProxy는 Proxy.GetSectionDraws()를 읽기 직후 호출되므로 안전.)
+		OutBuffer.VB       = DynamicVB.GetBuffer();
+		OutBuffer.VBStride = DynamicVB.GetStride();
+		OutBuffer.IB       = DynamicIB.GetBuffer();
+		SectionMat = SpriteMaterial;
+	}
+
+	// SectionDraws[0]: Material을 emitter type에 맞춰 교체 + IndexCount/FirstIndex 갱신.
 	auto& MutableSections = const_cast<TArray<FMeshSectionDraw>&>(GetSectionDraws());
 	if (!MutableSections.empty())
 	{
-		MutableSections[0].IndexCount = Spec.IndexCount;
+		MutableSections[0].Material   = SectionMat;
 		MutableSections[0].FirstIndex = 0;
+		MutableSections[0].IndexCount = Spec.IndexCount;
 	}
 	LastIndexCount = Spec.IndexCount;
 
-	OutBuffer = {};
-	OutBuffer.VB       = DynamicVB.GetBuffer();
-	OutBuffer.VBStride = DynamicVB.GetStride();
-	OutBuffer.IB       = DynamicIB.GetBuffer();
 	return OutBuffer.VB != nullptr && OutBuffer.IB != nullptr;
 }

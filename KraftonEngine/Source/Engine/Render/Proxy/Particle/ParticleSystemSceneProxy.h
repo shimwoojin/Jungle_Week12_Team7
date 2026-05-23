@@ -53,8 +53,10 @@ protected:
 	// per-proxy dynamic IB — quad pattern (4 verts + 6 indices per particle).
 	mutable FDynamicIndexBuffer DynamicIB;
 
-	// 단색 입자용 transient Material (UpdateMaterial에서 lazy init).
-	UMaterial* ParticleMaterial = nullptr;
+	// emitter type별 transient Material (UpdateMaterial에서 lazy init).
+	// PrepareDrawBuffer가 디스패치 후 SectionDraws[0].Material을 type에 맞게 교체.
+	UMaterial* SpriteMaterial = nullptr;
+	UMaterial* MeshMaterial   = nullptr;
 
 	// UpdatePerViewport에서 캐시한 카메라 벡터 (PrepareDrawBuffer에서 빌보드 expansion 시 사용).
 	FVector CachedCameraRight = { 1, 0, 0 };

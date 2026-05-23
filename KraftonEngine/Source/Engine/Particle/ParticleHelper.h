@@ -107,10 +107,12 @@ struct FParticleSpriteVertex
 
 struct FParticleMeshInstanceVertex
 {
-	// per-instance transform (column-major 12 floats = 3 rows of float4)
+	// per-instance world transform (row-major, 4 rows of float4).
+	// FMatrix가 row-major + HLSL이 mul(v, M)으로 받으니 4 row 모두 전송 (row 3에 translation).
 	FVector4 Transform0;
 	FVector4 Transform1;
 	FVector4 Transform2;
+	FVector4 Transform3;
 	FVector4 Color;
 	int32    SubImageIndex;
 };

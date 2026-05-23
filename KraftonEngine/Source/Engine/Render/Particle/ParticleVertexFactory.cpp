@@ -1,8 +1,10 @@
 #include "ParticleVertexFactory.h"
 
 #include "Render/Resource/Buffer.h"
+#include "Render/Resource/MeshBufferManager.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/VertexTypes.h"
+#include "Mesh/Static/StaticMesh.h"
 
 #include <d3d11.h>
 #include <vector>
@@ -98,18 +100,82 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 }
 
 // =============================================================================
-// Mesh / Beam / Ribbon — Day 3에서는 미구현 (Day 5에서 Mesh, 이후 Beam/Ribbon)
+// Mesh — 정적 StaticMesh + per-instance stream으로 DrawIndexedInstanced
 // =============================================================================
-void FParticleMeshVertexFactory::InitResources(ID3D11Device* /*Device*/) {}
-void FParticleMeshVertexFactory::ReleaseResources() {}
-bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
-                                           const FDynamicEmitterReplayDataBase& /*Replay*/,
+void FParticleMeshVertexFactory::InitResources(ID3D11Device* /*Device*/)
+{
+	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh);
+}
+
+void FParticleMeshVertexFactory::ReleaseResources()
+{
+	Shader = nullptr;
+}
+
+bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
+                                           const FDynamicEmitterReplayDataBase& Replay,
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
-                                           FDynamicVertexBuffer& /*InOutVB*/,
+                                           FDynamicVertexBuffer& InOutVB,
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
-	return false; // Day 5에서 구현
+	const uint32 N = Replay.ActiveParticleCount;
+	if (N == 0 || Replay.ParticleStride == 0) return false;
+
+	// Mesh emitter 전용 데이터로 캐스팅 (caller가 type 보장).
+	const auto& MeshReplay = static_cast<const FDynamicMeshEmitterReplayData&>(Replay);
+	UStaticMesh* Mesh = MeshReplay.Mesh;
+	// Mesh null이면 stub용 엔진 빌트인 Cube fallback.
+	FMeshBuffer* MB = Mesh
+		? Mesh->GetLODMeshBuffer(0)
+		: &FMeshBufferManager::Get().GetMeshBuffer(EMeshShape::Cube);
+	if (!MB || !MB->IsValid()) return false;
+
+	// per-instance 정점 채우기.
+	std::vector<FParticleMeshInstanceVertex> Instances(N);
+	const uint8* RawBase = Replay.ParticleData.data();
+
+	for (uint32 i = 0; i < N; ++i)
+	{
+		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Replay.ParticleStride);
+
+		// world matrix = Scale × RotationZ × Translation (row-major, mul(v, M))
+		FMatrix M = FMatrix::MakeScaleMatrix(P.Size)
+		          * FMatrix::MakeRotationZ(P.Rotation)
+		          * FMatrix::MakeTranslationMatrix(P.Location);
+		if (Replay.bUseLocalSpace)
+		{
+			M = M * Replay.LocalToWorld;
+		}
+
+		FParticleMeshInstanceVertex& V = Instances[i];
+		V.Transform0 = FVector4{ M.M[0][0], M.M[0][1], M.M[0][2], M.M[0][3] };
+		V.Transform1 = FVector4{ M.M[1][0], M.M[1][1], M.M[1][2], M.M[1][3] };
+		V.Transform2 = FVector4{ M.M[2][0], M.M[2][1], M.M[2][2], M.M[2][3] };
+		V.Transform3 = FVector4{ M.M[3][0], M.M[3][1], M.M[3][2], M.M[3][3] };
+		V.Color = P.Color;
+		V.SubImageIndex = P.SubImageIndex;
+	}
+
+	// Dynamic instance VB upload.
+	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+	{
+		InOutVB.Create(Device, N, sizeof(FParticleMeshInstanceVertex));
+	}
+	else
+	{
+		InOutVB.EnsureCapacity(Device, N);
+	}
+	if (!InOutVB.Update(Context, Instances.data(), N)) return false;
+
+	// 정적 mesh 자원 + instance count를 OutDraw로 전달.
+	OutDraw.StaticVB       = MB->GetVertexBuffer().GetBuffer();
+	OutDraw.StaticVBStride = MB->GetVertexBuffer().GetStride();
+	OutDraw.StaticIB       = MB->GetIndexBuffer().GetBuffer();
+	OutDraw.VertexCount    = MB->GetVertexBuffer().GetVertexCount();
+	OutDraw.IndexCount     = MB->GetIndexBuffer().GetIndexCount();
+	OutDraw.InstanceCount  = N;
+	return true;
 }
 
 void FParticleBeamVertexFactory::InitResources(ID3D11Device* /*Device*/) {}

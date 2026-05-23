@@ -38,6 +38,13 @@ public:
 		uint32 IndexCount  = 0;
 		uint32 VertexByteOffset = 0;
 		uint32 IndexByteOffset  = 0;
+
+		// 인스턴싱 경로 (Mesh particle 등) — InstanceCount > 0이면 정적 mesh + per-instance.
+		// InOutVB는 instance stream을, StaticVB/IB는 정적 mesh 외부 자원을 가리킴.
+		ID3D11Buffer* StaticVB       = nullptr;
+		uint32        StaticVBStride = 0;
+		ID3D11Buffer* StaticIB       = nullptr;
+		uint32        InstanceCount  = 0;
 	};
 	virtual bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	                       const FDynamicEmitterReplayDataBase& Replay,
