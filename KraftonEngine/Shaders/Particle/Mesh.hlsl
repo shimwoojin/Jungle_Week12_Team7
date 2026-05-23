@@ -48,5 +48,8 @@ PS_Input_MeshParticle VS(VS_Input_MeshParticle input)
 
 float4 PS(PS_Input_MeshParticle input) : SV_TARGET
 {
-    return float4(ApplyWireframe(input.color.rgb), input.color.a);
+    // Day 6 검증: alpha 1.0 강제 — vertex alpha 자산 의존성 제거 + 같은 proxy 내
+    // instance 간 정렬 미구현으로 인한 AlphaBlend artifact 회피.
+    // 진짜 반투명 필요 시 (1) instance buffer를 CameraDistance로 sort + (2) PS alpha 복원.
+    return float4(ApplyWireframe(input.color.rgb), 1.0);
 }

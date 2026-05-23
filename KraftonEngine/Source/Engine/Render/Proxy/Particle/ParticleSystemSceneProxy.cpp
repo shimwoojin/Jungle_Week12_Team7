@@ -1,4 +1,4 @@
-#include "ParticleSystemSceneProxy.h"
+﻿#include "ParticleSystemSceneProxy.h"
 
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "GameFramework/AActor.h"
@@ -88,6 +88,37 @@ void FParticleSystemSceneProxy::UpdateTransform()
 
 void FParticleSystemSceneProxy::UpdateMaterial()
 {
+	//if (!SpriteMaterial)
+	//{
+	//	SpriteMaterial = UMaterial::CreateTransient(
+	//		ERenderPass::Translucent, EBlendState::AlphaBlend,
+	//		EDepthStencilState::DepthReadOnly, ERasterizerState::SolidNoCull,
+	//		FShaderManager::Get().GetOrCreate(EShaderPath::ParticleSprite));
+	//}
+	//if (!MeshMaterial)
+	//{
+	//	MeshMaterial = UMaterial::CreateTransient(
+	//		ERenderPass::Translucent, EBlendState::AlphaBlend,
+	//		EDepthStencilState::DepthReadOnly, ERasterizerState::SolidBackCull,
+	//		FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh));
+	//}
+
+	//// Material/IndexCount는 PrepareDrawBuffer가 매 프레임 갱신 (emitter type 따라).
+	//// 여기선 placeholder 1개만 등록 — Sprite를 default로.
+	//SectionDraws.clear();
+	//SectionDraws.push_back({ SpriteMaterial, /*FirstIndex*/0, /*IndexCount*/0 });
+}
+
+void FParticleSystemSceneProxy::UpdateVisibility()
+{
+	FPrimitiveSceneProxy::UpdateVisibility();
+}
+
+void FParticleSystemSceneProxy::UpdateMesh()
+{
+	// Particle 프록시는 정적 MeshBuffer 없음 — 매 프레임 dynamic VB/IB로 그림.
+	MeshBuffer = nullptr;
+
 	if (!SpriteMaterial)
 	{
 		SpriteMaterial = UMaterial::CreateTransient(
@@ -107,17 +138,6 @@ void FParticleSystemSceneProxy::UpdateMaterial()
 	// 여기선 placeholder 1개만 등록 — Sprite를 default로.
 	SectionDraws.clear();
 	SectionDraws.push_back({ SpriteMaterial, /*FirstIndex*/0, /*IndexCount*/0 });
-}
-
-void FParticleSystemSceneProxy::UpdateVisibility()
-{
-	FPrimitiveSceneProxy::UpdateVisibility();
-}
-
-void FParticleSystemSceneProxy::UpdateMesh()
-{
-	// Particle 프록시는 정적 MeshBuffer 없음 — 매 프레임 dynamic VB/IB로 그림.
-	MeshBuffer = nullptr;
 }
 
 void FParticleSystemSceneProxy::UpdatePerViewport(const FFrameContext& Frame)
@@ -233,7 +253,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		// Day 5 검증: Mesh stub을 먼저 시도 (첫 성공 emitter 정책 하에서 Mesh 인스턴싱이 보이도록).
 		// Sprite stub은 멀티 emitter 동시 렌더 미구현이라 같이 push해도 안 그려짐 — 따로 토글로 검증 가능.
 		// Day 6 성능 측정 시 STUB_PARTICLE_COUNT를 10000으로 변경해서 1만 입자 16ms 게이트 확인.
-		constexpr uint32 STUB_PARTICLE_COUNT = 4;
+		constexpr uint32 STUB_PARTICLE_COUNT = 10;
 		BuildStubMeshReplay(StubMeshReplay, CachedWorldPos, STUB_PARTICLE_COUNT);
 		Replays.push_back(&StubMeshReplay);
 	}

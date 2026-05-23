@@ -1,4 +1,4 @@
-#include "ParticleSystemComponent.h"
+﻿#include "ParticleSystemComponent.h"
 
 #include "Particle/ParticleSystem.h"
 #include "Particle/ParticleEmitter.h"
@@ -19,6 +19,8 @@ void UParticleSystemComponent::Activate(bool bReset)
 {
 	bActive = true;
 	if (bReset) ResetParticles();
+
+	MarkProxyDirty(EDirtyFlag::Material);
 }
 
 void UParticleSystemComponent::Deactivate()

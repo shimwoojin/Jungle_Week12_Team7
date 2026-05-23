@@ -1,10 +1,10 @@
 #include "ParticleVertexFactory.h"
 
 #include "Render/Resource/Buffer.h"
-#include "Render/Resource/MeshBufferManager.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/VertexTypes.h"
 #include "Mesh/Static/StaticMesh.h"
+#include "Mesh/MeshManager.h"
 
 #include <d3d11.h>
 #include <vector>
@@ -102,14 +102,22 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 // =============================================================================
 // Mesh — 정적 StaticMesh + per-instance stream으로 DrawIndexedInstanced
 // =============================================================================
-void FParticleMeshVertexFactory::InitResources(ID3D11Device* /*Device*/)
+void FParticleMeshVertexFactory::InitResources(ID3D11Device* Device)
 {
 	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh);
+
+	// Replay.Mesh가 nullptr인 stub용 fallback — Content의 기본 Cube 자산.
+	// Mesh primitive(FVertex 포맷) 대신 UStaticMesh(FVertexPNCT)라 셰이더 input layout과 매칭.
+	if (!CachedCubeFallback && Device)
+	{
+		CachedCubeFallback = FMeshManager::LoadStaticMesh("Content/Data/BasicShape/Cube.OBJ", Device);
+	}
 }
 
 void FParticleMeshVertexFactory::ReleaseResources()
 {
 	Shader = nullptr;
+	CachedCubeFallback = nullptr; // UObjectManager 소유 — pointer만 비움
 }
 
 bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
@@ -124,11 +132,10 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 
 	// Mesh emitter 전용 데이터로 캐스팅 (caller가 type 보장).
 	const auto& MeshReplay = static_cast<const FDynamicMeshEmitterReplayData&>(Replay);
-	UStaticMesh* Mesh = MeshReplay.Mesh;
-	// Mesh null이면 stub용 엔진 빌트인 Cube fallback.
-	FMeshBuffer* MB = Mesh
-		? Mesh->GetLODMeshBuffer(0)
-		: &FMeshBufferManager::Get().GetMeshBuffer(EMeshShape::Cube);
+	// Mesh null이면 InitResources에서 로드한 Content/Data/BasicShape/Cube.OBJ fallback.
+	UStaticMesh* Mesh = MeshReplay.Mesh ? MeshReplay.Mesh : CachedCubeFallback;
+	if (!Mesh) return false;
+	FMeshBuffer* MB = Mesh->GetLODMeshBuffer(0);
 	if (!MB || !MB->IsValid()) return false;
 
 	// per-instance 정점 채우기.

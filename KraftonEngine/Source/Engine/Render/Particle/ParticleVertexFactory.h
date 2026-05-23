@@ -82,6 +82,8 @@ protected:
 //   StaticMesh 의 vertex/index 를 그대로 쓰고, per-instance buffer 에
 //   transform/color/sub-image 를 흘려넣는다 (instanced draw).
 // -----------------------------------------------------------------------------
+class UStaticMesh;
+
 class FParticleMeshVertexFactory : public FParticleVertexFactory
 {
 public:
@@ -98,7 +100,10 @@ public:
 	void ReleaseResources() override;
 
 protected:
-	FShader* Shader = nullptr;
+	FShader*     Shader             = nullptr;
+	// Replay.Mesh == nullptr 일 때 fallback. InitResources에서 한 번 로드 후 재사용.
+	// (정점 포맷이 FVertexPNCT라 Mesh.hlsl과 매칭 — 엔진 빌트인 Cube primitive와 달리)
+	UStaticMesh* CachedCubeFallback = nullptr;
 };
 
 // -----------------------------------------------------------------------------
