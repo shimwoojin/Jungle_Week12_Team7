@@ -34,8 +34,9 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
-	const uint32 N = Replay.ActiveParticleCount;
-	if (N == 0 || Replay.ParticleStride == 0) return false;
+	const FParticleDataView View = Replay.GetParticleView();
+	const uint32 N = View.ActiveParticleCount;
+	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
 
 	const uint32 VertCount  = N * 4;
 	const uint32 IndexCount = N * 6;
@@ -51,8 +52,8 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	std::vector<FVertexPNCT> Vertices(VertCount);
 
 	// 입자 데이터는 [ActiveCount × Stride] 의 raw 바이트. FBaseParticle 헤더로 캐스팅.
-	const uint8* RawBase = Replay.ParticleData.data();
-	const uint32 Stride  = Replay.ParticleStride;
+	const uint8* RawBase = View.ParticleData;
+	const uint32 Stride  = View.ParticleStride;
 	const bool   bLocal  = Replay.bUseLocalSpace;
 	const FMatrix& L2W   = Replay.LocalToWorld;
 
@@ -171,8 +172,9 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
-	const uint32 N = Replay.ActiveParticleCount;
-	if (N == 0 || Replay.ParticleStride == 0) return false;
+	const FParticleDataView View = Replay.GetParticleView();
+	const uint32 N = View.ActiveParticleCount;
+	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
 
 	// Mesh emitter 전용 데이터로 캐스팅 (caller가 type 보장).
 	const auto& MeshReplay = static_cast<const FDynamicMeshEmitterReplayData&>(Replay);
@@ -184,11 +186,11 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 
 	// per-instance 정점 채우기.
 	std::vector<FParticleMeshInstanceVertex> Instances(N);
-	const uint8* RawBase = Replay.ParticleData.data();
+	const uint8* RawBase = View.ParticleData;
 
 	for (uint32 i = 0; i < N; ++i)
 	{
-		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Replay.ParticleStride);
+		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * View.ParticleStride);
 
 		// world matrix = Scale × RotationZ × Translation (row-major, mul(v, M))
 		FMatrix M = FMatrix::MakeScaleMatrix(P.Size)

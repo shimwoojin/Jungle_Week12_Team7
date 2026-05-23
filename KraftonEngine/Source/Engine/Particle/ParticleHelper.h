@@ -6,6 +6,8 @@
 #include "Render/Types/VertexTypes.h"     // Windows.h 를 끌어오므로 RenderStateTypes 보다 먼저
 #include "Render/Types/RenderStateTypes.h"
 
+#include <utility>
+
 // =============================================================================
 // ParticleHelper.h
 //   Particle 시스템 전역에서 공유되는 POD/구조체/상수 모음.
@@ -161,6 +163,62 @@ struct FParticleStorage
 	uint32 InstanceDataBytes = 0;
 	uint32 MaxActiveParticles = 0;
 
+	FParticleStorage() = default;
+
+	FParticleStorage(const FParticleStorage& Other)
+		: MemBlock(Other.MemBlock)
+		, ParticleDataBytes(Other.ParticleDataBytes)
+		, ParticleIndexCount(Other.ParticleIndexCount)
+		, InstanceDataBytes(Other.InstanceDataBytes)
+		, MaxActiveParticles(Other.MaxActiveParticles)
+	{
+		RebindViews();
+	}
+
+	FParticleStorage& operator=(const FParticleStorage& Other)
+	{
+		if (this == &Other)
+		{
+			return *this;
+		}
+
+		MemBlock = Other.MemBlock;
+		ParticleDataBytes = Other.ParticleDataBytes;
+		ParticleIndexCount = Other.ParticleIndexCount;
+		InstanceDataBytes = Other.InstanceDataBytes;
+		MaxActiveParticles = Other.MaxActiveParticles;
+		RebindViews();
+		return *this;
+	}
+
+	FParticleStorage(FParticleStorage&& Other) noexcept
+		: MemBlock(std::move(Other.MemBlock))
+		, ParticleDataBytes(Other.ParticleDataBytes)
+		, ParticleIndexCount(Other.ParticleIndexCount)
+		, InstanceDataBytes(Other.InstanceDataBytes)
+		, MaxActiveParticles(Other.MaxActiveParticles)
+	{
+		RebindViews();
+		Other.Release();
+	}
+
+	FParticleStorage& operator=(FParticleStorage&& Other) noexcept
+	{
+		if (this == &Other)
+		{
+			return *this;
+		}
+
+		MemBlock = std::move(Other.MemBlock);
+		ParticleDataBytes = Other.ParticleDataBytes;
+		ParticleIndexCount = Other.ParticleIndexCount;
+		InstanceDataBytes = Other.InstanceDataBytes;
+		MaxActiveParticles = Other.MaxActiveParticles;
+		RebindViews();
+		Other.Release();
+		return *this;
+	}
+
 	void Allocate(uint32 InParticleDataBytes, uint32 InParticleIndexCount, uint32 InInstanceDataBytes = 0)
 	{
 		ParticleDataBytes = InParticleDataBytes;
@@ -252,14 +310,24 @@ struct FDynamicEmitterReplayDataBase
 
 	uint32 ActiveParticleCount = 0;
 	uint32 ParticleStride      = 0;            // BaseParticle + payload
-	TArray<uint8>  ParticleData;               // [ActiveParticleCount * Stride]
-	TArray<uint16> ParticleIndices;            // 활성 인덱스 (sort 결과 등 포함 가능)
+	FParticleStorage SnapshotStorage;
 
 	// Material이 BlendState/DepthStencilState 등 렌더 상태의 single source of truth.
 	// 별도 BlendState 필드를 두지 않음 — Material->GetBlendState() 사용.
 	UMaterial* Material = nullptr;
 	bool bUseLocalSpace = false;
 	FMatrix LocalToWorld;      // bUseLocalSpace == true 일 때만 의미 있음 (default ctor = zero)
+
+	FParticleDataView GetParticleView() const
+	{
+		FParticleDataView View;
+		View.ActiveParticleCount = ActiveParticleCount;
+		View.ParticleStride = ParticleStride;
+		View.ParticleData = SnapshotStorage.ParticleData;
+		View.ParticleIndices = SnapshotStorage.ParticleIndices;
+		View.InstanceData = SnapshotStorage.InstanceData;
+		return View;
+	}
 };
 
 struct FDynamicEmitterDataBase

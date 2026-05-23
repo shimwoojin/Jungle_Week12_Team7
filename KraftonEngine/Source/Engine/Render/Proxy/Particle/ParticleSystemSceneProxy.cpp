@@ -208,9 +208,12 @@ static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FV
 	OutReplay.ParticleStride = sizeof(FBaseParticle);
 	OutReplay.bUseLocalSpace = false;
 	// Material은 proxy의 transient ParticleMaterial이 BlendState 등 담당 — stub은 미설정.
-	OutReplay.ParticleData.assign(static_cast<size_t>(OutReplay.ActiveParticleCount) * OutReplay.ParticleStride, 0);
+	OutReplay.SnapshotStorage.Allocate(
+		OutReplay.ActiveParticleCount * OutReplay.ParticleStride,
+		OutReplay.ActiveParticleCount,
+		0);
 
-	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());
+	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.SnapshotStorage.ParticleData);
 
 	// 2x2x2 격자 — proxy 위치 기준 ±1 유닛 (Day 3 시각 검증용)
 	static const float Off[8][3] = {
@@ -248,9 +251,12 @@ static void BuildStubMeshReplay(FDynamicMeshEmitterReplayData& OutReplay,
 	OutReplay.ParticleStride = sizeof(FBaseParticle);
 	OutReplay.bUseLocalSpace = false;
 	OutReplay.Mesh = nullptr; // factory가 Cube fallback
-	OutReplay.ParticleData.assign(static_cast<size_t>(Count) * OutReplay.ParticleStride, 0);
+	OutReplay.SnapshotStorage.Allocate(
+		Count * OutReplay.ParticleStride,
+		Count,
+		0);
 
-	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());
+	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.SnapshotStorage.ParticleData);
 
 	// Golden angle spiral — disk 패턴. 큰 N에서도 균등 분포.
 	constexpr float GoldenAngle = 2.39996323f;

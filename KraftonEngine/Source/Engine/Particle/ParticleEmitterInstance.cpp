@@ -322,8 +322,7 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	OutData.ActiveParticleCount = ActiveParticles;
 	OutData.ParticleStride = ParticleStride;
 
-	OutData.ParticleData.resize(ActiveParticles * ParticleStride, 0);
-	OutData.ParticleIndices.resize(ActiveParticles, 0);
+	OutData.SnapshotStorage.Allocate(ActiveParticles * ParticleStride, ActiveParticles, 0);
 
 	for (uint32 i = 0; i < ActiveParticles; ++i)
 	{
@@ -331,11 +330,11 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 		if (!Particle) continue;
 
 		std::memcpy(
-			OutData.ParticleData.data() + i * ParticleStride,
+			OutData.SnapshotStorage.ParticleData + i * ParticleStride,
 			Particle,
 			ParticleStride);
 
-		OutData.ParticleIndices[i] = static_cast<uint16>(i);
+		OutData.SnapshotStorage.ParticleIndices[i] = static_cast<uint16>(i);
 	}
 
 	UParticleLODLevel* LOD = GetCurrentLOD();
@@ -397,6 +396,7 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 	FDynamicSpriteEmitterData* Data = new FDynamicSpriteEmitterData();
 
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Sprite;
 
 	UParticleLODLevel* LOD = GetCurrentLOD();
 	if (LOD && LOD->RequiredModule)
@@ -413,6 +413,7 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 { 
 	FDynamicMeshEmitterData* Data = new FDynamicMeshEmitterData();
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
 	return Data;
 }
 
@@ -422,6 +423,7 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 	FDynamicBeamEmitterData* Data = new FDynamicBeamEmitterData();
 
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Beam;
 
 	Data->Source.SourcePoint = SourcePoint;
 	Data->Source.TargetPoint = TargetPoint;
@@ -439,5 +441,6 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 { 
 	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
 	FillReplayData(Data->Source);
+	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;
 	return Data;
 }
