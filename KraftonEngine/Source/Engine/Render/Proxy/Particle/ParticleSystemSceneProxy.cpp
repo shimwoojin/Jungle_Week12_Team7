@@ -197,96 +197,14 @@ void FParticleSystemSceneProxy::UpdatePerViewport(const FFrameContext& Frame)
 	MarkPerObjectCBDirty();
 }
 
-// ---------------------------------------------------------------------------
-// 스텁 데이터 생성 — DynamicData가 없으면 proxy origin 주변에 8개 입자 배치.
-// Day 4 이후 P1의 BuildDynamicData가 도착하면 이 경로는 죽음.
-// ---------------------------------------------------------------------------
-static void BuildStubReplay(FDynamicSpriteEmitterReplayData& OutReplay, const FVector& Origin)
-{
-	OutReplay.EmitterType = EDynamicEmitterType::Sprite;
-	OutReplay.ActiveParticleCount = 8;
-	OutReplay.ParticleStride = sizeof(FBaseParticle);
-	OutReplay.bUseLocalSpace = false;
-	// Material은 proxy의 transient ParticleMaterial이 BlendState 등 담당 — stub은 미설정.
-	OutReplay.ParticleData.assign(static_cast<size_t>(OutReplay.ActiveParticleCount) * OutReplay.ParticleStride, 0);
-
-	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());
-
-	// 2x2x2 격자 — proxy 위치 기준 ±1 유닛 (Day 3 시각 검증용)
-	static const float Off[8][3] = {
-		{ -1, -1, -1 }, {  1, -1, -1 }, { -1,  1, -1 }, {  1,  1, -1 },
-		{ -1, -1,  1 }, {  1, -1,  1 }, { -1,  1,  1 }, {  1,  1,  1 },
-	};
-	static const FVector4 Colors[8] = {
-		{ 1, 0, 0, 1 }, { 0, 1, 0, 1 }, { 0, 0, 1, 1 }, { 1, 1, 0, 1 },
-		{ 1, 0, 1, 1 }, { 0, 1, 1, 1 }, { 1, 1, 1, 1 }, { 1, 0.5f, 0, 1 },
-	};
-
-	for (uint32 i = 0; i < 8; ++i)
-	{
-		new (&P[i]) FBaseParticle();
-		P[i].Location = Origin + FVector(Off[i][0], Off[i][1], Off[i][2]);
-		P[i].Size     = { 0.3f, 0.3f, 0.3f };
-		P[i].Color    = Colors[i];
-		P[i].BaseColor = Colors[i];
-		P[i].BaseSize  = P[i].Size;
-		P[i].RelativeTime = 0.0f;
-		P[i].OneOverMaxLifetime = 1.0f;
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Mesh stub — Replay.Mesh = nullptr → factory가 엔진 빌트인 Cube로 fallback.
-// Count 파라미터로 1만 입자 성능 측정 시 늘릴 수 있음.
-// 배치: sunflower seed pattern (golden angle spiral) — 입자가 겹치지 않으면서 disk 분포.
-// ---------------------------------------------------------------------------
-static void BuildStubMeshReplay(FDynamicMeshEmitterReplayData& OutReplay,
-                                 const FVector& Origin, uint32 Count)
-{
-	OutReplay.EmitterType = EDynamicEmitterType::Mesh;
-	OutReplay.ActiveParticleCount = Count;
-	OutReplay.ParticleStride = sizeof(FBaseParticle);
-	OutReplay.bUseLocalSpace = false;
-	OutReplay.Mesh = nullptr; // factory가 Cube fallback
-	OutReplay.ParticleData.assign(static_cast<size_t>(Count) * OutReplay.ParticleStride, 0);
-
-	FBaseParticle* P = reinterpret_cast<FBaseParticle*>(OutReplay.ParticleData.data());
-
-	// Golden angle spiral — disk 패턴. 큰 N에서도 균등 분포.
-	constexpr float GoldenAngle = 2.39996323f;
-	// 1만 입자에서 size 0.1로 화면 가득 — 측정용.
-	const float ParticleSize = Count > 1000 ? 0.1f : 0.5f;
-	const float SpacingFactor = Count > 1000 ? 0.15f : 0.6f;
-
-	for (uint32 i = 0; i < Count; ++i)
-	{
-		new (&P[i]) FBaseParticle();
-		const float Phi    = static_cast<float>(i) * GoldenAngle;
-		const float Radius = SpacingFactor * std::sqrt(static_cast<float>(i + 1));
-		const float Cosp   = std::cos(Phi);
-		const float Sinp   = std::sin(Phi);
-
-		P[i].Location  = Origin + FVector(Cosp * Radius, Sinp * Radius, 0.0f);
-		P[i].Size      = { ParticleSize, ParticleSize, ParticleSize };
-		P[i].BaseSize  = P[i].Size;
-		// 색상은 phase 따라 회전
-		P[i].Color     = FVector4{ 0.5f + 0.5f * Cosp, 0.5f + 0.5f * Sinp, 0.5f, 1.0f };
-		P[i].BaseColor = P[i].Color;
-		P[i].Rotation  = 0.0f;
-		P[i].RelativeTime = 0.0f;
-		P[i].OneOverMaxLifetime = 1.0f;
-	}
-}
-
 bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11DeviceContext* Context,
                                                   FDrawCommandBuffer& OutBuffer) const
 {
 	OutBuffer = {}; // section-level BufferOverride 사용 — ProxyBuffer는 빈 상태로 둠
 	if (!Device || !Context) return false;
 
-	// ---- Replay 목록 결정 (실제 DynamicData 우선, 없으면 stub은 Sprite + Mesh 둘 다) ----
-	FDynamicSpriteEmitterReplayData StubSpriteReplay;
-	FDynamicMeshEmitterReplayData   StubMeshReplay;
+	// ---- Replay 목록 — PSC.TickComponent → BuildDynamicData에서 채워짐.
+	// Editor 모드(PIE 미실행)에선 PSC가 Tick 안 해서 DynamicData가 null이라 빈 채로 return.
 	TArray<const FDynamicEmitterReplayDataBase*> Replays;
 	if (DynamicData && !DynamicData->Emitters.empty())
 	{
@@ -295,16 +213,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 			if (E) Replays.push_back(&E->GetReplayDataBase());
 		}
 	}
-	if (Replays.empty())
-	{
-		// 멀티 emitter 동시 렌더 검증: Sprite + Mesh stub 둘 다 push.
-		// 성능 측정 시 STUB_MESH_COUNT를 10000으로 변경해서 1만 입자 16ms 게이트 확인.
-		constexpr uint32 STUB_MESH_COUNT = 10000;
-		BuildStubMeshReplay(StubMeshReplay, CachedWorldPos, STUB_MESH_COUNT);
-		Replays.push_back(&StubMeshReplay);
-		BuildStubReplay(StubSpriteReplay, CachedWorldPos);
-		Replays.push_back(&StubSpriteReplay);
-	}
+	if (Replays.empty()) return false;
 
 	// ---- 모든 emitter 디스패치 — emitter당 1 SectionDraw + 자체 BufferOverride ----
 	auto& MutableSections = const_cast<TArray<FMeshSectionDraw>&>(GetSectionDraws());
