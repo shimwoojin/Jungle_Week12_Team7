@@ -7,6 +7,11 @@
 #include "Particle/ParticleEmitterInstance.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
 #include "Object/Reflection/ObjectFactory.h"
+#include "Modules/ParticleModuleLifetime.h"
+#include "Modules/ParticleModuleLocation.h"
+#include "Modules/ParticleModuleVelocity.h"
+#include "Modules/ParticleModuleColor.h"
+#include "Modules/ParticleModuleSize.h"
 
 void UParticleEmitter::InitializeDefaultLODLevel()
 {
@@ -37,6 +42,58 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 	{
 		auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(LOD0);
 		LOD0->SpawnModule = Spawn;
+	}
+
+	auto HasModuleCategory = [LOD0](UParticleModule::EModuleCategory Category) ->bool
+		{
+			for (UParticleModule* Module : LOD0->Modules)
+			{
+				if (Module && Module->GetCategory() == Category)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Lifetime))
+	{
+		auto* Lifetime = UObjectManager::Get().CreateObject<UParticleModuleLifetime>(LOD0);
+		LOD0->AddModule(Lifetime);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Location))
+	{
+		auto* Location = UObjectManager::Get().CreateObject<UParticleModuleLocation>(LOD0);
+		LOD0->AddModule(Location);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Velocity))
+	{
+		auto* Velocity = UObjectManager::Get().CreateObject<UParticleModuleVelocity>(LOD0);
+
+		//TODO: 추후 삭제 - 테스트용
+		Velocity->StartVelocityMin = {0.0f, 0.0f, 30.0f};
+		Velocity->StartVelocityMax = {0.0f, 0.0f, 80.0f};
+
+		LOD0->AddModule(Velocity);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Color))
+	{
+		auto* Color = UObjectManager::Get().CreateObject<UParticleModuleColor>(LOD0);
+		LOD0->AddModule(Color);
+	}
+
+	if (!HasModuleCategory(UParticleModule::EModuleCategory::Size))
+	{
+		auto* Size = UObjectManager::Get().CreateObject<UParticleModuleSize>(LOD0);
+
+		//TODO: 추후 삭제 - 테스트용
+		Size->StartSizeMin = {5.0f, 5.0f, 1.0f};
+		Size->StartSizeMax = {10.0f, 10.0f, 1.0f};
+
+		LOD0->AddModule(Size);
 	}
 }
 

@@ -128,18 +128,16 @@ void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 	if (!LOD || !LOD->bEnabled) return;
 	if (!LOD->SpawnModule) return;
 
+	// 초당 생성되는 입자 개수
 	float SpawnAmount = 0.0f;
 	int32 BurstCount = 0;
 
-	LOD->SpawnModule->GetSpawnAmount(
-		DeltaTime,
-		EmitterTimeSeconds,
-		SpawnAmount,
-		BurstCount);
+	LOD->SpawnModule->GetSpawnAmount(DeltaTime, EmitterTimeSeconds,SpawnAmount,BurstCount);
 
 	SpawnAmount = std::max(0.0f, SpawnAmount);
 	BurstCount = std::max(0, BurstCount);
 
+	// Fraction - 이전 프레임에서 계산된 찌꺼기값
 	const float TotalSpawnFloat = SpawnFraction + SpawnAmount;
 	const int32 RateSpawnCount = static_cast<int32>(std::floor(TotalSpawnFloat));
 
@@ -153,6 +151,7 @@ void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 		SpawnCount = static_cast<int32>(ParticleConstants::MaxBurstCountPerFrame);
 	}
 
+	// 생성가능한 빈 자리 수
 	const uint32 FreeCount =
 		ParticleConstants::MaxParticlesPerEmitter > ActiveParticles
 		? ParticleConstants::MaxParticlesPerEmitter - ActiveParticles
@@ -165,6 +164,7 @@ void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 		SpawnCount = static_cast<int32>(FreeCount);
 	}
 
+	// Spawn 진행
 	SpawnInternal(SpawnCount, 0.0f);
 }
 
