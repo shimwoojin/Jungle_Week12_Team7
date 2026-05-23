@@ -326,21 +326,26 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		default: ++EmitterIdx; continue; // Beam/Ribbon 미구현
 		}
 
-		FParticleVertexFactory::FDrawSpec Spec;
-		if (!Factory->BuildDraw(Device, Context, *Replay,
-			CachedCameraRight, CachedCameraUp, CachedCameraPosition, *EmitterVB, Spec))
-		{
-			++EmitterIdx;
-			continue;
-		}
-		if (Spec.IndexCount == 0) { ++EmitterIdx; continue; }
-
+		// Material 먼저 결정 — sort 조건 산출 위해 BuildDraw 호출 전에 BlendState 확인.
 		// RequiredModule.Material 우선 (Template 있을 때). 없으면 type별 fallback.
 		UMaterial* RequiredMat = (EmitterIdx < EmitterMaterials.size())
 			? EmitterMaterials[EmitterIdx] : nullptr;
 		UMaterial* FallbackMat = (Replay->EmitterType == EDynamicEmitterType::Mesh)
 			? MeshMaterial : SpriteMaterial;
 		UMaterial* SectionMat  = RequiredMat ? RequiredMat : FallbackMat;
+
+		// AlphaBlend만 sort 필요 — Opaque/Additive/Modulate는 정렬 무관 (1만 입자 ~1.4ms 절약).
+		const bool bRequiresSort = SectionMat
+			&& SectionMat->GetBlendState() == EBlendState::AlphaBlend;
+
+		FParticleVertexFactory::FDrawSpec Spec;
+		if (!Factory->BuildDraw(Device, Context, *Replay,
+			CachedCameraRight, CachedCameraUp, CachedCameraPosition, bRequiresSort, *EmitterVB, Spec))
+		{
+			++EmitterIdx;
+			continue;
+		}
+		if (Spec.IndexCount == 0) { ++EmitterIdx; continue; }
 
 		FMeshSectionDraw Section;
 		Section.FirstIndex = 0;
