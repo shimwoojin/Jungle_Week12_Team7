@@ -8,11 +8,11 @@
   "Parameters" : {
     "BaseColor" : [1.000000, 1.000000, 1.000000, 1.000000],
     "Opacity" : 1.000000,
-    "UseTexture" : 0.000000,
+    "UseTexture" : 1.000000,
     "_pad" : [0.000000, 0.000000]
   },
   "Textures" : {
-    "DiffuseTexture" : ""
+    "DiffuseTexture" : "Content/Data/Samba Dancing/textures/b0.png"
   },
   "Origin" : "Particle"
 }

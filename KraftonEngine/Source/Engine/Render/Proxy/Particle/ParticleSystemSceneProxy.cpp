@@ -299,7 +299,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	{
 		// 멀티 emitter 동시 렌더 검증: Sprite + Mesh stub 둘 다 push.
 		// 성능 측정 시 STUB_MESH_COUNT를 10000으로 변경해서 1만 입자 16ms 게이트 확인.
-		constexpr uint32 STUB_MESH_COUNT = 10;
+		constexpr uint32 STUB_MESH_COUNT = 10000;
 		BuildStubMeshReplay(StubMeshReplay, CachedWorldPos, STUB_MESH_COUNT);
 		Replays.push_back(&StubMeshReplay);
 		BuildStubReplay(StubSpriteReplay, CachedWorldPos);
