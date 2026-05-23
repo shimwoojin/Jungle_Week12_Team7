@@ -23,6 +23,8 @@ namespace Key
 	constexpr const char* ViewMode = "ViewMode";
 	constexpr const char* bStaticMesh = "bStaticMesh";
 	constexpr const char* bSkeletalMesh = "bSkeletalMesh";
+	constexpr const char* bParticles = "bParticles";
+	constexpr const char* bParticleBounds = "bParticleBounds";
 	constexpr const char* bGrid = "bGrid";
 	constexpr const char* bWorldAxis = "bWorldAxis";
 	constexpr const char* bGizmo = "bGizmo";
@@ -152,6 +154,8 @@ json::JSON SaveRenderOptions(const FViewportRenderOptions& Opts)
 	Obj[Key::ViewportType] = static_cast<int32>(Opts.ViewportType);
 	Obj[Key::bStaticMesh] = Opts.ShowFlags.bStaticMesh;
 	Obj[Key::bSkeletalMesh] = Opts.ShowFlags.bSkeletalMesh;
+	Obj[Key::bParticles] = Opts.ShowFlags.bParticles;
+	Obj[Key::bParticleBounds] = Opts.ShowFlags.bParticleBounds;
 	Obj[Key::bGrid] = Opts.ShowFlags.bGrid;
 	Obj[Key::bWorldAxis] = Opts.ShowFlags.bWorldAxis;
 	Obj[Key::bGizmo] = Opts.ShowFlags.bGizmo;
@@ -193,6 +197,10 @@ void LoadRenderOptions(json::JSON Obj, FViewportRenderOptions& Opts)
 		Opts.ShowFlags.bStaticMesh = Obj[Key::bStaticMesh].ToBool();
 	if (Obj.hasKey(Key::bSkeletalMesh))
 		Opts.ShowFlags.bSkeletalMesh = Obj[Key::bSkeletalMesh].ToBool();
+	if (Obj.hasKey(Key::bParticles))
+		Opts.ShowFlags.bParticles = Obj[Key::bParticles].ToBool();
+	if (Obj.hasKey(Key::bParticleBounds))
+		Opts.ShowFlags.bParticleBounds = Obj[Key::bParticleBounds].ToBool();
 	if (Obj.hasKey(Key::bGrid))
 		Opts.ShowFlags.bGrid = Obj[Key::bGrid].ToBool();
 	if (Obj.hasKey(Key::bWorldAxis))

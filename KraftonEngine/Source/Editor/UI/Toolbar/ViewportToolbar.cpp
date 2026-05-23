@@ -593,6 +593,8 @@ void FViewportToolbar::RenderShowFlags(const FToolbarRenderState& State)
 
 		ImGui::Checkbox("StaticMesh", &RenderOptions.ShowFlags.bStaticMesh);
 		ImGui::Checkbox("SkeletalMesh", &RenderOptions.ShowFlags.bSkeletalMesh);
+		ImGui::Checkbox("Particles", &RenderOptions.ShowFlags.bParticles);
+		ImGui::Checkbox("Particle Bounds", &RenderOptions.ShowFlags.bParticleBounds);
 		ImGui::Checkbox("Grid", &RenderOptions.ShowFlags.bGrid);
 		ImGui::Checkbox("World Axis", &RenderOptions.ShowFlags.bWorldAxis);
 		ImGui::Checkbox("Gizmo", &RenderOptions.ShowFlags.bGizmo);
