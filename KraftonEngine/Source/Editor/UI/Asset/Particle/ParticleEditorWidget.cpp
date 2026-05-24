@@ -975,9 +975,8 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 						Required->CachedMaterial = nullptr;
 						bChanged = true;
 					}
-					static const char* BlendNames[] = { "Opaque", "AlphaBlend", "Additive", "Modulate", "NoColor" };
-					int32 Blend = static_cast<int32>(Required->BlendState);
-					if (ComboInt("Blend State", Blend, BlendNames, 5)) { Required->BlendState = static_cast<EBlendState>(Blend); bChanged = true; }
+					// Blend State는 Material(.mat)이 결정 — 에디터 비노출. Material 슬롯에서 변경한다.
+					ImGui::TextDisabled("Blend State: from Material (.mat)");
 					bChanged |= ImGui::Checkbox("Use Local Space", &Required->bUseLocalSpace);
 					bChanged |= ImGui::DragInt("SubImages Horizontal", &Required->SubImagesHorizontal, 1.0f, 1, 64);
 					bChanged |= ImGui::DragInt("SubImages Vertical", &Required->SubImagesVertical, 1.0f, 1, 64);

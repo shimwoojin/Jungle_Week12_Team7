@@ -14,7 +14,7 @@ class UMaterial;
 //   - 매 프레임 PSC 가 만든 FDynamicData (emitter snapshot 묶음) 를 받아 보관
 //   - DrawCall 시 각 emitter type 의 VertexFactory 로 dispatch
 //   - Dynamic VB 는 proxy 가 소유 (per-frame ring)
-//   - Blend: Required.BlendState 에 따라 AlphaBlend/Additive 등 선택
+//   - Blend: Material(.mat)이 BlendState/RenderPass 등 렌더 상태의 single source of truth
 // =============================================================================
 class FParticleSystemSceneProxy : public FPrimitiveSceneProxy
 {

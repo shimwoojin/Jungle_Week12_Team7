@@ -8,7 +8,6 @@ void UParticleModuleRequired::SetToSensibleDefaults(UParticleEmitter* Owner)
 	MaterialSlot = "None";
 	CachedMaterial = nullptr;
 
-	BlendState = EBlendState::AlphaBlend;
 	bUseLocalSpace = false;
 
 	SubImagesHorizontal = 1;
