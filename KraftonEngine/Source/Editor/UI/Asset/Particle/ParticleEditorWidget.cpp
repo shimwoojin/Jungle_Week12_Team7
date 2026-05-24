@@ -23,6 +23,7 @@
 #include "Particle/ParticleLODLevel.h"
 #include "Particle/ParticleModule.h"
 #include "Particle/ParticleEmitterInstance.h"
+#include "Particle/Modules/ParticleModuleAcceleration.h"
 
 #include "Particle/Modules/ParticleModuleCollision.h"
 #include "Particle/Modules/ParticleModuleColor.h"
@@ -55,6 +56,7 @@ namespace
 		case UParticleModule::EModuleCategory::Lifetime:  return "Lifetime";
 		case UParticleModule::EModuleCategory::Location:  return "Location";
 		case UParticleModule::EModuleCategory::Velocity:  return "Velocity";
+		case UParticleModule::EModuleCategory::Acceleration:  return "Const Acceleration";
 		case UParticleModule::EModuleCategory::Color:     return "Color";
 		case UParticleModule::EModuleCategory::Size:      return "Size";
 		case UParticleModule::EModuleCategory::Rotation:  return "Rotation";
@@ -76,6 +78,7 @@ namespace
 		case UParticleModule::EModuleCategory::Lifetime:  Color = IM_COL32(83, 83, 93, 255);    break;
 		case UParticleModule::EModuleCategory::Location:  Color = IM_COL32(83, 83, 93, 255);    break;
 		case UParticleModule::EModuleCategory::Velocity:  Color = IM_COL32(83, 83, 93, 255);    break;
+		case UParticleModule::EModuleCategory::Acceleration:  Color = IM_COL32(83, 83, 93, 255);    break;
 		case UParticleModule::EModuleCategory::Color:     Color = IM_COL32(56, 105, 56, 255);   break;
 		case UParticleModule::EModuleCategory::Size:      Color = IM_COL32(56, 105, 56, 255);   break;
 		case UParticleModule::EModuleCategory::Collision: Color = IM_COL32(70, 70, 86, 255);    break;
@@ -1054,6 +1057,13 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					bChanged |= ImGui::Checkbox("In World Space", &Velocity->bInWorldSpace);
 				}
 			}
+			else if (UParticleModuleAcceleration* Acceleration = Cast<UParticleModuleAcceleration>(Module))
+			{
+				if (ImGui::CollapsingHeader("Const Acceleration", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					bChanged |= DragFloat3Field("Acceleration", Acceleration->Acceleration, 0.1f);
+				}
+			}
 			else if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
 			{
 				if (ImGui::CollapsingHeader("Color", ImGuiTreeNodeFlags_DefaultOpen))
@@ -1289,6 +1299,7 @@ void FParticleEditorWidget::RenderAddModulePopup()
 		AddRegular("Lifetime", UParticleModule::EModuleCategory::Lifetime, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleLifetime>(LOD, Emitter); });
 		AddRegular("Initial Location", UParticleModule::EModuleCategory::Location, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleLocation>(LOD, Emitter); });
 		AddRegular("Initial Velocity", UParticleModule::EModuleCategory::Velocity, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleVelocity>(LOD, Emitter); });
+		AddRegular("Const Acceleration", UParticleModule::EModuleCategory::Acceleration, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleAcceleration>(LOD, Emitter); });
 		AddRegular("Color", UParticleModule::EModuleCategory::Color, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleColor>(LOD, Emitter); });
 		AddRegular("Size", UParticleModule::EModuleCategory::Size, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSize>(LOD, Emitter); });
 		AddRegular("Collision", UParticleModule::EModuleCategory::Collision, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleCollision>(LOD, Emitter); });

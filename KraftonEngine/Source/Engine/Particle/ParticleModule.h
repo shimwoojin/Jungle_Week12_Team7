@@ -44,6 +44,7 @@ public:
 		Lifetime,
 		Location,
 		Velocity,
+		Acceleration,
 		Color,
 		Size,
 		Rotation,

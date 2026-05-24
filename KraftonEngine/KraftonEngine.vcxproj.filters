@@ -1663,6 +1663,8 @@
       <Filter>Intermediate\Generated</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\GameFramework\Actor\ParticleSystemActor.cpp" />
+    <ClCompile Include="Source\Engine\Particle\ParticleSystemManager.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Editor\EditorEngine.h">
@@ -4582,6 +4584,8 @@
       <Filter>ThirdParty\sol2\include\sol\utility</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\GameFramework\Actor\ParticleSystemActor.h" />
+    <ClInclude Include="Source\Engine\Particle\ParticleSystemManager.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="KraftonEngine.rc" />
