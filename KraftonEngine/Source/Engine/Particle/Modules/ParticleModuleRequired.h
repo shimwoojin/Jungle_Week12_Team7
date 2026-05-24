@@ -34,9 +34,7 @@ public:
 
 	UMaterial* ResolveMaterial(); // soft → hard
 
-	// --- Blend ---
-	UPROPERTY(Edit, Save, Category="Required", DisplayName="Blend State", Enum=EBlendState)
-	EBlendState BlendState = EBlendState::AlphaBlend;
+	// 렌더 BlendState는 Material(.mat)이 single source of truth — Required에는 필드를 두지 않는다.
 
 	// --- Space ---
 	UPROPERTY(Edit, Save, Category="Required", DisplayName="Use Local Space")

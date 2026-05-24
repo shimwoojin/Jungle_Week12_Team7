@@ -40,6 +40,9 @@ public:
 	// 호출 측이 unique_ptr 처럼 소유권을 받는다 (PSC 가 매 프레임 delete).
 	virtual FDynamicEmitterDataBase* GetDynamicData();
 
+	// 런타임 instance type 식별 (RTTI/dynamic_cast 없이 분기·static_cast 용). 서브클래스가 override.
+	virtual EDynamicEmitterType GetType() const { return EDynamicEmitterType::Unknown; }
+
 	// 모듈 → payload offset 조회 헬퍼.
 	uint32 GetModuleDataOffset(const UParticleModule* InModule) const;
 
@@ -220,18 +223,21 @@ class FParticleSpriteEmitterInstance : public FParticleEmitterInstance
 {
 public:
 	FDynamicEmitterDataBase* GetDynamicData() override;
+	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Sprite; }
 };
 
 class FParticleMeshEmitterInstance : public FParticleEmitterInstance
 {
 public:
 	FDynamicEmitterDataBase* GetDynamicData() override;
+	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Mesh; }
 };
 
 class FParticleBeamEmitterInstance : public FParticleEmitterInstance
 {
 public:
 	FDynamicEmitterDataBase* GetDynamicData() override;
+	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Beam; }
 	// Beam 은 source/target 두 endpoint 가 필요. EventGenerator/외부에서 지정.
 	void SetEndpoints(const FVector& InSource, const FVector& InTarget);
 protected:
@@ -243,4 +249,5 @@ class FParticleRibbonEmitterInstance : public FParticleEmitterInstance
 {
 public:
 	FDynamicEmitterDataBase* GetDynamicData() override;
+	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Ribbon; }
 };

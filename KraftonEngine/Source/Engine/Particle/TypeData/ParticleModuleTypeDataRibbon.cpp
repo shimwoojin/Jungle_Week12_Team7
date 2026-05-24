@@ -2,8 +2,8 @@
 
 #include "Particle/ParticleEmitterInstance.h"
 
-FParticleEmitterInstance* UParticleModuleTypeDataRibbon::CreateInstance(UParticleSystemComponent* InComponent)
+FParticleEmitterInstance* UParticleModuleTypeDataRibbon::CreateInstance(UParticleSystemComponent* /*InComponent*/)
 {
-	// TODO: new FParticleRibbonEmitterInstance().
-	return nullptr;
+	// PSC/emitter 경로가 Init()을 수행. 여기선 runtime instance type만 고른다.
+	return new FParticleRibbonEmitterInstance();
 }

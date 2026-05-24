@@ -14,7 +14,7 @@ class UMaterial;
 //   - 매 프레임 PSC 가 만든 FDynamicData (emitter snapshot 묶음) 를 받아 보관
 //   - DrawCall 시 각 emitter type 의 VertexFactory 로 dispatch
 //   - Dynamic VB 는 proxy 가 소유 (per-frame ring)
-//   - Blend: Required.BlendState 에 따라 AlphaBlend/Additive 등 선택
+//   - Blend: Material(.mat)이 BlendState/RenderPass 등 렌더 상태의 single source of truth
 // =============================================================================
 class FParticleSystemSceneProxy : public FPrimitiveSceneProxy
 {
@@ -49,15 +49,16 @@ protected:
 
 	// emitter type별 dedicated buffer — 같은 type 여러 emitter는 단순화하여 1개로 제한.
 	// (Sprite와 Mesh가 정점 포맷 다르고 stride 다르니 한 VB 공유 불가)
-	mutable FDynamicVertexBuffer SpriteVB;        // FVertexPNCT (4 verts per particle)
-	mutable FDynamicIndexBuffer  SpriteIB;        // quad pattern (6 indices per particle)
+	mutable FDynamicVertexBuffer SpriteVB;        // FParticleSpriteInstanceVertex (per-instance, slot 1)
 	mutable FDynamicVertexBuffer MeshInstanceVB;  // FParticleMeshInstanceVertex
-	// Beam/Ribbon은 Day 7+ — 추가 시 BeamVB/RibbonVB
+	mutable FDynamicVertexBuffer BeamVB;          // FParticleBeamTrailVertex (strip, 비인스턴싱)
+	mutable FDynamicVertexBuffer RibbonVB;        // FParticleBeamTrailVertex (strip, 비인스턴싱)
 
 	// emitter type별 fallback Material (Template 없을 때 사용).
 	// 자산 기반 (.mat 파일) — FMaterialManager::GetOrCreateMaterial로 로드.
-	UMaterial* SpriteMaterial = nullptr;  // fallback
-	UMaterial* MeshMaterial   = nullptr;  // fallback
+	UMaterial* SpriteMaterial    = nullptr;  // fallback
+	UMaterial* MeshMaterial      = nullptr;  // fallback
+	UMaterial* BeamTrailMaterial = nullptr;  // fallback (Beam/Ribbon 공용)
 
 	// PSC.Template.Emitters[i].LODLevels[0].RequiredModule.ResolveMaterial() 결과 캐시.
 	// Template 있을 때 emitter index 1:1로 채워짐. 없는 index는 fallback 사용.

@@ -7,6 +7,8 @@
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
+#include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
+#include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Math/Transform.h"
 
@@ -48,6 +50,23 @@ static EParticleMeshReplayAlignment ToReplayMeshAlignment(
 	case UParticleModuleTypeDataMesh::EMeshAlignment::None:
 	default:
 		return EParticleMeshReplayAlignment::None;
+	}
+}
+
+static EParticleSpriteReplayAlignment ToReplaySpriteAlignment(
+	UParticleModuleRequired::EScreenAlignment InAlignment)
+{
+	switch (InAlignment)
+	{
+	case UParticleModuleRequired::EScreenAlignment::Rectangle:
+		return EParticleSpriteReplayAlignment::Rectangle;
+	case UParticleModuleRequired::EScreenAlignment::Velocity:
+		return EParticleSpriteReplayAlignment::Velocity;
+	case UParticleModuleRequired::EScreenAlignment::FacingCameraPosition:
+		return EParticleSpriteReplayAlignment::FacingCameraPosition;
+	case UParticleModuleRequired::EScreenAlignment::Square:
+	default:
+		return EParticleSpriteReplayAlignment::Square;
 	}
 }
 
@@ -750,6 +769,7 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 	{
 		Data->Source.SubImagesHorizontal = LOD->RequiredModule->SubImagesHorizontal;
 		Data->Source.SubImagesVertical = LOD->RequiredModule->SubImagesVertical;
+		Data->Source.Alignment = ToReplaySpriteAlignment(LOD->RequiredModule->ScreenAlignment);
 	}
 
 	return Data;
@@ -789,6 +809,19 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 	Data->Source.SourcePoint = SourcePoint;
 	Data->Source.TargetPoint = TargetPoint;
 
+	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	{
+		if (auto* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule))
+		{
+			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
+			Data->Source.Width = BeamTypeData->Width;
+			Data->Source.NoiseAmount = BeamTypeData->NoiseAmount;
+			Data->Source.NoiseFrequency = BeamTypeData->NoiseFrequency;
+			Data->Source.NoiseSpeed = BeamTypeData->NoiseSpeed;
+		}
+		Data->Source.EmitterTime = EmitterTimeSeconds;
+	}
+
 	return Data;
 }
 void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const FVector& InTarget)
@@ -803,5 +836,14 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;
+
+	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	{
+		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
+		{
+			Data->Source.MaxTessellation = RibbonTypeData->MaxTessellation;
+		}
+	}
+
 	return Data;
 }

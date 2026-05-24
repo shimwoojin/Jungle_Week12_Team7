@@ -122,18 +122,20 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 
 void FParticleSystemManager::RefreshAvailableParticleSystems()
 {
+	// Content 전체를 훑고 아래 ReadMetadata에서 ParticleSystem 타입만 거른다 — 저장 위치 무관.
+	// (AnimGraphManager::RefreshAvailableGraphs 와 동일 패턴. 고정 하위 디렉토리로 제한하면
+	//  다른 폴더에 저장된 자산이 목록에서 누락된다.)
 	const std::filesystem::path ContentRoot =
-		std::filesystem::path(FPaths::RootDir()) / L"Content" / L"Particle System";
+		std::filesystem::path(FPaths::RootDir()) / L"Content";
+
+	AvailableParticleSystemFiles.clear();
 
 	if (!std::filesystem::exists(ContentRoot))
 	{
-		AvailableParticleSystemFiles.clear();
 		return;
 	}
 
 	const std::filesystem::path ProjectRoot(FPaths::RootDir());
-
-	AvailableParticleSystemFiles.clear();
 
 	for (const auto& Entry : std::filesystem::recursive_directory_iterator(ContentRoot))
 	{
