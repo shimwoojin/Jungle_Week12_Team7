@@ -19,17 +19,10 @@ void UParticleModuleLocation::Spawn(FParticleEmitterInstance* Owner, uint32 Modu
 	Offset.Y = StartLocationMin.Y + (StartLocationMax.Y - StartLocationMin.Y) * AlphaY;
 	Offset.Z = StartLocationMin.Z + (StartLocationMax.Z - StartLocationMin.Z) * AlphaZ;
 
-	FVector SimulationOffset = Offset;
-	if (bWorldSpaceOverride)
-	{
-		// World-space offset 입력은 현재 emitter의 simulation space(local/world)에 맞춰
-		// 변환한 뒤 base spawn location 위에 더한다.
-		SimulationOffset = Owner->TransformWorldVectorToSimulation(Offset);
-	}
-	else
-	{
-		SimulationOffset = Owner->TransformLocalVectorToSimulation(Offset);
-	}
+	const EParticleValueSpace SourceSpace =
+		bWorldSpaceOverride ? EParticleValueSpace::World : EParticleValueSpace::Local;
+	// Spawn location 모듈의 sampled value는 absolute position이 아니라 emitter origin 기준 offset이다.
+	const FVector SimulationOffset = Owner->ConvertVectorToSimulation(Offset, SourceSpace);
 
 	Particle->Location = Particle->Location + SimulationOffset;
 

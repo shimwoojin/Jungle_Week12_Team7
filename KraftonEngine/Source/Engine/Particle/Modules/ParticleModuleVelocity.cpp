@@ -19,15 +19,9 @@ void UParticleModuleVelocity::Spawn(FParticleEmitterInstance* Owner, uint32 Modu
 	Velocity.Y = StartVelocityMin.Y + (StartVelocityMax.Y - StartVelocityMin.Y) * AlphaY;
 	Velocity.Z = StartVelocityMin.Z + (StartVelocityMax.Z - StartVelocityMin.Z) * AlphaZ;
 
-	FVector SimulationVelocity = Velocity;
-	if (bInWorldSpace)
-	{
-		SimulationVelocity = Owner->TransformWorldVectorToSimulation(Velocity);
-	}
-	else
-	{
-		SimulationVelocity = Owner->TransformLocalVectorToSimulation(Velocity);
-	}
+	const EParticleValueSpace SourceSpace =
+		bInWorldSpace ? EParticleValueSpace::World : EParticleValueSpace::Local;
+	const FVector SimulationVelocity = Owner->ConvertVectorToSimulation(Velocity, SourceSpace);
 
 	Particle->Velocity = SimulationVelocity;
 	Particle->BaseVelocity = SimulationVelocity;

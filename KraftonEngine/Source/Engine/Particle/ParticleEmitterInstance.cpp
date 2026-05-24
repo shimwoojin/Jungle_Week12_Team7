@@ -222,34 +222,85 @@ bool FParticleEmitterInstance::UsesLocalSpace() const
 	return Required ? Required->bUseLocalSpace : false;
 }
 
-FVector FParticleEmitterInstance::TransformLocalVectorToSimulation(const FVector& V) const
+FVector FParticleEmitterInstance::ConvertVectorToSimulation(
+	const FVector& V,
+	EParticleValueSpace SourceSpace) const
 {
-	if (UsesLocalSpace() || !Component)
+	switch (SourceSpace)
 	{
+	case EParticleValueSpace::Simulation:
+		return V;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldMatrix().TransformVector(V);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformVector(V);
+	default:
 		return V;
 	}
-
-	return Component->GetWorldMatrix().TransformVector(V);
 }
 
-FVector FParticleEmitterInstance::TransformSimulationVectorToWorld(const FVector& V) const
+FVector FParticleEmitterInstance::ConvertVectorFromSimulation(
+	const FVector& V,
+	EParticleValueSpace TargetSpace) const
 {
-	if (!UsesLocalSpace() || !Component)
+	switch (TargetSpace)
 	{
+	case EParticleValueSpace::Simulation:
+		return V;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformVector(V);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldMatrix().TransformVector(V);
+	default:
 		return V;
 	}
-
-	return Component->GetWorldMatrix().TransformVector(V);
 }
 
-FVector FParticleEmitterInstance::TransformWorldVectorToSimulation(const FVector& V) const
+FVector FParticleEmitterInstance::ConvertPositionToSimulation(
+	const FVector& P,
+	EParticleValueSpace SourceSpace) const
 {
-	if (!UsesLocalSpace() || !Component)
+	switch (SourceSpace)
 	{
-		return V;
-	}
+	case EParticleValueSpace::Simulation:
+		return P;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return P;
+		}
 
-	return Component->GetWorldInverseMatrix().TransformVector(V);
+		return Component->GetWorldMatrix().TransformPositionWithW(P);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return P;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformPositionWithW(P);
+	default:
+		return P;
+	}
 }
 
 void FParticleEmitterInstance::SetCurrentLODIndex(int32 InLODIndex)
