@@ -417,6 +417,11 @@ struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 	int32 InterpolationPoints = 0;
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };
+	float Width = 10.0f;            // beam 띠 전체 폭
+	float NoiseAmount = 0.0f;       // 수직 변위 진폭 (0 = 직선)
+	float NoiseFrequency = 1.0f;    // beam 길이당 sin파 횟수
+	float NoiseSpeed = 2.0f;        // 시간에 따른 noise 흐름 속도
+	float EmitterTime = 0.0f;       // GT 누적 시간 (시간 기반 noise phase)
 };
 
 struct FDynamicBeamEmitterData : FDynamicEmitterDataBase

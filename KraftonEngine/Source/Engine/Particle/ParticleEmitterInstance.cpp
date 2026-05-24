@@ -838,7 +838,12 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 		if (auto* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule))
 		{
 			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
+			Data->Source.Width = BeamTypeData->Width;
+			Data->Source.NoiseAmount = BeamTypeData->NoiseAmount;
+			Data->Source.NoiseFrequency = BeamTypeData->NoiseFrequency;
+			Data->Source.NoiseSpeed = BeamTypeData->NoiseSpeed;
 		}
+		Data->Source.EmitterTime = EmitterTimeSeconds;
 	}
 
 	return Data;

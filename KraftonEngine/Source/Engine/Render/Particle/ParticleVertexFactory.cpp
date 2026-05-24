@@ -343,8 +343,18 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const int32 InterpPts = BeamReplay.InterpolationPoints > 0 ? BeamReplay.InterpolationPoints : 0;
 	const int32 NumSegments = InterpPts + 1;       // source~target 분할 수
 	const int32 NumPoints = NumSegments + 1;
-	const float HalfWidth = 5.0f;                  // 가시화용 고정 폭 (world units)
+	const float HalfWidth = BeamReplay.Width * 0.5f;
 	const FVector4 BeamColor = { 1, 1, 1, 1 };
+
+	// Noise 변위 기저 — beam 축에 수직인 월드 고정축 (카메라가 움직여도 흔들리지 않도록).
+	FVector NoiseAxis = Dir.Cross(FVector{ 0.0f, 0.0f, 1.0f });
+	if (NoiseAxis.Length() < 1e-4f) NoiseAxis = Dir.Cross(FVector{ 1.0f, 0.0f, 0.0f });
+	NoiseAxis = NoiseAxis.Normalized();
+	const float NoiseAmt   = BeamReplay.NoiseAmount;
+	const float NoiseFreq  = BeamReplay.NoiseFrequency;
+	const float NoiseSpeed = BeamReplay.NoiseSpeed;
+	const float BeamTime   = BeamReplay.EmitterTime;
+	constexpr float Pi = 3.14159265358979323846f;
 
 	const uint32 VertCount = static_cast<uint32>(NumPoints * 2);
 	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6);
@@ -353,7 +363,15 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	for (int32 i = 0; i < NumPoints; ++i)
 	{
 		const float T = static_cast<float>(i) / static_cast<float>(NumSegments);
-		const FVector P = Source + Axis * T;
+		FVector P = Source + Axis * T;
+		if (NoiseAmt > 0.0f)
+		{
+			// 양 끝(source/target)은 고정하고 중간만 sin파로 변위 — envelope sin(T·π)가 끝에서 0.
+			const float Envelope = std::sin(T * Pi);
+			// 시간 항(BeamTime*NoiseSpeed)을 phase에 더해 지그재그가 beam을 따라 흐르게 한다.
+			const float Wave     = std::sin(T * NoiseFreq * 2.0f * Pi + BeamTime * NoiseSpeed);
+			P += NoiseAxis * (Wave * NoiseAmt * Envelope);
+		}
 		// beam 축에 수직 + 시선 방향과 직교 → 카메라facing 띠 폭.
 		FVector Side = Dir.Cross(CameraPosition - P);
 		const float SideLen = Side.Length();
