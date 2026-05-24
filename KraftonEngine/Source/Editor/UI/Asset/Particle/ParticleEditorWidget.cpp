@@ -33,6 +33,7 @@
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/Modules/ParticleModuleSize.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
+#include "Particle/Modules/ParticleModuleSubUV.h"
 #include "Particle/Modules/ParticleModuleVelocity.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
@@ -83,6 +84,7 @@ namespace
 		case UParticleModule::EModuleCategory::Size:      Color = IM_COL32(56, 105, 56, 255);   break;
 		case UParticleModule::EModuleCategory::Collision: Color = IM_COL32(70, 70, 86, 255);    break;
 		case UParticleModule::EModuleCategory::Event:     Color = IM_COL32(72, 94, 120, 255);   break;
+		case UParticleModule::EModuleCategory::SubUV:     Color = IM_COL32(72, 94, 120, 255);   break;
 		default: break;
 		}
 
@@ -1304,6 +1306,7 @@ void FParticleEditorWidget::RenderAddModulePopup()
 		AddRegular("Size", UParticleModule::EModuleCategory::Size, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSize>(LOD, Emitter); });
 		AddRegular("Collision", UParticleModule::EModuleCategory::Collision, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleCollision>(LOD, Emitter); });
 		AddRegular("Event Generator", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventGenerator>(LOD, Emitter); });
+		AddRegular("Sub Image Index", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUV>(LOD, Emitter); });
 
 		ImGui::Separator();
 		const bool bHasTypeData = LOD->TypeDataModule != nullptr;
