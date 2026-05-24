@@ -341,5 +341,10 @@ struct FMeshSectionDraw
 	uint32 FirstIndex = 0;
 	uint32 IndexCount = 0;
 	FDrawCommandBuffer BufferOverride; // optional — default 빈 buffer
+
+	// Translucent 섹션별 depth 정렬용. true면 SortWorldPos로 카메라 거리를 계산하고,
+	// false면(기본) BuildCommandForProxy가 proxy 위치로 fallback — 비입자 proxy는 동작 변화 없음.
+	bool    bHasSortPos  = false;
+	FVector SortWorldPos = { 0, 0, 0 };
 };
 
