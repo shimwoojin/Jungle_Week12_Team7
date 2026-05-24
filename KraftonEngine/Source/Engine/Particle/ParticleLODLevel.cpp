@@ -58,7 +58,6 @@ bool UParticleLODLevel::ValidateModules() const
 
 	if (RequiredModule->GetCategory() != UParticleModule::EModuleCategory::Required) return false;
 	if (SpawnModule->GetCategory() != UParticleModule::EModuleCategory::Spawn) return false;
-
 	if (TypeDataModule && TypeDataModule->GetCategory() != UParticleModule::EModuleCategory::TypeData) return false;
 
 	for (int32 i = 0; i < static_cast<int32>(Modules.size()); ++i)
@@ -82,7 +81,6 @@ bool UParticleLODLevel::ValidateModules() const
 			if (!B) return false;
 
 			if (A == B) return false;
-			if (A->GetCategory() == B->GetCategory()) return false;
 		}
 	}
 
@@ -130,17 +128,9 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 		break;
 	}
 
-	// 기존 Category 중복 검산
 	for (UParticleModule* Existing : Modules)
 	{
-		if (!Existing) continue;
-
 		if (Existing == InModule) return false;
-
-		if (Existing->GetCategory() == InModule->GetCategory())
-		{
-			return false;
-		}
 	}
 
 	InModule->SetOuter(this);

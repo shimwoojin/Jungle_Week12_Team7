@@ -252,10 +252,6 @@ namespace
 		if (LOD->RequiredModule && LOD->RequiredModule->GetCategory() == Category) return true;
 		if (LOD->SpawnModule && LOD->SpawnModule->GetCategory() == Category) return true;
 		if (LOD->TypeDataModule && LOD->TypeDataModule->GetCategory() == Category) return true;
-		for (UParticleModule* Module : LOD->Modules)
-		{
-			if (Module && Module->GetCategory() == Category) return true;
-		}
 		return false;
 	}
 
@@ -1372,7 +1368,6 @@ void FParticleEditorWidget::DuplicateSelectedModule()
 		return;
 	}
 
-	// 현재 LOD 정책상 같은 category 중복은 막힌다. 복제 시도는 지원하되 실패하면 파괴한다.
 	if (LOD->AddModule(DuplicateModule))
 	{
 		SelectedModuleIndex = static_cast<int32>(LOD->Modules.size()) - 1;

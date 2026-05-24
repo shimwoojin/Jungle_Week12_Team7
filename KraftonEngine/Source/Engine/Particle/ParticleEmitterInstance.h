@@ -3,12 +3,12 @@
 #include "Particle/ParticleHelper.h"
 #include "Particle/ParticleEvents.h"
 #include "Math/Transform.h"
+#include "ParticleModule.h"
+#include "ParticleLODLevel.h"
+#include "Particle/Modules/ParticleModuleEventGenerator.h"
 
 class UParticleEmitter;
-class UParticleLODLevel;
 class UParticleSystemComponent;
-class UParticleModule;
-class UParticleModuleEventGenerator;
 struct FBaseParticle;
 struct FDynamicEmitterDataBase;
 
@@ -155,10 +155,32 @@ private:
 	uint32 GrowParticleCapacity(uint32 Current, uint32 Required) const;
 	bool IsParticleKilled(const FBaseParticle* Particle) const;
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
-	const UParticleModuleEventGenerator* GetEventGeneratorModule() const;
 	const class UParticleModuleRequired* GetRequiredModule() const;
 	bool IsSpawningAllowed() const;
 	void AdvanceLoopState(float DeltaTime);
+
+	template<typename Func>
+	void ForEachEventGenerator(Func&& InFunc) const
+	{
+		UParticleLODLevel* LOD = GetCurrentLOD();
+		if (!LOD)
+		{
+			return;
+		}
+
+		for (UParticleModule* Module : LOD->Modules)
+		{
+			if (!Module || !Module->IsEnabled())
+			{
+				continue;
+			}
+
+			if (const auto* EventGenerator = Cast<UParticleModuleEventGenerator>(Module))
+			{
+				InFunc(EventGenerator);
+			}
+		}
+	}
 
 protected:
 	UParticleEmitter*         Emitter     = nullptr;

@@ -317,40 +317,40 @@ void FParticleEmitterInstance::EmitSpawnEvent(const FParticleEventSpawnData& InE
 {
 	EnqueueSpawnEvent(InEvent);
 
-	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
-	{
-		EventGenerator->HandleSpawnEvent(this, InEvent);
-	}
+	ForEachEventGenerator([this, &InEvent](const UParticleModuleEventGenerator* EventGenerator)
+		{
+			EventGenerator->HandleSpawnEvent(this, InEvent);
+		});
 }
 
 void FParticleEmitterInstance::EmitDeathEvent(const FParticleEventDeathData& InEvent)
 {
 	EnqueueDeathEvent(InEvent);
 
-	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
-	{
-		EventGenerator->HandleDeathEvent(this, InEvent);
-	}
+	ForEachEventGenerator([this, &InEvent](const UParticleModuleEventGenerator* EventGenerator)
+		{
+			EventGenerator->HandleDeathEvent(this, InEvent);
+		});
 }
 
 void FParticleEmitterInstance::EmitCollisionEvent(const FParticleEventCollideData& InEvent)
 {
 	EnqueueCollisionEvent(InEvent);
 
-	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
-	{
-		EventGenerator->HandleCollisionEvent(this, InEvent);
-	}
+	ForEachEventGenerator([this, &InEvent](const UParticleModuleEventGenerator* EventGenerator)
+		{
+			EventGenerator->HandleCollisionEvent(this, InEvent);
+		});
 }
 
 void FParticleEmitterInstance::EmitBurstEvent(const FParticleEventBurstData& InEvent)
 {
 	EnqueueBurstEvent(InEvent);
 
-	if (const UParticleModuleEventGenerator* EventGenerator = GetEventGeneratorModule())
-	{
-		EventGenerator->HandleBurstEvent(this, InEvent);
-	}
+	ForEachEventGenerator([this, &InEvent](const UParticleModuleEventGenerator* EventGenerator)
+		{
+			EventGenerator->HandleBurstEvent(this, InEvent);
+		});
 }
 
 void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
@@ -679,30 +679,6 @@ void FParticleEmitterInstance::ClearSpawnedFlag(FBaseParticle* Particle) const
 
 	const uint32 SpawnedFlag = static_cast<uint32>(EParticleStateFlags::Spawned);
 	Particle->Flags &= ~SpawnedFlag;
-}
-
-const UParticleModuleEventGenerator* FParticleEmitterInstance::GetEventGeneratorModule() const
-{
-	UParticleLODLevel* LOD = GetCurrentLOD();
-	if (!LOD)
-	{
-		return nullptr;
-	}
-
-	for (UParticleModule* Module : LOD->Modules)
-	{
-		if (!Module || !Module->IsEnabled())
-		{
-			continue;
-		}
-
-		if (const auto* EventGenerator = Cast<UParticleModuleEventGenerator>(Module))
-		{
-			return EventGenerator;
-		}
-	}
-
-	return nullptr;
 }
 
 const UParticleModuleRequired* FParticleEmitterInstance::GetRequiredModule() const
