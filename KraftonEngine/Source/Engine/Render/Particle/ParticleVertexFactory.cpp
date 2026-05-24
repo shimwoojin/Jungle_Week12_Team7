@@ -42,14 +42,30 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
 // =============================================================================
 // Sprite CPU billboard expansion
 // =============================================================================
-void FParticleSpriteVertexFactory::InitResources(ID3D11Device* /*Device*/)
+void FParticleSpriteVertexFactory::InitResources(ID3D11Device* Device)
 {
 	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleSprite);
+
+	// 정적 unit quad — corner 부호(±0.5) + tile 내부 base UV. 모든 입자가 공유한다.
+	if (Device && !QuadVB.GetBuffer())
+	{
+		const FParticleSpriteQuadVertex QuadVerts[4] = {
+			{ { -0.5f,  0.5f, 0.0f }, { 0.0f, 0.0f } },
+			{ {  0.5f,  0.5f, 0.0f }, { 1.0f, 0.0f } },
+			{ {  0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f } },
+			{ { -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f } },
+		};
+		const uint32 QuadIndices[6] = { 0, 1, 2, 0, 2, 3 };
+		QuadVB.Create(Device, QuadVerts, 4, sizeof(QuadVerts), sizeof(FParticleSpriteQuadVertex));
+		QuadIB.Create(Device, QuadIndices, 6, sizeof(QuadIndices));
+	}
 }
 
 void FParticleSpriteVertexFactory::ReleaseResources()
 {
 	Shader = nullptr;
+	QuadVB.Release();
+	QuadIB.Release();
 }
 
 bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
@@ -65,17 +81,13 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
-
-	const uint32 VertCount = N * 4;
-	const uint32 IndexCount = N * 6;
+	if (!QuadVB.GetBuffer() || !QuadIB.GetBuffer()) return false; // unit quad 미초기화
 
 	const auto& SpriteReplay = static_cast<const FDynamicSpriteEmitterReplayData&>(Replay);
 	const int32 SubH = SpriteReplay.SubImagesHorizontal > 0 ? SpriteReplay.SubImagesHorizontal : 1;
 	const int32 SubV = SpriteReplay.SubImagesVertical > 0 ? SpriteReplay.SubImagesVertical : 1;
-	const float TileW = 1.0f / static_cast<float>(SubH);
-	const float TileH = 1.0f / static_cast<float>(SubV);
-
-	std::vector<FVertexPNCT> Vertices(VertCount);
+	const int32 FrameCount = SubH * SubV;
+	const int32 Alignment = static_cast<int32>(SpriteReplay.Alignment);
 
 	const uint8* RawBase = View.ParticleData;
 	const uint32 Stride = View.ParticleStride;
@@ -90,6 +102,7 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		return W;
 	};
 
+	// Sort: instance 적재 순서가 곧 draw 순서이므로 정렬된 index 순으로 채운다.
 	std::vector<uint32> SortedIdx(N);
 	for (uint32 i = 0; i < N; ++i) SortedIdx[i] = i;
 	if (bRequiresSort)
@@ -109,67 +122,48 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 			});
 	}
 
-	static const float CornerSign[4][2] = {
-		{ -0.5f,  0.5f },
-		{  0.5f,  0.5f },
-		{  0.5f, -0.5f },
-		{ -0.5f, -0.5f },
-	};
-	static const float CornerUV[4][2] = {
-		{ 0.0f, 0.0f },
-		{ 1.0f, 0.0f },
-		{ 1.0f, 1.0f },
-		{ 0.0f, 1.0f },
-	};
-
+	// 입자 1개 = 인스턴스 1개. 빌보드 corner expansion / atlas UV / alignment는 VS가 GPU에서 처리.
+	std::vector<FParticleSpriteInstanceVertex> Instances(N);
 	for (uint32 sortI = 0; sortI < N; ++sortI)
 	{
 		const uint32 i = SortedIdx[sortI];
 		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
-		const float HalfW = P.Size.X * 0.5f;
-		const float HalfH = P.Size.Y * 0.5f;
-		const FVector WorldCenter = GetWorldPos(i);
 
-		// If SubUV did not write an explicit frame yet, fall back to lifetime-based frame
-		// selection so atlas materials still animate during early bring-up.
+		FParticleSpriteInstanceVertex& V = Instances[sortI];
+		V.Center   = GetWorldPos(i);
+		V.Velocity = bLocal ? L2W.TransformVector(P.Velocity) : P.Velocity;
+		V.Size     = FVector2{ P.Size.X, P.Size.Y };
+		V.Rotation = P.Rotation;
+		V.Color    = P.Color;
+
+		// SubUV: SubImageIndex 미설정(<=0)이고 atlas가 여러 frame이면 lifetime 비례 fallback.
 		int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
-		const int32 FrameCount = SubH * SubV;
 		if (RawIdx <= 0 && FrameCount > 1)
 		{
 			RawIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
 			if (RawIdx < 0) RawIdx = 0;
 		}
-		const int32 Col = RawIdx % SubH;
-		const int32 Row = (RawIdx / SubH) % SubV;
-
-		for (int c = 0; c < 4; ++c)
-		{
-			const float Dx = CornerSign[c][0] * (HalfW * 2.0f);
-			const float Dy = CornerSign[c][1] * (HalfH * 2.0f);
-			FVector Corner = WorldCenter + CameraRight * Dx + CameraUp * Dy;
-			const float U = (static_cast<float>(Col) + CornerUV[c][0]) * TileW;
-			const float V = (static_cast<float>(Row) + CornerUV[c][1]) * TileH;
-			Vertices[sortI * 4 + c].Position = Corner;
-			Vertices[sortI * 4 + c].Normal = { 0, 0, 0 };
-			Vertices[sortI * 4 + c].Color = P.Color;
-			Vertices[sortI * 4 + c].UV = { U, V };
-		}
+		V.SubImageIndex = RawIdx;
+		V.Alignment = Alignment;
 	}
 
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 	{
-		InOutVB.Create(Device, VertCount, sizeof(FVertexPNCT));
+		InOutVB.Create(Device, N, sizeof(FParticleSpriteInstanceVertex));
 	}
 	else
 	{
-		InOutVB.EnsureCapacity(Device, VertCount);
+		InOutVB.EnsureCapacity(Device, N);
 	}
-	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
+	if (!InOutVB.Update(Context, Instances.data(), N)) return false;
 
-	OutDraw.VertexCount = VertCount;
-	OutDraw.IndexCount = IndexCount;
-	OutDraw.VertexByteOffset = 0;
-	OutDraw.IndexByteOffset = 0;
+	// slot 0 = unit quad(정적), slot 1 = per-instance(InOutVB). DrawIndexedInstanced(6, N).
+	OutDraw.StaticVB       = QuadVB.GetBuffer();
+	OutDraw.StaticVBStride = QuadVB.GetStride();
+	OutDraw.StaticIB       = QuadIB.GetBuffer();
+	OutDraw.VertexCount    = QuadVB.GetVertexCount();
+	OutDraw.IndexCount     = QuadIB.GetIndexCount();
+	OutDraw.InstanceCount  = N;
 	return true;
 }
 

@@ -49,8 +49,7 @@ protected:
 
 	// emitter type별 dedicated buffer — 같은 type 여러 emitter는 단순화하여 1개로 제한.
 	// (Sprite와 Mesh가 정점 포맷 다르고 stride 다르니 한 VB 공유 불가)
-	mutable FDynamicVertexBuffer SpriteVB;        // FVertexPNCT (4 verts per particle)
-	mutable FDynamicIndexBuffer  SpriteIB;        // quad pattern (6 indices per particle)
+	mutable FDynamicVertexBuffer SpriteVB;        // FParticleSpriteInstanceVertex (per-instance, slot 1)
 	mutable FDynamicVertexBuffer MeshInstanceVB;  // FParticleMeshInstanceVertex
 	// Beam/Ribbon은 Day 7+ — 추가 시 BeamVB/RibbonVB
 

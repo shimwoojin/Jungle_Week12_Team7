@@ -51,6 +51,23 @@ static EParticleMeshReplayAlignment ToReplayMeshAlignment(
 	}
 }
 
+static EParticleSpriteReplayAlignment ToReplaySpriteAlignment(
+	UParticleModuleRequired::EScreenAlignment InAlignment)
+{
+	switch (InAlignment)
+	{
+	case UParticleModuleRequired::EScreenAlignment::Rectangle:
+		return EParticleSpriteReplayAlignment::Rectangle;
+	case UParticleModuleRequired::EScreenAlignment::Velocity:
+		return EParticleSpriteReplayAlignment::Velocity;
+	case UParticleModuleRequired::EScreenAlignment::FacingCameraPosition:
+		return EParticleSpriteReplayAlignment::FacingCameraPosition;
+	case UParticleModuleRequired::EScreenAlignment::Square:
+	default:
+		return EParticleSpriteReplayAlignment::Square;
+	}
+}
+
 FParticleEmitterInstance::~FParticleEmitterInstance()
 {
 	RuntimeStorage.Release();
@@ -774,6 +791,7 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 	{
 		Data->Source.SubImagesHorizontal = LOD->RequiredModule->SubImagesHorizontal;
 		Data->Source.SubImagesVertical = LOD->RequiredModule->SubImagesVertical;
+		Data->Source.Alignment = ToReplaySpriteAlignment(LOD->RequiredModule->ScreenAlignment);
 	}
 
 	return Data;

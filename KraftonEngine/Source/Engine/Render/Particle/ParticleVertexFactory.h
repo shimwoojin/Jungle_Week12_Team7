@@ -3,6 +3,7 @@
 #include "Core/Types/CoreTypes.h"
 #include "Math/Vector.h"
 #include "Particle/ParticleHelper.h"
+#include "Render/Resource/Buffer.h"   // FVertexBuffer/FIndexBuffer (sprite unit quad 멤버)
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -61,8 +62,9 @@ public:
 
 // -----------------------------------------------------------------------------
 // FParticleSpriteVertexFactory
-//   FParticleSpriteVertex (Position/Color/Size/Rotation/UV/SubImage) 를 만든다.
-//   ScreenAlignment / Sort 적용은 SceneProxy 가 ReplayData 채우는 단계에서.
+//   per-instance FParticleSpriteInstanceVertex(center/velocity/size/rotation/...) 와
+//   정적 unit quad(slot 0)로 GPU 인스턴싱(DrawIndexedInstanced(6, N))한다.
+//   ScreenAlignment/Rotation/SubUV는 Sprite.hlsl VS/PS가 적용. Sort는 instance 적재 순서로.
 // -----------------------------------------------------------------------------
 class FParticleSpriteVertexFactory : public FParticleVertexFactory
 {
@@ -84,6 +86,9 @@ public:
 
 protected:
 	FShader* Shader = nullptr;
+	// 정적 unit quad (slot 0) — 모든 sprite 입자가 공유. InitResources에서 1회 생성.
+	FVertexBuffer QuadVB;
+	FIndexBuffer  QuadIB;
 };
 
 // -----------------------------------------------------------------------------

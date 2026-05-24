@@ -107,14 +107,25 @@ struct FParticlePayloadSize     { FVector InitialSize; };
 // -----------------------------------------------------------------------------
 // Sprite / Mesh 정점 (Dynamic VB 에 기록됨)
 // -----------------------------------------------------------------------------
-struct FParticleSpriteVertex
+// Sprite 인스턴싱 정점 (GPU billboard).
+//   slot 0 = 정적 unit quad (per-vertex). VS가 CornerSign 기준으로 빌보드 corner를 펼친다.
+//   slot 1 = per-instance. 입자 1개당 1세트만 전송하고 GPU가 4정점으로 확장(DrawIndexedInstanced).
+struct FParticleSpriteQuadVertex
 {
-	FVector  Position;
-	FVector4 Color;
-	FVector2 Size;       // (X=width, Y=height) world units
-	float    Rotation;   // radians
-	FVector2 UV;
-	int32    SubImageIndex;
+	FVector  CornerSign;   // POSITION   — (±0.5, ±0.5, 0)
+	FVector2 UV;           // TEXTCOORD  — (0..1) base tile UV
+};
+
+// per-instance. ※ Sprite.hlsl 의 VS_Input_SpriteParticle INSTANCE_* 멤버 순서와 1:1 일치해야 함.
+struct FParticleSpriteInstanceVertex
+{
+	FVector  Center;        // INSTANCE_CENTER    — world (bUseLocalSpace면 GT에서 변환 완료)
+	FVector  Velocity;      // INSTANCE_VELOCITY  — world, Velocity alignment 전용
+	FVector2 Size;          // INSTANCE_SIZE      — (X=width, Y=height) world units
+	float    Rotation;      // INSTANCE_ROTATION  — radians
+	FVector4 Color;         // INSTANCE_COLOR
+	int32    SubImageIndex; // INSTANCE_SUBIMAGE
+	int32    Alignment;     // INSTANCE_ALIGNMENT — EParticleSpriteReplayAlignment
 };
 
 struct FParticleMeshInstanceVertex
@@ -353,10 +364,21 @@ struct FDynamicEmitterDataBase
 };
 
 // -- Sprite ----
+enum class EParticleSpriteReplayAlignment : uint8
+{
+	// RequiredModule.ScreenAlignment를 GT에서 복사한 값. RT(VS)가 빌보드 축 계산에 사용.
+	// 값 순서는 Sprite.hlsl의 ALIGN_* 상수와 1:1 일치해야 함.
+	Square = 0,            // 정사각, view-plane 정렬
+	Rectangle,             // Size.X×Size.Y 직사각, view-plane 정렬
+	Velocity,              // 화면 투영된 속도 방향으로 정렬
+	FacingCameraPosition,  // 각 입자가 카메라 위치를 향함 (point-facing)
+};
+
 struct FDynamicSpriteEmitterReplayData : FDynamicEmitterReplayDataBase
 {
 	int32 SubImagesHorizontal = 1;
 	int32 SubImagesVertical   = 1;
+	EParticleSpriteReplayAlignment Alignment = EParticleSpriteReplayAlignment::Square;
 };
 
 struct FDynamicSpriteEmitterData : FDynamicEmitterDataBase

@@ -46,7 +46,6 @@ FParticleSystemSceneProxy::~FParticleSystemSceneProxy()
 	}
 	delete DynamicData; DynamicData = nullptr;
 	SpriteVB.Release();
-	SpriteIB.Release();
 	MeshInstanceVB.Release();
 	// ParticleMaterial은 UObjectManager가 소유 — 여기서 해제 X
 }
@@ -263,35 +262,14 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		Section.IndexCount = Spec.IndexCount;
 		Section.Material   = SectionMat;
 
-		if (Spec.InstanceCount > 0)
-		{
-			// Mesh: 정적 VB(slot 0) + IB + dynamic instance VB(slot 1)
-			Section.BufferOverride.VB               = Spec.StaticVB;
-			Section.BufferOverride.VBStride         = Spec.StaticVBStride;
-			Section.BufferOverride.IB               = Spec.StaticIB;
-			Section.BufferOverride.InstanceCount    = Spec.InstanceCount;
-			Section.BufferOverride.InstanceVB       = EmitterVB->GetBuffer();
-			Section.BufferOverride.InstanceVBStride = EmitterVB->GetStride();
-		}
-		else
-		{
-			// Sprite: 동적 VB + 동적 quad IB 생성
-			const uint32 NumQuads = Spec.IndexCount / 6;
-			std::vector<uint32> Indices(Spec.IndexCount);
-			for (uint32 q = 0; q < NumQuads; ++q)
-			{
-				const uint32 Base = q * 4;
-				uint32* Dst = Indices.data() + q * 6;
-				Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
-				Dst[3] = Base + 0; Dst[4] = Base + 2; Dst[5] = Base + 3;
-			}
-			SpriteIB.EnsureCapacity(Device, Spec.IndexCount);
-			SpriteIB.Update(Context, Indices.data(), Spec.IndexCount);
-
-			Section.BufferOverride.VB       = EmitterVB->GetBuffer();
-			Section.BufferOverride.VBStride = EmitterVB->GetStride();
-			Section.BufferOverride.IB       = SpriteIB.GetBuffer();
-		}
+		// Sprite/Mesh 공통 인스턴싱 경로: 정적 VB(slot 0) + 정적 IB + dynamic per-instance VB(slot 1).
+		// Sprite는 unit quad(4정점/6인덱스), Mesh는 실제 mesh를 slot 0에 둔다. DrawIndexedInstanced(IndexCount, N).
+		Section.BufferOverride.VB               = Spec.StaticVB;
+		Section.BufferOverride.VBStride         = Spec.StaticVBStride;
+		Section.BufferOverride.IB               = Spec.StaticIB;
+		Section.BufferOverride.InstanceCount    = Spec.InstanceCount;
+		Section.BufferOverride.InstanceVB       = EmitterVB->GetBuffer();
+		Section.BufferOverride.InstanceVBStride = EmitterVB->GetStride();
 
 		MutableSections.push_back(std::move(Section));
 		TotalIndexCount += Spec.IndexCount;
