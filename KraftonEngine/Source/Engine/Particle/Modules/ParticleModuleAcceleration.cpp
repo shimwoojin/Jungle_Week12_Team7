@@ -4,6 +4,11 @@
 
 void UParticleModuleAcceleration::Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime)
 {
+	if (!Owner)
+	{
+		return;
+	}
+
 	uint32 ActiveParticleCount = Owner->GetActiveParticleCount();
 	for (uint32 i = 0; i < ActiveParticleCount; ++i)
 	{

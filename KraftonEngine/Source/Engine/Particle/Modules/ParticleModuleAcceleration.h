@@ -17,5 +17,5 @@ public:
 	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime) override;
 
 	UPROPERTY(Edit, Save, Category="Acceleration", DisplayName="Const Acceleration")
-	FVector Acceleration = {0, 0, 0};
+	FVector Acceleration = {0, 0, -9.8f};
 };

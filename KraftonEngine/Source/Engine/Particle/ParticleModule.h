@@ -34,7 +34,6 @@ public:
 
 	// --- 카테고리/식별 ----------------------------------------------------------
 	// 카테고리 enum (Required/Spawn/Lifetime/...) — 에디터 그룹화 & 동일 카테고리
-	// 중복 방지에 사용된다.
 	enum class EModuleCategory : uint8
 	{
 		None,

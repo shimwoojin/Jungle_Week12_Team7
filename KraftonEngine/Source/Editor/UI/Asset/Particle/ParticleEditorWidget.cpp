@@ -246,15 +246,6 @@ namespace
 		return bChanged;
 	}
 
-	bool HasCategory(UParticleLODLevel* LOD, UParticleModule::EModuleCategory Category)
-	{
-		if (!LOD) return false;
-		if (LOD->RequiredModule && LOD->RequiredModule->GetCategory() == Category) return true;
-		if (LOD->SpawnModule && LOD->SpawnModule->GetCategory() == Category) return true;
-		if (LOD->TypeDataModule && LOD->TypeDataModule->GetCategory() == Category) return true;
-		return false;
-	}
-
 	template<typename TModule>
 	TModule* CreateParticleModule(UParticleLODLevel* LOD, UParticleEmitter* Owner)
 	{
@@ -1079,6 +1070,16 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					bChanged |= ImGui::Checkbox("Animate Over Life", &Size->bAnimateOverLife);
 				}
 			}
+			else if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
+			{
+				if (ImGui::CollapsingHeader("SubUV", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					bChanged |= ImGui::DragInt("Start Frame", &SubUV->StartFrame, 1.0f, 0, 100000);
+					bChanged |= ImGui::DragInt("End Frame (-1 = Last)", &SubUV->EndFrame, 1.0f, -1, 100000);
+					bChanged |= ImGui::DragFloat("Frame Rate (0 = RelativeTime)", &SubUV->FrameRate, 0.1f, 0.0f, 240.0f, "%.2f");
+					bChanged |= ImGui::Checkbox("Random Start Frame", &SubUV->bRandomStartFrame);
+				}
+			}
 			else if (UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
 			{
 				if (ImGui::CollapsingHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen))
@@ -1275,8 +1276,6 @@ void FParticleEditorWidget::RenderAddModulePopup()
 
 		auto AddRegular = [&](const char* Label, UParticleModule::EModuleCategory Category, auto Creator)
 		{
-			const bool bExists = HasCategory(LOD, Category);
-			if (bExists) ImGui::BeginDisabled();
 			if (ImGui::MenuItem(Label))
 			{
 				UParticleModule* Module = Creator();
@@ -1290,7 +1289,6 @@ void FParticleEditorWidget::RenderAddModulePopup()
 					UObjectManager::Get().DestroyObject(Module);
 				}
 			}
-			if (bExists) ImGui::EndDisabled();
 		};
 
 		AddRegular("Lifetime", UParticleModule::EModuleCategory::Lifetime, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleLifetime>(LOD, Emitter); });

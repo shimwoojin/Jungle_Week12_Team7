@@ -74,7 +74,6 @@ bool UParticleLODLevel::ValidateModules() const
 			return false;
 		}
 
-		// 초기 정책 - 같은 Category는 1개만 허용
 		for (int32 j = i + 1; j < static_cast<int32>(Modules.size()); ++j)
 		{
 			UParticleModule* B = Modules[j];
