@@ -133,6 +133,12 @@ public:
 	UParticleEmitter*           GetEmitter()       const { return Emitter; }
 	UParticleSystemComponent*   GetComponent()     const { return Component; }
 	UParticleLODLevel*          GetCurrentLOD()    const;
+	bool                        UsesLocalSpace()   const;
+	// simulation space는 Required.bUseLocalSpace에 따라 local/world 중 하나로 고정된다.
+	// spawn-time 모듈 입력을 이 공간으로 해석해 저장하면 GT/RT 좌표계 계약이 일관된다.
+	FVector                     TransformLocalVectorToSimulation(const FVector& V) const;
+	FVector                     TransformSimulationVectorToWorld(const FVector& V) const;
+	FVector                     TransformWorldVectorToSimulation(const FVector& V) const;
 
 	// World ↔ Local 헬퍼 (Required.bUseLocalSpace 따라 분기).
 	FTransform GetComponentToWorld() const;

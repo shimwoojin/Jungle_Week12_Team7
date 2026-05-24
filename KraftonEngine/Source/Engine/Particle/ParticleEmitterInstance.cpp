@@ -216,6 +216,42 @@ UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
 	return Emitter->GetCurrentLODLevel(CurrentLODIndex);
 }
 
+bool FParticleEmitterInstance::UsesLocalSpace() const
+{
+	const UParticleModuleRequired* Required = GetRequiredModule();
+	return Required ? Required->bUseLocalSpace : false;
+}
+
+FVector FParticleEmitterInstance::TransformLocalVectorToSimulation(const FVector& V) const
+{
+	if (UsesLocalSpace() || !Component)
+	{
+		return V;
+	}
+
+	return Component->GetWorldMatrix().TransformVector(V);
+}
+
+FVector FParticleEmitterInstance::TransformSimulationVectorToWorld(const FVector& V) const
+{
+	if (!UsesLocalSpace() || !Component)
+	{
+		return V;
+	}
+
+	return Component->GetWorldMatrix().TransformVector(V);
+}
+
+FVector FParticleEmitterInstance::TransformWorldVectorToSimulation(const FVector& V) const
+{
+	if (!UsesLocalSpace() || !Component)
+	{
+		return V;
+	}
+
+	return Component->GetWorldInverseMatrix().TransformVector(V);
+}
+
 void FParticleEmitterInstance::SetCurrentLODIndex(int32 InLODIndex)
 {
 	CurrentLODIndex = std::max(0, InLODIndex);
