@@ -301,32 +301,198 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	return true;
 }
 
-void FParticleBeamVertexFactory::InitResources(ID3D11Device* /*Device*/) {}
-void FParticleBeamVertexFactory::ReleaseResources() {}
-bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
-                                           const FDynamicEmitterReplayDataBase& /*Replay*/,
+// =============================================================================
+// Beam — SourcePoint→TargetPoint 카메라facing quad strip
+// =============================================================================
+void FParticleBeamVertexFactory::InitResources(ID3D11Device* /*Device*/)
+{
+	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleBeamTrail);
+}
+
+void FParticleBeamVertexFactory::ReleaseResources()
+{
+	Shader = nullptr;
+	IB.Release();
+}
+
+bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
+                                           const FDynamicEmitterReplayDataBase& Replay,
                                            const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
-                                           const FVector& /*CameraPosition*/,
+                                           const FVector& CameraPosition,
                                            bool /*bRequiresSort*/,
                                            EParticleReplaySortMode /*SortMode*/,
-                                           FDynamicVertexBuffer& /*InOutVB*/,
+                                           FDynamicVertexBuffer& InOutVB,
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
-	return false;
+	const auto& BeamReplay = static_cast<const FDynamicBeamEmitterReplayData&>(Replay);
+
+	FVector Source = BeamReplay.SourcePoint;
+	FVector Target = BeamReplay.TargetPoint;
+	if (Replay.bUseLocalSpace)
+	{
+		Source = Replay.LocalToWorld.TransformPositionWithW(Source);
+		Target = Replay.LocalToWorld.TransformPositionWithW(Target);
+	}
+
+	const FVector Axis = Target - Source;
+	const float BeamLen = Axis.Length();
+	if (BeamLen < 1e-4f) return false;
+	const FVector Dir = Axis * (1.0f / BeamLen);
+
+	const int32 InterpPts = BeamReplay.InterpolationPoints > 0 ? BeamReplay.InterpolationPoints : 0;
+	const int32 NumSegments = InterpPts + 1;       // source~target 분할 수
+	const int32 NumPoints = NumSegments + 1;
+	const float HalfWidth = 5.0f;                  // 가시화용 고정 폭 (world units)
+	const FVector4 BeamColor = { 1, 1, 1, 1 };
+
+	const uint32 VertCount = static_cast<uint32>(NumPoints * 2);
+	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6);
+
+	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
+	for (int32 i = 0; i < NumPoints; ++i)
+	{
+		const float T = static_cast<float>(i) / static_cast<float>(NumSegments);
+		const FVector P = Source + Axis * T;
+		// beam 축에 수직 + 시선 방향과 직교 → 카메라facing 띠 폭.
+		FVector Side = Dir.Cross(CameraPosition - P);
+		const float SideLen = Side.Length();
+		Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
+
+		FParticleBeamTrailVertex& L = Vertices[i * 2 + 0];
+		FParticleBeamTrailVertex& R = Vertices[i * 2 + 1];
+		L.Position = P - Side; L.Color = BeamColor; L.UV = { 0.0f, T };
+		R.Position = P + Side; R.Color = BeamColor; R.UV = { 1.0f, T };
+	}
+
+	std::vector<uint32> Indices(IndexCount);
+	for (int32 s = 0; s < NumSegments; ++s)
+	{
+		const uint32 Base = static_cast<uint32>(s * 2);
+		uint32* Dst = Indices.data() + s * 6;
+		Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
+		Dst[3] = Base + 1; Dst[4] = Base + 3; Dst[5] = Base + 2;
+	}
+
+	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));
+	else
+		InOutVB.EnsureCapacity(Device, VertCount);
+	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
+
+	IB.EnsureCapacity(Device, IndexCount);
+	IB.Update(Context, Indices.data(), IndexCount);
+
+	// 비인스턴싱 strip: VB는 InOutVB(SceneProxy가 바인딩), IB는 factory 동적 IB.
+	OutDraw.StaticIB     = IB.GetBuffer();
+	OutDraw.VertexCount  = VertCount;
+	OutDraw.IndexCount   = IndexCount;
+	OutDraw.InstanceCount = 0;
+	return true;
 }
 
-void FParticleRibbonVertexFactory::InitResources(ID3D11Device* /*Device*/) {}
-void FParticleRibbonVertexFactory::ReleaseResources() {}
-bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* /*Device*/, ID3D11DeviceContext* /*Context*/,
-                                             const FDynamicEmitterReplayDataBase& /*Replay*/,
+// =============================================================================
+// Ribbon — 활성 입자를 age순으로 이은 카메라facing trail strip
+// =============================================================================
+void FParticleRibbonVertexFactory::InitResources(ID3D11Device* /*Device*/)
+{
+	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleBeamTrail);
+}
+
+void FParticleRibbonVertexFactory::ReleaseResources()
+{
+	Shader = nullptr;
+	IB.Release();
+}
+
+bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
+                                             const FDynamicEmitterReplayDataBase& Replay,
                                              const FVector& /*CameraRight*/, const FVector& /*CameraUp*/,
-                                             const FVector& /*CameraPosition*/,
+                                             const FVector& CameraPosition,
                                              bool /*bRequiresSort*/,
                                              EParticleReplaySortMode /*SortMode*/,
-                                             FDynamicVertexBuffer& /*InOutVB*/,
+                                             FDynamicVertexBuffer& InOutVB,
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
-	return false;
+	const FParticleDataView View = Replay.GetParticleView();
+	const uint32 N = View.ActiveParticleCount;
+	if (N < 2 || View.ParticleStride == 0 || !View.ParticleData) return false; // trail은 최소 2점
+
+	const uint8* RawBase = View.ParticleData;
+	const uint32 Stride = View.ParticleStride;
+	const bool bLocal = Replay.bUseLocalSpace;
+	const FMatrix& L2W = Replay.LocalToWorld;
+
+	auto GetWorldPos = [RawBase, Stride, bLocal, &L2W](uint32 i) -> FVector
+	{
+		const auto& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
+		FVector W = P.Location;
+		if (bLocal) W = L2W.TransformPositionWithW(W);
+		return W;
+	};
+
+	// age(RelativeTime)순 정렬 — 오래된 입자부터 이어 trail 연속성 확보.
+	std::vector<uint32> Order(N);
+	for (uint32 i = 0; i < N; ++i) Order[i] = i;
+	std::sort(Order.begin(), Order.end(), [RawBase, Stride](uint32 a, uint32 b)
+	{
+		const auto& PA = *reinterpret_cast<const FBaseParticle*>(RawBase + a * Stride);
+		const auto& PB = *reinterpret_cast<const FBaseParticle*>(RawBase + b * Stride);
+		return PA.RelativeTime > PB.RelativeTime;
+	});
+
+	const uint32 NumPoints = N;
+	const uint32 NumSegments = N - 1;
+	const uint32 VertCount = NumPoints * 2;
+	const uint32 IndexCount = NumSegments * 6;
+
+	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
+	for (uint32 i = 0; i < NumPoints; ++i)
+	{
+		const uint32 Idx = Order[i];
+		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + Idx * Stride);
+		const FVector Pos = GetWorldPos(Idx);
+
+		// segment 방향: 다음 point로 (마지막은 직전 방향 재사용).
+		FVector Dir = (i + 1 < NumPoints) ? (GetWorldPos(Order[i + 1]) - Pos)
+		                                  : (Pos - GetWorldPos(Order[i - 1]));
+		const float DirLen = Dir.Length();
+		if (DirLen > 1e-4f) Dir = Dir * (1.0f / DirLen);
+
+		FVector Side = Dir.Cross(CameraPosition - Pos);
+		const float SideLen = Side.Length();
+		const float HalfWidth = P.Size.X * 0.5f;
+		Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
+
+		const float V = static_cast<float>(i) / static_cast<float>(NumSegments);
+		FParticleBeamTrailVertex& L = Vertices[i * 2 + 0];
+		FParticleBeamTrailVertex& R = Vertices[i * 2 + 1];
+		L.Position = Pos - Side; L.Color = P.Color; L.UV = { 0.0f, V };
+		R.Position = Pos + Side; R.Color = P.Color; R.UV = { 1.0f, V };
+	}
+
+	std::vector<uint32> Indices(IndexCount);
+	for (uint32 s = 0; s < NumSegments; ++s)
+	{
+		const uint32 Base = s * 2;
+		uint32* Dst = Indices.data() + s * 6;
+		Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
+		Dst[3] = Base + 1; Dst[4] = Base + 3; Dst[5] = Base + 2;
+	}
+
+	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));
+	else
+		InOutVB.EnsureCapacity(Device, VertCount);
+	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
+
+	IB.EnsureCapacity(Device, IndexCount);
+	IB.Update(Context, Indices.data(), IndexCount);
+
+	OutDraw.StaticIB     = IB.GetBuffer();
+	OutDraw.VertexCount  = VertCount;
+	OutDraw.IndexCount   = IndexCount;
+	OutDraw.InstanceCount = 0;
+	return true;
 }

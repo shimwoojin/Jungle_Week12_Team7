@@ -47,6 +47,8 @@ FParticleSystemSceneProxy::~FParticleSystemSceneProxy()
 	delete DynamicData; DynamicData = nullptr;
 	SpriteVB.Release();
 	MeshInstanceVB.Release();
+	BeamVB.Release();
+	RibbonVB.Release();
 	// ParticleMaterial은 UObjectManager가 소유 — 여기서 해제 X
 }
 
@@ -136,6 +138,11 @@ void FParticleSystemSceneProxy::UpdateMesh()
 	{
 		MeshMaterial = FMaterialManager::Get().GetOrCreateMaterial(
 			"Content/Material/Particle/ParticleMesh.mat");
+	}
+	if (!BeamTrailMaterial)
+	{
+		BeamTrailMaterial = FMaterialManager::Get().GetOrCreateMaterial(
+			"Content/Material/Particle/ParticleBeamTrail.mat");
 	}
 
 	// Template이 있으면 emitter index별 RequiredModule.Material 캐싱.
@@ -233,15 +240,23 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		{
 		case EDynamicEmitterType::Sprite: EmitterVB = &SpriteVB;       break;
 		case EDynamicEmitterType::Mesh:   EmitterVB = &MeshInstanceVB; break;
-		default: ++EmitterIdx; continue; // Beam/Ribbon 미구현
+		case EDynamicEmitterType::Beam:   EmitterVB = &BeamVB;         break;
+		case EDynamicEmitterType::Ribbon: EmitterVB = &RibbonVB;       break;
+		default: ++EmitterIdx; continue;
 		}
 
 		// Material 먼저 결정 — sort 조건 산출 위해 BuildDraw 호출 전에 BlendState 확인.
 		// RequiredModule.Material 우선 (Template 있을 때). 없으면 type별 fallback.
 		UMaterial* RequiredMat = (EmitterIdx < EmitterMaterials.size())
 			? EmitterMaterials[EmitterIdx] : nullptr;
-		UMaterial* FallbackMat = (Replay->EmitterType == EDynamicEmitterType::Mesh)
-			? MeshMaterial : SpriteMaterial;
+		UMaterial* FallbackMat = SpriteMaterial;
+		switch (Replay->EmitterType)
+		{
+		case EDynamicEmitterType::Mesh:   FallbackMat = MeshMaterial;      break;
+		case EDynamicEmitterType::Beam:
+		case EDynamicEmitterType::Ribbon: FallbackMat = BeamTrailMaterial; break;
+		default: break;
+		}
 		UMaterial* SectionMat  = RequiredMat ? RequiredMat : FallbackMat;
 
 		// 정렬 필요 여부는 이제 material blend가 아니라 replay 계약의 SortMode가 결정한다.
@@ -262,14 +277,24 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		Section.IndexCount = Spec.IndexCount;
 		Section.Material   = SectionMat;
 
-		// Sprite/Mesh 공통 인스턴싱 경로: 정적 VB(slot 0) + 정적 IB + dynamic per-instance VB(slot 1).
-		// Sprite는 unit quad(4정점/6인덱스), Mesh는 실제 mesh를 slot 0에 둔다. DrawIndexedInstanced(IndexCount, N).
-		Section.BufferOverride.VB               = Spec.StaticVB;
-		Section.BufferOverride.VBStride         = Spec.StaticVBStride;
-		Section.BufferOverride.IB               = Spec.StaticIB;
-		Section.BufferOverride.InstanceCount    = Spec.InstanceCount;
-		Section.BufferOverride.InstanceVB       = EmitterVB->GetBuffer();
-		Section.BufferOverride.InstanceVBStride = EmitterVB->GetStride();
+		if (Spec.InstanceCount > 0)
+		{
+			// Sprite/Mesh 인스턴싱: 정적 VB(slot 0) + 정적 IB + dynamic per-instance VB(slot 1).
+			// Sprite는 unit quad(4정점/6인덱스), Mesh는 실제 mesh를 slot 0에 둔다. DrawIndexedInstanced(IndexCount, N).
+			Section.BufferOverride.VB               = Spec.StaticVB;
+			Section.BufferOverride.VBStride         = Spec.StaticVBStride;
+			Section.BufferOverride.IB               = Spec.StaticIB;
+			Section.BufferOverride.InstanceCount    = Spec.InstanceCount;
+			Section.BufferOverride.InstanceVB       = EmitterVB->GetBuffer();
+			Section.BufferOverride.InstanceVBStride = EmitterVB->GetStride();
+		}
+		else
+		{
+			// Beam/Ribbon strip(비인스턴싱): 동적 VB(EmitterVB) + 동적 IB(factory). DrawIndexed.
+			Section.BufferOverride.VB       = EmitterVB->GetBuffer();
+			Section.BufferOverride.VBStride = EmitterVB->GetStride();
+			Section.BufferOverride.IB       = Spec.StaticIB;
+		}
 
 		MutableSections.push_back(std::move(Section));
 		TotalIndexCount += Spec.IndexCount;

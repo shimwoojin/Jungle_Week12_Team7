@@ -148,6 +148,7 @@ public:
 
 protected:
 	FShader* Shader = nullptr;
+	FDynamicIndexBuffer IB;   // strip 인덱스 (가변, BuildDraw가 채움)
 };
 
 class FParticleRibbonVertexFactory : public FParticleVertexFactory
@@ -170,4 +171,5 @@ public:
 
 protected:
 	FShader* Shader = nullptr;
+	FDynamicIndexBuffer IB;   // strip 인덱스 (가변, BuildDraw가 채움)
 };

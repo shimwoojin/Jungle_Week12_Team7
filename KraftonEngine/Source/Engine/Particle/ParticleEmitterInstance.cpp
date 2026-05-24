@@ -7,6 +7,8 @@
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
+#include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
+#include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 #include "Math/Transform.h"
 
@@ -831,6 +833,14 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 	Data->Source.SourcePoint = SourcePoint;
 	Data->Source.TargetPoint = TargetPoint;
 
+	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	{
+		if (auto* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule))
+		{
+			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
+		}
+	}
+
 	return Data;
 }
 void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const FVector& InTarget)
@@ -845,5 +855,14 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;
+
+	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	{
+		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
+		{
+			Data->Source.MaxTessellation = RibbonTypeData->MaxTessellation;
+		}
+	}
+
 	return Data;
 }

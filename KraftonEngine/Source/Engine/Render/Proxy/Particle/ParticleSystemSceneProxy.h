@@ -51,12 +51,14 @@ protected:
 	// (Sprite와 Mesh가 정점 포맷 다르고 stride 다르니 한 VB 공유 불가)
 	mutable FDynamicVertexBuffer SpriteVB;        // FParticleSpriteInstanceVertex (per-instance, slot 1)
 	mutable FDynamicVertexBuffer MeshInstanceVB;  // FParticleMeshInstanceVertex
-	// Beam/Ribbon은 Day 7+ — 추가 시 BeamVB/RibbonVB
+	mutable FDynamicVertexBuffer BeamVB;          // FParticleBeamTrailVertex (strip, 비인스턴싱)
+	mutable FDynamicVertexBuffer RibbonVB;        // FParticleBeamTrailVertex (strip, 비인스턴싱)
 
 	// emitter type별 fallback Material (Template 없을 때 사용).
 	// 자산 기반 (.mat 파일) — FMaterialManager::GetOrCreateMaterial로 로드.
-	UMaterial* SpriteMaterial = nullptr;  // fallback
-	UMaterial* MeshMaterial   = nullptr;  // fallback
+	UMaterial* SpriteMaterial    = nullptr;  // fallback
+	UMaterial* MeshMaterial      = nullptr;  // fallback
+	UMaterial* BeamTrailMaterial = nullptr;  // fallback (Beam/Ribbon 공용)
 
 	// PSC.Template.Emitters[i].LODLevels[0].RequiredModule.ResolveMaterial() 결과 캐시.
 	// Template 있을 때 emitter index 1:1로 채워짐. 없는 index는 fallback 사용.
