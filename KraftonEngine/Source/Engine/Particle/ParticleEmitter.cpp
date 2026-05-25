@@ -256,6 +256,15 @@ UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)
 	auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(NewLOD);
 	NewLOD->SpawnModule = Spawn;
 
+	if (InLevel > 0)
+	{
+		if (UParticleLODLevel* LOD0 = GetLODLevel(0))
+		{
+			NewLOD->UpdateFromLOD0(LOD0);
+			NewLOD->Level = InLevel;
+		}
+	}
+
 	if (InLevel >= static_cast<int32>(LODLevels.size()))
 	{
 		LODLevels.push_back(NewLOD);
