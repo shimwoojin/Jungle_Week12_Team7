@@ -77,6 +77,7 @@ private:
 	void RebuildPreview(bool bResetSimulation = true);
 	void RestartPreview();
 	void NotifyParticleAssetChanged(bool bResetSimulation = true);
+	void ApplyCurrentLODToPreview();
 
 	UParticleEmitter* GetSelectedEmitter() const;
 	UParticleLODLevel* GetSelectedLOD() const;

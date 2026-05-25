@@ -1711,7 +1711,7 @@ void FParticleEditorWidget::Open(UObject* Object)
 
 	PreviewActor = WorldContext.World->SpawnActor<AActor>();
 	PreviewActor->SetActorLocation(FVector(0.0f, 0.0f, 0.0f));
-	PreviewActor->bTickInEditor = true;
+	PreviewActor->bTickInEditor = false;
 
 	PreviewParticleComponent = PreviewActor->AddComponent<UParticleSystemComponent>();
 	PreviewActor->SetRootComponent(PreviewParticleComponent);
@@ -1941,6 +1941,26 @@ void FParticleEditorWidget::RenderToolbar()
 	if (ImGui::InputInt("LOD", &CurrentLODIndex))
 	{
 		if (CurrentLODIndex < 0) CurrentLODIndex = 0;
+		if (System)
+		{
+			const int32 RequestedLODIndex = CurrentLODIndex;
+			System->EnsureLODDistances();
+			if (RequestedLODIndex >= System->GetMaxLODCount())
+			{
+				for (UParticleEmitter* Emitter : System->Emitters)
+				{
+					if (!Emitter) continue;
+					while (Emitter->GetLODCount() <= RequestedLODIndex)
+					{
+						Emitter->CreateLODLevel(Emitter->GetLODCount());
+					}
+				}
+				System->EnsureLODDistances();
+				MarkDirty();
+			}
+			CurrentLODIndex = RequestedLODIndex;
+		}
+		ApplyCurrentLODToPreview();
 	}
 
 	ImGui::SameLine();
@@ -2527,6 +2547,76 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			bChanged |= DragFloat3Field("Bounds Max", System->SystemBoundsMax, 1.0f);
 			ImGui::TextDisabled("Path: %s", System->GetSourcePath().empty() ? "Unsaved asset" : System->GetSourcePath().c_str());
 		}
+		if (ImGui::CollapsingHeader("LOD", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			bChanged |= ImGui::Checkbox("Use Automatic LOD", &System->bUseAutomaticLOD);
+			bChanged |= ImGui::DragFloat("LOD Distance Hysteresis", &System->LODDistanceHysteresis, 1.0f, 0.0f, 1000000.0f, "%.1f");
+			bChanged |= ImGui::DragFloat("LOD Switch Delay", &System->LODSwitchDelay, 0.01f, 0.0f, 60.0f, "%.2f");
+
+			System->EnsureLODDistances();
+			const int32 LODCount = System->GetMaxLODCount();
+			ImGui::Text("LOD Count: %d", LODCount);
+			if (ImGui::Button("Add LOD"))
+			{
+				const int32 NewLODIndex = LODCount;
+				for (UParticleEmitter* Emitter : System->Emitters)
+				{
+					if (!Emitter) continue;
+					while (Emitter->GetLODCount() <= NewLODIndex)
+					{
+						Emitter->CreateLODLevel(Emitter->GetLODCount());
+					}
+				}
+				CurrentLODIndex = NewLODIndex;
+				System->EnsureLODDistances();
+				ApplyCurrentLODToPreview();
+				NotifyParticleAssetChanged(true);
+			}
+			ImGui::SameLine();
+			if (LODCount <= 1) ImGui::BeginDisabled();
+			if (ImGui::Button("Remove Current LOD"))
+			{
+				for (UParticleEmitter* Emitter : System->Emitters)
+				{
+					if (!Emitter || Emitter->GetLODCount() <= 1) continue;
+					if (CurrentLODIndex < Emitter->GetLODCount())
+					{
+						Emitter->RemoveLODLevel(CurrentLODIndex);
+					}
+				}
+				System->EnsureLODDistances();
+				const int32 NewMaxLODCount = System->GetMaxLODCount();
+				if (CurrentLODIndex >= NewMaxLODCount)
+				{
+					CurrentLODIndex = (std::max)(0, NewMaxLODCount - 1);
+				}
+				ApplyCurrentLODToPreview();
+				NotifyParticleAssetChanged(true);
+			}
+			if (LODCount <= 1) ImGui::EndDisabled();
+
+			for (int32 LODIndex = 0; LODIndex < LODCount; ++LODIndex)
+			{
+				ImGui::PushID(LODIndex);
+				float Distance = System->GetLODDistance(LODIndex);
+				if (LODIndex == 0)
+				{
+					ImGui::BeginDisabled();
+				}
+				if (ImGui::DragFloat("Distance", &Distance, 10.0f, 0.0f, 10000000.0f, "%.1f"))
+				{
+					System->SetLODDistance(LODIndex, Distance);
+					bChanged = true;
+				}
+				if (LODIndex == 0)
+				{
+					ImGui::EndDisabled();
+				}
+				ImGui::SameLine();
+				ImGui::Text("LOD %d", LODIndex);
+				ImGui::PopID();
+			}
+		}
 	}
 	else if (UParticleEmitter* Emitter = GetSelectedEmitter())
 	{
@@ -2544,7 +2634,11 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				ImGui::Text("Instance Bytes: %u bytes", Emitter->GetReqInstanceBytes());
 				if (ImGui::Button("Add LOD"))
 				{
-					Emitter->CreateLODLevel(Emitter->GetLODCount());
+					const int32 NewLODIndex = Emitter->GetLODCount();
+					Emitter->CreateLODLevel(NewLODIndex);
+					CurrentLODIndex = NewLODIndex;
+					if (System) System->EnsureLODDistances();
+					ApplyCurrentLODToPreview();
 					NotifyParticleAssetChanged(true);
 				}
 				ImGui::SameLine();
@@ -2553,6 +2647,8 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				{
 					Emitter->RemoveLODLevel(CurrentLODIndex);
 					if (CurrentLODIndex >= Emitter->GetLODCount()) CurrentLODIndex = (std::max)(0, Emitter->GetLODCount() - 1);
+					if (System) System->EnsureLODDistances();
+					ApplyCurrentLODToPreview();
 					NotifyParticleAssetChanged(true);
 				}
 				if (Emitter->GetLODCount() <= 1) ImGui::EndDisabled();
@@ -3451,6 +3547,7 @@ void FParticleEditorWidget::RebuildPreview(bool bResetSimulation)
 	if (PreviewParticleComponent)
 	{
 		PreviewParticleComponent->SetTemplate(System);
+		PreviewParticleComponent->SetCurrentLODIndex(CurrentLODIndex);
 		PreviewParticleComponent->RebuildInstances(bResetSimulation);
 		PreviewParticleComponent->Activate(bResetSimulation);
 	}
@@ -3460,6 +3557,7 @@ void FParticleEditorWidget::RestartPreview()
 {
 	if (PreviewParticleComponent)
 	{
+		PreviewParticleComponent->SetCurrentLODIndex(CurrentLODIndex);
 		PreviewParticleComponent->Activate(true);
 		PreviewParticleComponent->ResetParticles();
 	}
@@ -3469,6 +3567,32 @@ void FParticleEditorWidget::NotifyParticleAssetChanged(bool bResetSimulation)
 {
 	MarkDirty();
 	RebuildPreview(bResetSimulation);
+}
+
+void FParticleEditorWidget::ApplyCurrentLODToPreview()
+{
+	if (UParticleSystem* System = GetEditedSystem())
+	{
+		System->EnsureLODDistances();
+		const int32 MaxLODCount = System->GetMaxLODCount();
+		if (MaxLODCount > 0)
+		{
+			CurrentLODIndex = std::clamp(CurrentLODIndex, 0, MaxLODCount - 1);
+		}
+		else
+		{
+			CurrentLODIndex = 0;
+		}
+	}
+	else
+	{
+		if (CurrentLODIndex < 0) CurrentLODIndex = 0;
+	}
+
+	if (PreviewParticleComponent)
+	{
+		PreviewParticleComponent->SetCurrentLODIndex(CurrentLODIndex);
+	}
 }
 
 UParticleEmitter* FParticleEditorWidget::GetSelectedEmitter() const

@@ -42,7 +42,67 @@ void UParticleLODLevel::PostDuplicate()
 
 void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 {
-	// TODO: LOD 보간/복사
+	if (!LOD0 || LOD0 == this)
+	{
+		return;
+	}
+
+	bEnabled = LOD0->bEnabled;
+
+	auto ReplaceModule = [this](UParticleModule*& Target, UParticleModule* Source)
+	{
+		if (Target)
+		{
+			UObjectManager::Get().DestroyObject(Target);
+			Target = nullptr;
+		}
+
+		if (!Source)
+		{
+			return;
+		}
+
+		Target = Cast<UParticleModule>(Source->Duplicate(this));
+		if (Target)
+		{
+			Target->SetOuter(this);
+		}
+	};
+
+	UParticleModule* Required = RequiredModule;
+	ReplaceModule(Required, LOD0->RequiredModule);
+	RequiredModule = Cast<UParticleModuleRequired>(Required);
+
+	UParticleModule* Spawn = SpawnModule;
+	ReplaceModule(Spawn, LOD0->SpawnModule);
+	SpawnModule = Cast<UParticleModuleSpawn>(Spawn);
+
+	UParticleModule* TypeData = TypeDataModule;
+	ReplaceModule(TypeData, LOD0->TypeDataModule);
+	TypeDataModule = Cast<UParticleModuleTypeDataBase>(TypeData);
+
+	for (UParticleModule* Module : Modules)
+	{
+		if (Module)
+		{
+			UObjectManager::Get().DestroyObject(Module);
+		}
+	}
+	Modules.clear();
+
+	for (UParticleModule* SourceModule : LOD0->Modules)
+	{
+		if (!SourceModule)
+		{
+			continue;
+		}
+
+		if (UParticleModule* DuplicatedModule = Cast<UParticleModule>(SourceModule->Duplicate(this)))
+		{
+			DuplicatedModule->SetOuter(this);
+			Modules.push_back(DuplicatedModule);
+		}
+	}
 }
 
 bool UParticleLODLevel::ValidateModules() const
