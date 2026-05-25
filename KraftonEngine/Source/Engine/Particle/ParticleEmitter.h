@@ -16,6 +16,9 @@ class UParticleSystemComponent;
 //   FParticleEmitterInstance 를 만든다.
 //   CacheEmitterModuleInfo() 는 모든 LOD 의 모듈을 훑어 payload layout 을 계산한다.
 //   런타임에서 LOD가 바뀌어도 module payload offset 이 존재해야 하기 때문이다.
+//   즉 현재 런타임은 여전히 concrete/materialized UParticleLODLevel graph 와
+//   module pointer identity에 강하게 결합되어 있다. 미래 effective-runtime LOD
+//   materialization은 이 계약을 대체하거나 인접 단계에서 함께 빌드되어야 한다.
 // =============================================================================
 UCLASS()
 class UParticleEmitter : public UObject
@@ -31,9 +34,10 @@ public:
 	UPROPERTY(Edit, Save, Category="Emitter", DisplayName="Enabled")
 	bool bEnabled = true;
 
-	// Asset-side stored LOD graph. Runtime still consumes fully materialized LOD
-	// objects today, but phase 4 starts preparing for a future LOD0 + override
-	// model that can later build effective runtime LOD data on demand.
+	// Asset-side stored LOD graph. Runtime still consumes these fully materialized
+	// LOD objects directly today. The longer-term direction is for stored data to
+	// become more compact/override-oriented while runtime may consume a separate
+	// built effective LOD representation, but that split is not active yet.
 	UPROPERTY(Save, Instanced, Category="LOD", DisplayName="LOD Levels", Type=Array, AllowedClass=UParticleLODLevel)
 	TArray<UParticleLODLevel*> LODLevels;
 
@@ -52,6 +56,8 @@ public:
 	// Derived LOD는 이후 SynchronizeDerivedLODFromLOD0() / UpdateFromLOD0()
 	// 경로에서 inherited data resync, override preservation, reduction reapply,
 	// and full-copy fallback policy를 적용받는다.
+	// The resulting stored LOD is still a concrete/materialized graph because the
+	// active runtime path consumes UParticleLODLevel objects directly today.
 	// Authoring interpretation:
 	// - resync from LOD0 refreshes inherited data
 	// - explicit overrides remain local to the derived LOD
@@ -66,6 +72,11 @@ public:
 	// 모듈을 훑어 입자 1개의 총 크기 / Module → byte offset 을 계산.
 	// PSC 가 EmitterInstance 를 만들 때 1회 호출되어야 한다.
 	// 모듈 변경 시 PSC 가 다시 호출한다.
+	// Today this cache is built against the concrete/materialized LOD graphs
+	// stored on the emitter. Payload layout and module-instance offset lookup
+	// therefore still assume stable module object identity across the active
+	// runtime path. A future effective-runtime LOD build step would likely need
+	// to integrate before or alongside this cache construction.
 	void CacheEmitterModuleInfo();
 
 	uint32 GetParticleSize()                const { return CachedLayout.ParticleStride; }
@@ -75,6 +86,9 @@ public:
 	const FParticleLayout& GetParticleLayout() const { return CachedLayout; }
 
 	// 인스턴스 팩토리 — TypeData 에 따라 sprite/mesh/beam/ribbon instance 생성.
+	// The current path still chooses the runtime instance type from the stored
+	// materialized LOD graph. A future effective-runtime LOD representation could
+	// supply the same decision without exposing long-lived asset-side modules.
 	FParticleEmitterInstance* CreateInstance(UParticleSystemComponent* InComponent);
 
 protected:

@@ -76,6 +76,9 @@ namespace
 
 	void FullCopyRegularModulesFromLOD0(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
 	{
+		// Compatibility/recovery path: rebuild the stored derived regular-module
+		// graph as a concrete full copy from LOD0 when finer-grained sync metadata
+		// is not trustworthy enough yet.
 		for (UParticleModule*& Module : TargetLOD->Modules)
 		{
 			DestroyLODModule(Module);
@@ -253,8 +256,9 @@ namespace
 			return;
 		}
 
-		// Inherited core slots re-materialize directly from LOD0. Derived overrides
-		// remain untouched because their sync flags already opt out at the slot level.
+		// Inherited core slots re-materialize directly onto the stored derived LOD
+		// graph. Derived overrides remain untouched because their sync flags already
+		// opt out at the slot level.
 		SyncCoreModuleSlotFromLOD0(TargetLOD->RequiredModule, LOD0->RequiredModule, TargetLOD, TargetLOD->bSyncRequiredModuleFromLOD0);
 		SyncCoreModuleSlotFromLOD0(TargetLOD->SpawnModule, LOD0->SpawnModule, TargetLOD, TargetLOD->bSyncSpawnModuleFromLOD0);
 		SyncCoreModuleSlotFromLOD0(TargetLOD->TypeDataModule, LOD0->TypeDataModule, TargetLOD, TargetLOD->bSyncTypeDataModuleFromLOD0);
@@ -267,10 +271,11 @@ namespace
 			return;
 		}
 
-		// Inherited regular modules follow their explicit LOD0 source bindings.
-		// Explicit override modules stay local to the derived LOD and are preserved.
-		// This is the structural part of resync; automatic reduction remains a later,
-		// separate shaping pass rather than being treated as an explicit override.
+		// Inherited regular modules follow their explicit LOD0 source bindings on
+		// the stored derived graph. Explicit override modules stay local to the
+		// derived LOD and are preserved. This is the structural part of resync;
+		// automatic reduction remains a later, separate shaping pass rather than
+		// being treated as an explicit override.
 		SyncRegularModulesFromLOD0(TargetLOD, LOD0);
 	}
 
@@ -388,8 +393,9 @@ namespace
 		}
 
 		// Structural sync still happens first. Reduction policy is now a distinct
-		// phase that turns inherited lower LODs into cheaper runtime variants
-		// without collapsing future explicit override boundaries.
+		// phase that turns inherited lower LODs into cheaper materialized variants
+		// without collapsing future explicit override boundaries. A later effective
+		// runtime LOD build step may eventually own more of this shaping work.
 		const float ReductionScale = GetLODReductionScale(TargetLOD);
 		if (ReductionScale >= 1.0f)
 		{
@@ -413,7 +419,10 @@ namespace
 		// cheaper inherited lower-LOD variants after source-driven resync and does
 		// not redefine which slots/modules are explicit overrides. If an author
 		// wants a local value to stop following automatic reduction, that value
-		// should move onto an explicit derived override path instead.
+		// should move onto an explicit derived override path instead. Today this
+		// still mutates the stored materialized derived LOD graph; future runtime
+		// effective-LOD materialization may choose to consume the same intent later
+		// in a runtime-only build pipeline instead.
 		ApplyDeferredLODReductionPolicy(TargetLOD);
 	}
 }
@@ -467,6 +476,10 @@ void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 	// modules from their explicit LOD0 source bindings, reapplies reduction for
 	// inherited cost shaping, preserves explicit overrides, and falls back to a
 	// full-copy rebuild when metadata-driven regular-module resync is untrustworthy.
+	// The result is still the stored materialized derived LOD graph that current
+	// runtime code consumes directly. A future effective runtime LOD build step
+	// could later read the same source/override intent and materialize a separate
+	// runtime-only result without changing this authoring-side resync meaning.
 	// Authoring interpretation:
 	// - "Resync from LOD0" refreshes inherited data only
 	// - explicit overrides stay local

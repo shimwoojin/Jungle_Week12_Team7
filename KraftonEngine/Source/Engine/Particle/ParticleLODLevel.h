@@ -85,6 +85,10 @@ public:
 	// Derived LOD resync entry point. Inherited data follows LOD0 changes,
 	// explicit overrides stay local, deferred reduction reapplies afterward,
 	// and malformed metadata can fall back to a full-copy rebuild.
+	// This currently refreshes the stored materialized derived-LOD graph itself.
+	// A future runtime effective-LOD materialization step may consume a separate
+	// built result from the same source/override metadata, but that split is not
+	// active yet.
 	// LOD 변경 시 LOD 0 으로부터 본인 값을 재추출.
 	void UpdateFromLOD0(UParticleLODLevel* LOD0);
 	ELODModuleSyncMode GetRegularModuleSyncMode(int32 ModuleIndex) const;

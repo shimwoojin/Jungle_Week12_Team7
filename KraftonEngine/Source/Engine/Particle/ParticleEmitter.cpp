@@ -43,6 +43,8 @@ namespace
 void UParticleEmitter::OnPostLoad(FArchive& /*Ar*/)
 {
 	EnsureLODCoreModules();
+	// Current runtime setup still consumes the emitter's stored materialized LOD
+	// graphs directly, so payload/layout caches are rebuilt from those graphs on load.
 	CacheEmitterModuleInfo();
 }
 
@@ -62,6 +64,7 @@ void UParticleEmitter::PostDuplicate()
 	}
 
 	EnsureLODCoreModules();
+	// Duplicate also keeps the concrete stored LOD graph as the active runtime path.
 	CacheEmitterModuleInfo();
 }
 
@@ -221,8 +224,10 @@ void UParticleEmitter::SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedL
 			// LOD0 is the master source for inherited derived-LOD data. The derived
 			// resync path keeps explicit overrides local, reapplies inherited
 			// reduction policy, and can still fall back to a materialized full-copy
-			// rebuild when metadata-driven sync is not trustworthy enough. This is
-			// the code path future editor actions like "Resync from LOD0" should map to.
+			// rebuild when metadata-driven sync is not trustworthy enough. Today this
+			// still refreshes the stored materialized derived LOD graph itself, not a
+			// separate runtime-only effective LOD object. This is the code path future
+			// editor actions like "Resync from LOD0" should map to.
 			DerivedLOD->UpdateFromLOD0(LOD0);
 		}
 	}
@@ -307,6 +312,10 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 
 	EnsureLODCoreModules();
 
+	// Runtime payload layout is still built against the emitter's concrete stored
+	// UParticleLODLevel graphs. The offset maps use module object identity as the
+	// lookup key, so a future effective-runtime LOD materialization step cannot be
+	// swapped in casually without deciding how layout/cache ownership should move.
 	auto CacheModule = [this](UParticleLODLevel* LOD, UParticleModule* Module)
 		{
 			if (!LOD || !Module) return;
@@ -340,6 +349,9 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 	{
 		if (!LOD) continue;
 
+		// Every stored LOD contributes to the compatibility/runtime cache today so
+		// that instance code can switch LODs while still resolving payload offsets
+		// from concrete module pointers on the active graph.
 		CacheModule(LOD, LOD->RequiredModule);
 		CacheModule(LOD, LOD->SpawnModule);
 		CacheModule(LOD, LOD->TypeDataModule);
@@ -362,7 +374,10 @@ FParticleEmitterInstance* UParticleEmitter::CreateInstance(UParticleSystemCompon
 {
 	// Instance subclass is chosen from TypeData. TypeData should usually be
 	// consistent across LODs, but do not hard-code LOD 0 here: use the first
-	// valid TypeData available in the emitter's LOD list.
+	// valid TypeData available in the emitter's LOD list. This still reads the
+	// stored materialized graph directly; a future effective-runtime LOD build
+	// step could eventually provide the same type decision from a runtime-only
+	// representation without changing the instance factory contract.
 	for (UParticleLODLevel* LOD : LODLevels)
 	{
 		if (!LOD || !LOD->TypeDataModule)
