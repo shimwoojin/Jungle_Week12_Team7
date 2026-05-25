@@ -45,7 +45,8 @@ public:
 	// Tune distance thresholds first. Close-range/high-importance gameplay VFX
 	// usually keep LOD0 farther out, while environment/background VFX can switch
 	// earlier. Beam/ribbon-heavy effects often need more conservative thresholds
-	// because reduction and silhouette changes are easier to notice.
+	// because reduction and silhouette changes are easier to notice. Treat these
+	// thresholds as the main authoring control before touching hysteresis/delay.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Distances", Type=Array)
 	TArray<float> LODDistances;
 
@@ -56,7 +57,8 @@ public:
 	float LODDistanceHysteresis = 100.0f;
 
 	// Tune switch delay last. Start with distance + hysteresis, then add delay only
-	// if camera motion still causes distracting one-frame transitions.
+	// if camera motion still causes distracting one-frame transitions. If lower-LOD
+	// reduction is very strong, prefer adjusting distance thresholds first.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Switch Delay", Min=0.0f)
 	float LODSwitchDelay = 0.0f;
 

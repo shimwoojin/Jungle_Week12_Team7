@@ -269,6 +269,8 @@ namespace
 
 		// Inherited regular modules follow their explicit LOD0 source bindings.
 		// Explicit override modules stay local to the derived LOD and are preserved.
+		// This is the structural part of resync; automatic reduction remains a later,
+		// separate shaping pass rather than being treated as an explicit override.
 		SyncRegularModulesFromLOD0(TargetLOD, LOD0);
 	}
 
@@ -409,7 +411,9 @@ namespace
 
 		// Reduction stays a distinct post-sync shaping phase. It recalculates
 		// cheaper inherited lower-LOD variants after source-driven resync and does
-		// not redefine which slots/modules are explicit overrides.
+		// not redefine which slots/modules are explicit overrides. If an author
+		// wants a local value to stop following automatic reduction, that value
+		// should move onto an explicit derived override path instead.
 		ApplyDeferredLODReductionPolicy(TargetLOD);
 	}
 }
@@ -463,6 +467,10 @@ void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 	// modules from their explicit LOD0 source bindings, reapplies reduction for
 	// inherited cost shaping, preserves explicit overrides, and falls back to a
 	// full-copy rebuild when metadata-driven regular-module resync is untrustworthy.
+	// Authoring interpretation:
+	// - "Resync from LOD0" refreshes inherited data only
+	// - explicit overrides stay local
+	// - reduction is recalculated after inherited data is refreshed
 	NormalizeCoreSlotSyncMetadata();
 	bEnabled = LOD0->bEnabled;
 
@@ -550,6 +558,8 @@ void UParticleLODLevel::NormalizeCoreSlotSyncMetadata()
 
 	// TypeData uses nullptr as a valid "default sprite path" override, so keep the
 	// explicit override state when the derived LOD intentionally clears the slot.
+	// That makes "clear the slot and keep sprite/default behavior" a meaningful
+	// authoring action instead of an invalid state.
 }
 
 void UParticleLODLevel::ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode)
@@ -588,6 +598,8 @@ void UParticleLODLevel::NormalizeRegularModuleSyncMetadata()
 	{
 		if (GetRegularModuleSyncMode(ModuleIndex) == ELODModuleSyncMode::Override)
 		{
+			// Override modules keep no inherited source binding. Reset-to-inherited
+			// style tools should restore both the sync mode and the source binding.
 			SetRegularModuleSourceLOD0Index(ModuleIndex, -1);
 			continue;
 		}
@@ -662,6 +674,8 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 		SpawnModule->SetOuter(this);
 		// Keep automatic reduction aligned with the sync flag: inherited slots can
 		// still be reduced, explicit derived spawn overrides should be preserved.
+		// Authoring meaning: changing this slot locally opts out of "follow LOD0
+		// then reduce" and turns the slot into a local derived decision.
 		bSyncSpawnModuleFromLOD0 = false;
 		return true;
 	}
@@ -690,6 +704,9 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 	InModule->SetOuter(this);
 	Modules.push_back(InModule);
+	// Regular modules added directly to a derived LOD are authored as local
+	// overrides first; inherited source binding is only meaningful after a reset
+	// to inherited / resync-style action restores the LOD0 relationship.
 	SetRegularModuleSyncMode(static_cast<int32>(Modules.size()) - 1, ELODModuleSyncMode::Override);
 	SetRegularModuleSourceLOD0Index(static_cast<int32>(Modules.size()) - 1, -1);
 	return true;

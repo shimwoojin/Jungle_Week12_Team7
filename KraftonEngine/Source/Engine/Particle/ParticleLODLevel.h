@@ -55,8 +55,11 @@ public:
 	// Phase 4/5 keeps lightweight module-level sync metadata as a bridge toward
 	// a future Base + Override LOD model. Full property-level overrides and
 	// deeper reduction/scaling policy are still intentionally deferred.
-	// true: this slot is still inherited/materialized from LOD0.
-	// false: preserve the current derived slot instance as an explicit override.
+	// Authoring meaning:
+	// - true  : this slot is still inherited/materialized from LOD0
+	// - false : this derived LOD now owns the slot as an explicit override
+	// Future "Reset to Inherited" style actions should restore the sync flag and
+	// then let UpdateFromLOD0() rebuild the inherited slot from the LOD0 source.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Required Module From LOD0")
 	bool bSyncRequiredModuleFromLOD0 = true;
 
@@ -69,8 +72,10 @@ public:
 	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Sync Modes", Type=Array)
 	TArray<uint8> RegularModuleSyncModes;
 
-	// Inherited regular modules carry an explicit LOD0 source-module binding so
-	// derived sync is less fragile than raw array-position matching.
+	// Internal authoring support metadata for inherited regular modules.
+	// Most authors only need to know whether a module is inherited or overridden;
+	// this source binding exists to keep inherited matching stable after LOD0
+	// changes and should not usually be treated as a primary editing control.
 	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Source LOD0 Indices", Type=Array)
 	TArray<int32> RegularModuleSourceLOD0Indices;
 
@@ -87,6 +92,8 @@ public:
 	int32 GetRegularModuleSourceLOD0Index(int32 ModuleIndex) const;
 	void SetRegularModuleSourceLOD0Index(int32 ModuleIndex, int32 SourceIndex);
 	bool HasRegularModuleOverrides() const;
+	// "Reset to Inherited" for regular modules conceptually means restoring
+	// inherited sync mode/source binding metadata and then resyncing from LOD0.
 	void ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode = ELODModuleSyncMode::InheritFromLOD0);
 	void ResetRegularModuleSourceLOD0Indices(int32 DefaultSourceIndex = -1, bool bMapToCurrentIndex = false);
 	void NormalizeCoreSlotSyncMetadata();

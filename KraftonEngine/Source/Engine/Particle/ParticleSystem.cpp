@@ -52,6 +52,8 @@ void UParticleSystem::NormalizeAutomaticLODTuning()
 	// Automatic LOD quality depends at least as much on authored thresholds as on
 	// the runtime selection code. Keep defaults conservative and predictable, then
 	// tune in this order: distances first, hysteresis second, switch delay third.
+	// This normalization only keeps values sane; it does not replace per-effect
+	// authoring judgment or reduction-policy-aware tuning.
 	if (LODDistanceHysteresis < MinimumAutomaticLODDistanceHysteresis)
 	{
 		LODDistanceHysteresis = MinimumAutomaticLODDistanceHysteresis;
@@ -182,7 +184,9 @@ void UParticleSystem::EnsureLODDistances()
 		// LOD0 always starts at distance zero. Additional thresholds should be read
 		// as authoring breakpoints, not as guaranteed "good" values for every effect.
 		// Beam/ribbon-sensitive effects often need more conservative thresholds, and
-		// strong lower-LOD reduction may require switching farther out.
+		// strong lower-LOD reduction may require switching farther out. Close-range
+		// gameplay VFX, general gameplay VFX, and background/environment VFX may all
+		// want different threshold families even when they share the same runtime code.
 		LODDistances[0] = 0.0f;
 	}
 

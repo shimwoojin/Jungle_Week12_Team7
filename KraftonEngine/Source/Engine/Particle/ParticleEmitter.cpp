@@ -221,7 +221,8 @@ void UParticleEmitter::SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedL
 			// LOD0 is the master source for inherited derived-LOD data. The derived
 			// resync path keeps explicit overrides local, reapplies inherited
 			// reduction policy, and can still fall back to a materialized full-copy
-			// rebuild when metadata-driven sync is not trustworthy enough.
+			// rebuild when metadata-driven sync is not trustworthy enough. This is
+			// the code path future editor actions like "Resync from LOD0" should map to.
 			DerivedLOD->UpdateFromLOD0(LOD0);
 		}
 	}

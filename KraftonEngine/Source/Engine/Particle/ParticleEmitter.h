@@ -52,6 +52,9 @@ public:
 	// Derived LOD는 이후 SynchronizeDerivedLODFromLOD0() / UpdateFromLOD0()
 	// 경로에서 inherited data resync, override preservation, reduction reapply,
 	// and full-copy fallback policy를 적용받는다.
+	// Authoring interpretation:
+	// - resync from LOD0 refreshes inherited data
+	// - explicit overrides remain local to the derived LOD
 	UParticleLODLevel* CreateLODLevel(int32 InLevel);
 	void               SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedLOD);
 	void               RemoveLODLevel(int32 InLevel);
