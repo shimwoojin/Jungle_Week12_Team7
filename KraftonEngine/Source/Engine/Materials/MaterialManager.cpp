@@ -277,8 +277,9 @@ bool FMaterialManager::SetMaterialShader(UMaterial* Material, const FString& Sha
 		Material->GetDomain(), Material->GetBlendMode(), std::move(Buffers));
 	Material->SetShaderPathForSerialize(ShaderPath);
 
-	if (Material->WasCustomShaderRequested())
-		Material->SetCustomShader(Template->GetShader());
+	// 기본 UberLit 은 엔진이 (ViewMode×VertexFactory) 퍼뮤테이션으로 도출 가능 → custom 해제.
+	// 그 외(非UberLit) 셰이더는 도출 불가 → custom 강제(인스펙터 레이아웃 = 실제 렌더 셰이더 일치 보장).
+	Material->SetUseCustomShader(ShaderPath != DefaultShaderPath);
 
 	Material->RebuildCachedSRVs();
 	return true;
