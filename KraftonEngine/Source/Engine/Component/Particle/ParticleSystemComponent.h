@@ -85,6 +85,9 @@ protected:
 	void CreateEmitterInstances();
 	void DestroyEmitterInstances();
 	void DispatchEventsToManager();
+	// PSC는 EventManager를 직접 탐색/생성하지 않고, 상위 particle runtime provider가
+	// 등록한 default manager를 이 helper로 주입받는다. nullptr도 유효한 미주입 상태다.
+	void RefreshEventManagerBinding();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
 	void LoadTemplateFromPath();
@@ -116,7 +119,8 @@ protected:
 	// emitter 인스턴스 — PSC 가 owning.
 	TArray<FParticleEmitterInstance*> EmitterInstances;
 
-	// EventManager (level scope). nullptr 이면 PSC 가 자체 처리만.
+	// Higher-level particle runtime system이 주입하는 non-owning dependency.
+	// PSC는 이 manager를 직접 찾거나 만들지 않고, provider 상태를 로컬 필드로만 반영한다.
 	AParticleEventManager* EventManager = nullptr;
 
 	// PSC 가 매 프레임 누적한 이벤트 (모든 emitter merge).

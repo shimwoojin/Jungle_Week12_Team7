@@ -62,6 +62,7 @@ void UParticleSystemComponent::LoadTemplateFromPath()
 void UParticleSystemComponent::Activate(bool bReset)
 {
 	bActive = true;
+	RefreshEventManagerBinding();
 
 	if (Template && EmitterInstances.empty())
 	{
@@ -99,6 +100,7 @@ void UParticleSystemComponent::ResetParticles()
 void UParticleSystemComponent::BeginPlay()
 {
 	UPrimitiveComponent::BeginPlay();
+	RefreshEventManagerBinding();
 
 	if (Template && EmitterInstances.empty())
 	{
@@ -416,6 +418,7 @@ UParticleSystemComponent::FDynamicData* UParticleSystemComponent::BuildDynamicDa
 void UParticleSystemComponent::CreateEmitterInstances()
 {
 	DestroyEmitterInstances();
+	RefreshEventManagerBinding();
 
 	if (!Template) return;
 
@@ -434,6 +437,12 @@ void UParticleSystemComponent::CreateEmitterInstances()
 		EmitterInstances.push_back(Inst);
 	}
 }
+
+void UParticleSystemComponent::RefreshEventManagerBinding()
+{
+	SetEventManager(FParticleSystemManager::Get().GetDefaultEventManager());
+}
+
 void UParticleSystemComponent::DestroyEmitterInstances()
 {
 	for (FParticleEmitterInstance* Inst : EmitterInstances) delete Inst;
