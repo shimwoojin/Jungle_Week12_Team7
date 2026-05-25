@@ -42,12 +42,21 @@ public:
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Use Automatic LOD")
 	bool bUseAutomaticLOD = false;
 
+	// Tune distance thresholds first. Close-range/high-importance gameplay VFX
+	// usually keep LOD0 farther out, while environment/background VFX can switch
+	// earlier. Beam/ribbon-heavy effects often need more conservative thresholds
+	// because reduction and silhouette changes are easier to notice.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Distances", Type=Array)
 	TArray<float> LODDistances;
 
+	// Tune hysteresis after distance thresholds. This is a spatial stabilizer, not
+	// the primary quality dial. Keep it large enough to suppress boundary chatter
+	// but smaller than the intentional distance gap between adjacent LODs.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Distance Hysteresis", Min=0.0f)
 	float LODDistanceHysteresis = 100.0f;
 
+	// Tune switch delay last. Start with distance + hysteresis, then add delay only
+	// if camera motion still causes distracting one-frame transitions.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Switch Delay", Min=0.0f)
 	float LODSwitchDelay = 0.0f;
 
@@ -66,6 +75,7 @@ public:
 
 	int32 GetMaxLODCount() const;
 	void  EnsureLODDistances();
+	void  NormalizeAutomaticLODTuning();
 	int32 GetLODIndexForDistance(float Distance) const;
 	float GetLODDistance(int32 LODIndex) const;
 	void  SetLODDistance(int32 LODIndex, float Distance);

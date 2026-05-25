@@ -7,6 +7,13 @@
 
 #include <algorithm>
 
+namespace
+{
+	constexpr float DefaultAutomaticLODDistanceStep = 1000.0f;
+	constexpr float MinimumAutomaticLODDistanceHysteresis = 0.0f;
+	constexpr float MinimumAutomaticLODSwitchDelay = 0.0f;
+}
+
 void UParticleSystem::OnPostLoad(FArchive& /*Ar*/)
 {
 	BuildEmitters();
@@ -38,6 +45,22 @@ void UParticleSystem::PostDuplicate()
 
 	BuildEmitters();
 	EnsureLODDistances();
+}
+
+void UParticleSystem::NormalizeAutomaticLODTuning()
+{
+	// Automatic LOD quality depends at least as much on authored thresholds as on
+	// the runtime selection code. Keep defaults conservative and predictable, then
+	// tune in this order: distances first, hysteresis second, switch delay third.
+	if (LODDistanceHysteresis < MinimumAutomaticLODDistanceHysteresis)
+	{
+		LODDistanceHysteresis = MinimumAutomaticLODDistanceHysteresis;
+	}
+
+	if (LODSwitchDelay < MinimumAutomaticLODSwitchDelay)
+	{
+		LODSwitchDelay = MinimumAutomaticLODSwitchDelay;
+	}
 }
 
 UParticleEmitter* UParticleSystem::AddEmitter()      
@@ -129,6 +152,8 @@ int32 UParticleSystem::GetMaxLODCount() const
 
 void UParticleSystem::EnsureLODDistances()
 {
+	NormalizeAutomaticLODTuning();
+
 	const int32 LODCount = std::max(1, GetMaxLODCount());
 
 	while (static_cast<int32>(LODDistances.size()) < LODCount)
@@ -141,7 +166,7 @@ void UParticleSystem::EnsureLODDistances()
 			const float PreviousDistance = !LODDistances.empty()
 				? LODDistances.back()
 				: 0.0f;
-			NewDistance = PreviousDistance + 1000.0f;
+			NewDistance = PreviousDistance + DefaultAutomaticLODDistanceStep;
 		}
 
 		LODDistances.push_back(NewDistance);
@@ -154,6 +179,10 @@ void UParticleSystem::EnsureLODDistances()
 
 	if (!LODDistances.empty())
 	{
+		// LOD0 always starts at distance zero. Additional thresholds should be read
+		// as authoring breakpoints, not as guaranteed "good" values for every effect.
+		// Beam/ribbon-sensitive effects often need more conservative thresholds, and
+		// strong lower-LOD reduction may require switching farther out.
 		LODDistances[0] = 0.0f;
 	}
 
