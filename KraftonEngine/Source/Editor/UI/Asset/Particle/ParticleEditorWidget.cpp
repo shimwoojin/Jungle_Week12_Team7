@@ -23,6 +23,12 @@
 #include "Particle/ParticleLODLevel.h"
 #include "Particle/ParticleModule.h"
 #include "Particle/ParticleEmitterInstance.h"
+#include "Particle/Distributions/DistributionFloat.h"
+#include "Particle/Distributions/DistributionFloatConstant.h"
+#include "Particle/Distributions/DistributionFloatUniform.h"
+#include "Particle/Distributions/DistributionVector.h"
+#include "Particle/Distributions/DistributionVectorConstant.h"
+#include "Particle/Distributions/DistributionVectorUniform.h"
 #include "Particle/Modules/ParticleModuleAcceleration.h"
 
 #include "Particle/Modules/ParticleModuleCollision.h"
@@ -243,6 +249,156 @@ namespace
 			}
 			ImGui::EndCombo();
 		}
+		return bChanged;
+	}
+
+
+	int32 FloatDistributionType(UDistributionFloat* Distribution)
+	{
+		if (Cast<UDistributionFloatUniform>(Distribution)) return 1;
+		return 0;
+	}
+
+	int32 VectorDistributionType(UDistributionVector* Distribution)
+	{
+		if (Cast<UDistributionVectorUniform>(Distribution)) return 1;
+		return 0;
+	}
+
+	UDistributionFloat* EnsureFloatDistribution(UDistributionFloat*& Distribution, UObject* Outer)
+	{
+		if (!Distribution)
+		{
+			Distribution = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(Outer);
+		}
+		return Distribution;
+	}
+
+	UDistributionVector* EnsureVectorDistribution(UDistributionVector*& Distribution, UObject* Outer)
+	{
+		if (!Distribution)
+		{
+			Distribution = UObjectManager::Get().CreateObject<UDistributionVectorConstant>(Outer);
+		}
+		return Distribution;
+	}
+
+	bool DrawFloatDistributionEditor(const char* Label, UDistributionFloat*& Distribution, UObject* Outer,
+	                                 float Speed = 0.05f, float Min = 0.0f, float Max = 0.0f)
+	{
+		bool bChanged = false;
+		ImGui::PushID(Label);
+		ImGui::TextUnformatted(Label);
+
+		EnsureFloatDistribution(Distribution, Outer);
+
+		static const char* TypeNames[] = { "Constant", "Uniform" };
+		int32 Type = FloatDistributionType(Distribution);
+		if (ComboInt("Distribution Type", Type, TypeNames, 2))
+		{
+			float PrevMin = 0.0f;
+			float PrevMax = 0.0f;
+			if (Distribution)
+			{
+				Distribution->GetOutRange(PrevMin, PrevMax);
+				UObjectManager::Get().DestroyObject(Distribution);
+				Distribution = nullptr;
+			}
+
+			if (Type == 0)
+			{
+				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(Outer);
+				NewDistribution->Constant = (PrevMin + PrevMax) * 0.5f;
+				Distribution = NewDistribution;
+			}
+			else
+			{
+				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatUniform>(Outer);
+				NewDistribution->Min = PrevMin;
+				NewDistribution->Max = PrevMax;
+				Distribution = NewDistribution;
+			}
+			bChanged = true;
+		}
+
+		if (auto* Constant = Cast<UDistributionFloatConstant>(Distribution))
+		{
+			if (Min < Max)
+			{
+				bChanged |= ImGui::DragFloat("Constant", &Constant->Constant, Speed, Min, Max, "%.3f");
+			}
+			else
+			{
+				bChanged |= ImGui::DragFloat("Constant", &Constant->Constant, Speed, 0.0f, 0.0f, "%.3f");
+			}
+		}
+		else if (auto* Uniform = Cast<UDistributionFloatUniform>(Distribution))
+		{
+			if (Min < Max)
+			{
+				bChanged |= ImGui::DragFloat("Min", &Uniform->Min, Speed, Min, Max, "%.3f");
+				bChanged |= ImGui::DragFloat("Max", &Uniform->Max, Speed, Min, Max, "%.3f");
+			}
+			else
+			{
+				bChanged |= ImGui::DragFloat("Min", &Uniform->Min, Speed, 0.0f, 0.0f, "%.3f");
+				bChanged |= ImGui::DragFloat("Max", &Uniform->Max, Speed, 0.0f, 0.0f, "%.3f");
+			}
+		}
+
+		ImGui::PopID();
+		return bChanged;
+	}
+
+	bool DrawVectorDistributionEditor(const char* Label, UDistributionVector*& Distribution, UObject* Outer,
+	                                  float Speed = 0.1f, float Min = 0.0f, float Max = 0.0f)
+	{
+		bool bChanged = false;
+		ImGui::PushID(Label);
+		ImGui::TextUnformatted(Label);
+
+		EnsureVectorDistribution(Distribution, Outer);
+
+		static const char* TypeNames[] = { "Constant", "Uniform" };
+		int32 Type = VectorDistributionType(Distribution);
+		if (ComboInt("Distribution Type", Type, TypeNames, 2))
+		{
+			FVector PrevMin(0.0f, 0.0f, 0.0f);
+			FVector PrevMax(0.0f, 0.0f, 0.0f);
+			if (Distribution)
+			{
+				Distribution->GetRange(PrevMin, PrevMax);
+				UObjectManager::Get().DestroyObject(Distribution);
+				Distribution = nullptr;
+			}
+
+			if (Type == 0)
+			{
+				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorConstant>(Outer);
+				NewDistribution->Constant = (PrevMin + PrevMax) * 0.5f;
+				Distribution = NewDistribution;
+			}
+			else
+			{
+				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorUniform>(Outer);
+				NewDistribution->Min = PrevMin;
+				NewDistribution->Max = PrevMax;
+				Distribution = NewDistribution;
+			}
+			bChanged = true;
+		}
+
+		if (auto* Constant = Cast<UDistributionVectorConstant>(Distribution))
+		{
+			bChanged |= DragFloat3Field("Constant", Constant->Constant, Speed, Min, Max);
+		}
+		else if (auto* Uniform = Cast<UDistributionVectorUniform>(Distribution))
+		{
+			bChanged |= DragFloat3Field("Min", Uniform->Min, Speed, Min, Max);
+			bChanged |= DragFloat3Field("Max", Uniform->Max, Speed, Min, Max);
+		}
+
+		ImGui::PopID();
 		return bChanged;
 	}
 
@@ -986,8 +1142,9 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= ImGui::DragFloat("Rate (particles/sec)", &Spawn->Rate, 1.0f, 0.0f, 10000.0f, "%.1f");
-					bChanged |= ImGui::DragFloat("Rate Scale", &Spawn->RateScale, 0.01f, 0.0f, 10.0f, "%.2f");
+					bChanged |= DrawFloatDistributionEditor("Rate", Spawn->RateDistribution, Spawn, 1.0f, 0.0f, 10000.0f);
+					ImGui::Separator();
+					bChanged |= DrawFloatDistributionEditor("Rate Scale", Spawn->RateScaleDistribution, Spawn, 0.01f, 0.0f, 10.0f);
 					if (ImGui::TreeNodeEx("Bursts", ImGuiTreeNodeFlags_DefaultOpen))
 					{
 						for (int32 i = 0; i < static_cast<int32>(Spawn->BurstList.size()); ++i)
@@ -1023,16 +1180,14 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Lifetime", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= ImGui::DragFloat("Min Lifetime", &Lifetime->MinLifetime, 0.05f, 0.001f, 60.0f, "%.2f");
-					bChanged |= ImGui::DragFloat("Max Lifetime", &Lifetime->MaxLifetime, 0.05f, 0.001f, 60.0f, "%.2f");
+					bChanged |= DrawFloatDistributionEditor("Lifetime", Lifetime->LifetimeDistribution, Lifetime, 0.05f, 0.001f, 60.0f);
 				}
 			}
 			else if (UParticleModuleLocation* Location = Cast<UParticleModuleLocation>(Module))
 			{
 				if (ImGui::CollapsingHeader("Location", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DragFloat3Field("Start Location Min", Location->StartLocationMin, 0.1f);
-					bChanged |= DragFloat3Field("Start Location Max", Location->StartLocationMax, 0.1f);
+					bChanged |= DrawVectorDistributionEditor("Start Location", Location->StartLocationDistribution, Location, 0.1f);
 					bChanged |= ImGui::Checkbox("World Space Override", &Location->bWorldSpaceOverride);
 				}
 			}
@@ -1040,8 +1195,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Velocity", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DragFloat3Field("Start Velocity Min", Velocity->StartVelocityMin, 0.1f);
-					bChanged |= DragFloat3Field("Start Velocity Max", Velocity->StartVelocityMax, 0.1f);
+					bChanged |= DrawVectorDistributionEditor("Start Velocity", Velocity->StartVelocityDistribution, Velocity, 0.1f);
 					bChanged |= ImGui::Checkbox("In World Space", &Velocity->bInWorldSpace);
 				}
 			}
@@ -1049,7 +1203,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Const Acceleration", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DragFloat3Field("Acceleration", Acceleration->Acceleration, 0.1f);
+					bChanged |= DrawVectorDistributionEditor("Acceleration", Acceleration->AccelerationDistribution, Acceleration, 0.1f);
 				}
 			}
 			else if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
@@ -1064,9 +1218,10 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Size", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DragFloat3Field("Start Size Min", Size->StartSizeMin, 0.1f, 0.0f, 10000.0f);
-					bChanged |= DragFloat3Field("Start Size Max", Size->StartSizeMax, 0.1f, 0.0f, 10000.0f);
-					bChanged |= DragFloat3Field("End Size Scale", Size->EndSizeScale, 0.01f, 0.0f, 10000.0f);
+					bChanged |= DrawVectorDistributionEditor("Start Size", Size->StartSizeDistribution, Size, 0.1f, 0.0f, 10000.0f);
+
+					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("End Size Scale", Size->EndSizeScaleDistribution, Size, 0.01f, 0.0f, 10000.0f);
 					bChanged |= ImGui::Checkbox("Animate Over Life", &Size->bAnimateOverLife);
 				}
 			}

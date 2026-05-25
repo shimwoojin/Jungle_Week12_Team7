@@ -1,5 +1,8 @@
 ﻿#include "Engine/Particle/Distributions/DistributionFloatUniform.h"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace
 {
 	float RandomFloat()

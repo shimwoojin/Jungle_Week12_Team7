@@ -13,6 +13,28 @@
 #include "Modules/ParticleModuleColor.h"
 #include "Modules/ParticleModuleSize.h"
 #include "Serialization/Archive.h"
+#include "Particle/Distributions/DistributionVectorUniform.h"
+
+namespace
+{
+	UDistributionVectorUniform* SetVectorUniform(UDistributionVector*& Distribution, UObject* Outer, const FVector& Min, const FVector& Max)
+	{
+		if (Distribution)
+		{
+			UObjectManager::Get().DestroyObject(Distribution);
+			Distribution = nullptr;
+		}
+
+		auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorUniform>(Outer);
+		if (NewDistribution)
+		{
+			NewDistribution->Min = Min;
+			NewDistribution->Max = Max;
+			Distribution = NewDistribution;
+		}
+		return NewDistribution;
+	}
+}
 
 void UParticleEmitter::Serialize(FArchive& Ar)
 {
@@ -94,8 +116,7 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		{
 			Velocity->SetToSensibleDefaults(this);
 
-			Velocity->StartVelocityMin = { -3.0f, -3.0f, 1.0f };
-			Velocity->StartVelocityMax = { 3.0f, 3.0f, 3.0f };
+			SetVectorUniform(Velocity->StartVelocityDistribution, Velocity, { -3.0f, -3.0f, 1.0f }, { 3.0f, 3.0f, 3.0f });
 
 			LOD0->AddModule(Velocity);
 		}
@@ -118,9 +139,7 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		{
 			Size->SetToSensibleDefaults(this);
 
-			// TODO: 추후 삭제 - 테스트용 기본값
-			Size->StartSizeMin = { 0.5f, 0.5f, 1.0f };
-			Size->StartSizeMax = { 1.0f, 1.0f, 1.0f };
+			SetVectorUniform(Size->StartSizeDistribution, Size, { 0.5f, 0.5f, 1.0f }, { 1.0f, 1.0f, 1.0f });
 
 			LOD0->AddModule(Size);
 		}
