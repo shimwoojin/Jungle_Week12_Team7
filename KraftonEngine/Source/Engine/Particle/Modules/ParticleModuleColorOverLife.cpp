@@ -2,17 +2,26 @@
 
 #include <algorithm>
 
+#include "Object/Object.h"
 #include "Particle/ParticleEmitterInstance.h"
+#include "Component/Particle/ParticleSystemComponent.h"
+#include "Engine/Particle/Distributions/DistributionFloatCurve.h"
+#include "Engine/Particle/Distributions/DistributionVectorCurve.h"
 
-namespace
+UParticleModuleColorOverLife::UParticleModuleColorOverLife()
 {
-	FVector4 LerpColor(const FVector4& A, const FVector4& B, float T)
+	auto* DefaultColor = UObjectManager::Get().CreateObject<UDistributionVectorCurve>(this);
+	if (DefaultColor)
 	{
-		return FVector4(
-			A.X + (B.X - A.X) * T,
-			A.Y + (B.Y - A.Y) * T,
-			A.Z + (B.Z - A.Z) * T,
-			A.W + (B.W - A.W) * T);
+		DefaultColor->SetConstant(FVector(1.0f, 1.0f, 1.0f));
+		ColorOverLifeDistribution = DefaultColor;
+	}
+
+	auto* DefaultAlpha = UObjectManager::Get().CreateObject<UDistributionFloatCurve>(this);
+	if (DefaultAlpha)
+	{
+		DefaultAlpha->SetLinear(0.0f, 1.0f, 1.0f, 0.0f);
+		AlphaOverLifeDistribution = DefaultAlpha;
 	}
 }
 
@@ -30,18 +39,23 @@ void UParticleModuleColorOverLife::Update(FParticleEmitterInstance* Owner, uint3
 		if (!Particle) continue;
 
 		const float T = std::clamp(Particle->RelativeTime, 0.0f, 1.0f);
-		const FVector4 LifeColor = LerpColor(StartColor, EndColor, T);
+		const FVector LifeRGB = ColorOverLifeDistribution
+			? ColorOverLifeDistribution->GetValue(T, Owner->GetComponent())
+			: FVector(1.0f, 1.0f, 1.0f);
+		const float LifeAlpha = AlphaOverLifeDistribution
+			? AlphaOverLifeDistribution->GetValue(T, Owner->GetComponent())
+			: 1.0f;
 
 		if (bMultiplyBaseColor)
 		{
-			Particle->Color.X = Particle->BaseColor.X * LifeColor.X;
-			Particle->Color.Y = Particle->BaseColor.Y * LifeColor.Y;
-			Particle->Color.Z = Particle->BaseColor.Z * LifeColor.Z;
-			Particle->Color.W = Particle->BaseColor.W * LifeColor.W;
+			Particle->Color.X = Particle->BaseColor.X * LifeRGB.X;
+			Particle->Color.Y = Particle->BaseColor.Y * LifeRGB.Y;
+			Particle->Color.Z = Particle->BaseColor.Z * LifeRGB.Z;
+			Particle->Color.W = Particle->BaseColor.W * LifeAlpha;
 		}
 		else
 		{
-			Particle->Color = LifeColor;
+			Particle->Color = FVector4(LifeRGB.X, LifeRGB.Y, LifeRGB.Z, LifeAlpha);
 		}
 	}
 }

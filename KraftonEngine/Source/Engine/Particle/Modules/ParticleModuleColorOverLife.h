@@ -2,20 +2,23 @@
 
 #include "Particle/ParticleModule.h"
 #include "Math/Vector.h"
+#include "Engine/Particle/Distributions/DistributionFloat.h"
+#include "Engine/Particle/Distributions/DistributionVector.h"
 
 #include "Source/Engine/Particle/Modules/ParticleModuleColorOverLife.generated.h"
 
 // =============================================================================
 // UParticleModuleColorOverLife
-//   Particle->RelativeTime(0..1)을 기준으로 color/alpha를 보간한다.
-//   기본값은 BaseColor를 유지하면서 alpha만 1 -> 0으로 fade out 한다.
+//   Particle->RelativeTime(0..1)을 기준으로 color/alpha distribution을 평가한다.
+//   Unreal Cascade의 Color Over Life처럼 Color는 vector distribution, Alpha는 float
+//   distribution으로 분리한다.
 // =============================================================================
 UCLASS()
 class UParticleModuleColorOverLife : public UParticleModule
 {
 public:
 	GENERATED_BODY()
-	UParticleModuleColorOverLife() = default;
+	UParticleModuleColorOverLife();
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::Color; }
 	const char*     GetDisplayName() const override { return "Color Over Life"; }
@@ -23,11 +26,11 @@ public:
 	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	            float DeltaTime) override;
 
-	UPROPERTY(Edit, Save, Category="Color Over Life", DisplayName="Start Color")
-	FVector4 StartColor = { 1, 1, 1, 1 };
+	UPROPERTY(Edit, Save, Instanced, Category="Color Over Life", DisplayName="Color Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* ColorOverLifeDistribution = nullptr;
 
-	UPROPERTY(Edit, Save, Category="Color Over Life", DisplayName="End Color")
-	FVector4 EndColor = { 1, 1, 1, 0 };
+	UPROPERTY(Edit, Save, Instanced, Category="Color Over Life", DisplayName="Alpha Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
+	UDistributionFloat* AlphaOverLifeDistribution = nullptr;
 
 	UPROPERTY(Edit, Save, Category="Color Over Life", DisplayName="Multiply Base Color")
 	bool bMultiplyBaseColor = true;
