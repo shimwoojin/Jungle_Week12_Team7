@@ -3,27 +3,14 @@
 #include "Core/Singleton.h"
 #include "Core/Types/CoreTypes.h"
 #include "Render/Types/RenderTypes.h"
-#include "SimpleJSON/json.hpp"
 #include <memory>
 
 #include "Render/Types/RenderStateTypes.h"
 
-namespace MatKeys
-{
-	static constexpr const char* PathFileName = "PathFileName";
-	static constexpr const char* ShaderPath = "ShaderPath";
-	static constexpr const char* RenderPass = "RenderPass";
-	static constexpr const char* BlendState = "BlendState";
-	static constexpr const char* DepthStencilState = "DepthStencilState";
-	static constexpr const char* RasterizerState = "RasterizerState";
-	static constexpr const char* Parameters = "Parameters";
-	static constexpr const char* Textures = "Textures";
-	static constexpr const char* Parent = "Parent"; // MaterialInstance 한정 — Parent .mat 경로
-}
-
 class FMaterialTemplate;
 class UMaterial;
 struct FMaterialConstantBuffer;
+struct FVector4;
 
 struct FMaterialAssetListItem
 {
@@ -52,6 +39,10 @@ public:
     // UMaterial 생성
 	UMaterial* GetOrCreateMaterial(const FString& MatFilePath);
 
+	// 임포터용 — JSON 없이 머티리얼을 직접 만들고 .uasset 으로 저장.
+	UMaterial* CreateImportedMaterialAsset(const FString& UassetPath, const FVector4& SectionColor,
+		const FString& DiffuseTexturePath, const FString& NormalTexturePath);
+
 	void ScanMaterialAssets();
 	const TArray<FMaterialAssetListItem>& GetAvailableMaterialFiles() const { return AvailableMaterialFiles; }
 
@@ -60,27 +51,12 @@ private:
 	// 셰이더로 Template 생성 또는 캐시에서 반환
 	FMaterialTemplate* GetOrCreateTemplate(const FString& ShaderPath);
 
-	json::JSON ReadJsonFile(const FString& FilePath) const;
-
-	// 바이너리(.uasset) 직렬화 — exemplar = ParticleSystemManager. JSON 은 과도기 변환 브리지로만 유지.
+	// 바이너리(.uasset) 직렬화 — exemplar = ParticleSystemManager.
 	bool       SaveMaterial(UMaterial* Material, const FString& UassetPath);
 	UMaterial* LoadMaterialBinary(const FString& UassetPath);
 
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> CreateConstantBuffers(FMaterialTemplate* Template);
 
-	void ApplyParameters(UMaterial* Material, json::JSON& JsonData);
-	void ApplyTextures(UMaterial* Material, json::JSON& JsonData);
-
-	ERenderPass StringToRenderPass(const FString& Str) const;
-	EBlendState StringToBlendState(const FString& Str, ERenderPass Pass) const;
-	EDepthStencilState StringToDepthStencilState(const FString& Str, ERenderPass Pass) const;
-	ERasterizerState StringToRasterizerState(const FString& Str, ERenderPass Pass) const;
-
-	void SaveToJSON(json::JSON& JsonData, const FString& MatFilePath);
-	
-	bool InjectDefaultParameters(json::JSON& JsonData, FMaterialTemplate* Template, UMaterial* Material);
-	bool PurgeStaleParameters(json::JSON& JsonData, FMaterialTemplate* Template);
-	
 	const FString DefaultShaderPath = "Shaders/Geometry/UberLit.hlsl";
 
 

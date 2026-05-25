@@ -2,7 +2,6 @@
 #include "Materials/MaterialManager.h"
 #include "Resource/ResourceManager.h"
 #include "Editor/UI/ContentBrowser/ContentItem.h"
-#include "SimpleJSON/json.hpp"
 #include "Engine/Materials/Material.h"
 #include "Engine/Runtime/Engine.h"
 #include "Engine/Texture/Texture2D.h"

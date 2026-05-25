@@ -462,57 +462,19 @@ FString FObjImporter::ConvertMtlInfoToJson(const FObjMaterialInfo* MtlInfo)
 FString FObjImporter::ConvertMtlInfoToMat(const FObjMaterialInfo* MtlInfo)
 {
 	const FString UassetPath = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".uasset";
-	const FString MatPath    = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".mat";
 
-	// 이미 .uasset(또는 legacy .mat)이 있으면 그대로 사용 (덮어쓰지 않음)
-	if (std::filesystem::exists(FPaths::ToWide(UassetPath)) || std::filesystem::exists(FPaths::ToWide(MatPath)))
+	// 이미 있으면 그대로 사용 (덮어쓰지 않음)
+	if (std::filesystem::exists(FPaths::ToWide(UassetPath)))
 		return UassetPath;
 
-	// Auto/ 디렉토리 보장
 	std::filesystem::create_directories(FPaths::ToWide("Content/Material/Auto"));
 
-	json::JSON JsonData;
-	JsonData["PathFileName"] = UassetPath;
-	JsonData["Origin"] = "ObjImport";
-	JsonData["ShaderPath"] = "Shaders/Geometry/UberLit.hlsl";
-	JsonData["RenderPass"] = "Opaque";
+	const FVector4 SectionColor = MtlInfo->map_Kd.empty()
+		? FVector4(MtlInfo->Kd.X, MtlInfo->Kd.Y, MtlInfo->Kd.Z, 1.0f)
+		: FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 
-	if (!MtlInfo->map_Kd.empty())
-	{
-		JsonData["Textures"]["DiffuseTexture"] = MtlInfo->map_Kd;
-
-		JsonData["Parameters"]["SectionColor"][0] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][1] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][2] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][3] = 1.0f;
-	}
-	else
-	{
-
-		JsonData["Parameters"]["SectionColor"][0] = MtlInfo->Kd.X;
-		JsonData["Parameters"]["SectionColor"][1] = MtlInfo->Kd.Y;
-		JsonData["Parameters"]["SectionColor"][2] = MtlInfo->Kd.Z;
-		JsonData["Parameters"]["SectionColor"][3] = 1.0f;
-	}
-
-	if (!MtlInfo->map_Bump.empty())
-	{
-		JsonData["Textures"]["NormalTexture"] = MtlInfo->map_Bump;
-		JsonData["Parameters"]["HasNormalMap"] = 1.0f;
-	}
-	else
-	{
-		JsonData["Parameters"]["HasNormalMap"] = 0.0f;
-	}
-
-	// JSON 스펙을 임시 .mat 으로 쓴 뒤 바이너리(.uasset)로 변환하고 임시본 제거.
-	{
-		std::ofstream File(FPaths::ToWide(MatPath));
-		File << JsonData.dump();
-	}
-	FMaterialManager::Get().GetOrCreateMaterial(MatPath);   // 빌드 + .uasset 변환(lazy)
-	std::error_code Ec; std::filesystem::remove(FPaths::ToWide(MatPath), Ec);
-
+	// JSON 없이 머티리얼을 직접 빌드해 .uasset(바이너리)으로 저장.
+	FMaterialManager::Get().CreateImportedMaterialAsset(UassetPath, SectionColor, MtlInfo->map_Kd, MtlInfo->map_Bump);
 	return UassetPath;
 }
 

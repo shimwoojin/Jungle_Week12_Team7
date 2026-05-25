@@ -22,13 +22,6 @@ namespace
 		if (P.extension() == L".mat") P.replace_extension(L".uasset");
 		return FPaths::ToUtf8(P.generic_wstring());
 	}
-	// ".uasset" → ".mat" (legacy JSON 경로). 이미 .mat 이면 그대로.
-	FString ToLegacyMatPath(const FString& Path)
-	{
-		std::filesystem::path P(FPaths::ToWide(Path));
-		if (P.extension() == L".uasset") P.replace_extension(L".mat");
-		return FPaths::ToUtf8(P.generic_wstring());
-	}
 }
 
 void FMaterialManager::ScanMaterialAssets()
@@ -50,12 +43,18 @@ void FMaterialManager::ScanMaterialAssets()
 
 		const std::filesystem::path& Path = Entry.path();
 
-		if (Path.extension() != L".mat") continue;
+		if (Path.extension() != L".uasset") continue;
 		if (Path.stem() == L"None") continue; // Fallback 머티리얼은 목록에서 제외
 
 		FMaterialAssetListItem Item;
-		Item.DisplayName = FPaths::ToUtf8(Path.stem().wstring());
 		Item.FullPath = FPaths::ToUtf8(Path.lexically_relative(ProjectRoot).generic_wstring());
+
+		// .uasset 은 메시/파티클도 공유하는 확장자 → 헤더 Type 으로 Material 만 거른다.
+		EAssetPackageType PkgType = EAssetPackageType::Unknown;
+		if (!FAssetPackage::GetPackageType(Item.FullPath, PkgType) || PkgType != EAssetPackageType::Material)
+			continue;
+
+		Item.DisplayName = FPaths::ToUtf8(Path.stem().wstring());
 		AvailableMaterialFiles.push_back(std::move(Item));
 	}
 }
@@ -82,95 +81,16 @@ UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 		}
 	}
 
-	// 3. legacy JSON(.mat) fallback — 첫 접근 시 바이너리로 변환(lazy).
-	const FString MatPath = ToLegacyMatPath(MatFilePath);
-	json::JSON JsonData = ReadJsonFile(MatPath);
-	if (JsonData.IsNull())
-	{
-		// 기본 머티리얼 (디스크 저장 안 함)
-		UMaterial* DefaultMaterial = UObjectManager::Get().CreateObject<UMaterial>();
-		FMaterialTemplate* Template = GetOrCreateTemplate(DefaultShaderPath);
-		TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> Buffers = CreateConstantBuffers(Template);
-		DefaultMaterial->Create(UassetPath, Template, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(Buffers));
-		DefaultMaterial->SetShaderPathForSerialize(DefaultShaderPath);
-		DefaultMaterial->SetVector4Parameter("SectionColor", FVector4(1.0f, 0.0f, 1.0f, 1.0f));
-		MaterialCache.emplace(UassetPath, DefaultMaterial);
-		return DefaultMaterial;
-	}
-
-	// 3.5 Parent 키 — UMaterialInstance 분기
-	if (JsonData.hasKey(MatKeys::Parent))
-	{
-		FString ParentPath = JsonData[MatKeys::Parent].ToString().c_str();
-		if (!ParentPath.empty())
-		{
-			UMaterial* ParentMat = GetOrCreateMaterial(ParentPath);
-			if (ParentMat)
-			{
-				UMaterialInstance* MI = UObjectManager::Get().CreateObject<UMaterialInstance>();
-				MI->InitializeFromParent(ParentMat, UassetPath);
-
-				if (JsonData.hasKey(MatKeys::RenderPass))
-				{
-					ERenderPass MIPass = StringToRenderPass(JsonData[MatKeys::RenderPass].ToString().c_str());
-					MI->OverrideRenderPass(MIPass);
-					if (JsonData.hasKey(MatKeys::BlendState))
-						MI->OverrideBlendState(StringToBlendState(JsonData[MatKeys::BlendState].ToString().c_str(), MIPass));
-					if (JsonData.hasKey(MatKeys::DepthStencilState))
-						MI->OverrideDepthStencilState(StringToDepthStencilState(JsonData[MatKeys::DepthStencilState].ToString().c_str(), MIPass));
-					if (JsonData.hasKey(MatKeys::RasterizerState))
-						MI->OverrideRasterizerState(StringToRasterizerState(JsonData[MatKeys::RasterizerState].ToString().c_str(), MIPass));
-				}
-
-				ApplyParameters(MI, JsonData);
-				ApplyTextures(MI, JsonData);
-				MI->RebuildCachedSRVs();
-
-				MaterialCache.emplace(UassetPath, MI);
-				SaveMaterial(MI, UassetPath);  // lazy 변환
-				return MI;
-			}
-		}
-	}
-
-	// 4. 기본 정보 추출 + Domain/BlendMode 역매핑
-	FString ShaderPath = JsonData[MatKeys::ShaderPath].ToString().c_str();
-	FString RenderPassStr = JsonData[MatKeys::RenderPass].ToString().c_str();
-	ERenderPass RenderPass = StringToRenderPass(RenderPassStr);
-	FString BlendStr = JsonData.hasKey(MatKeys::BlendState) ? JsonData[MatKeys::BlendState].ToString().c_str() : "";
-	FString RasterStr = JsonData.hasKey(MatKeys::RasterizerState) ? JsonData[MatKeys::RasterizerState].ToString().c_str() : "";
-	EBlendState BlendState = StringToBlendState(BlendStr, RenderPass);
-	ERasterizerState RasterState = StringToRasterizerState(RasterStr, RenderPass);
-	EMaterialDomain Domain; EBlendMode BlendMode;
-	DeriveDomainBlend(RenderPass, BlendState, Domain, BlendMode);
-
-	FMaterialTemplate* Template = GetOrCreateTemplate(ShaderPath);
-	if (!Template) return nullptr;
-	auto InjectedBuffers = CreateConstantBuffers(Template);
-
-	UMaterial* Material = UObjectManager::Get().CreateObject<UMaterial>();
-	Material->Create(UassetPath, Template, Domain, BlendMode, std::move(InjectedBuffers));
-	Material->SetShaderPathForSerialize(ShaderPath);
-	if (RasterState != Material->GetRasterizerState())
-		Material->SetRasterOverride(RasterState);
-	{
-		const bool bUber     = (ShaderPath == DefaultShaderPath);
-		const bool bParticle = (ShaderPath == FString(EShaderPath::ParticleSprite)
-			|| ShaderPath == FString(EShaderPath::ParticleMesh)
-			|| ShaderPath == FString(EShaderPath::ParticleBeamTrail));
-		if (!bUber && !bParticle && Template)
-			Material->SetCustomShader(Template->GetShader());
-	}
-	MaterialCache.emplace(UassetPath, Material);
-
-	InjectDefaultParameters(JsonData, Template, Material);
-	PurgeStaleParameters(JsonData, Template);
-	ApplyParameters(Material, JsonData);
-	ApplyTextures(Material, JsonData);
-	Material->RebuildCachedSRVs();
-
-	SaveMaterial(Material, UassetPath);  // lazy 변환 (JSON → 바이너리)
-	return Material;
+	// 3. 바이너리가 없으면 기본(핑크) 머티리얼. JSON 변환 경로는 제거됨
+	//    (에셋은 .uasset 로 마이그레이션 완료, .mat JSON 미지원).
+	UMaterial* DefaultMaterial = UObjectManager::Get().CreateObject<UMaterial>();
+	FMaterialTemplate* Template = GetOrCreateTemplate(DefaultShaderPath);
+	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> Buffers = CreateConstantBuffers(Template);
+	DefaultMaterial->Create(UassetPath, Template, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(Buffers));
+	DefaultMaterial->SetShaderPathForSerialize(DefaultShaderPath);
+	DefaultMaterial->SetVector4Parameter("SectionColor", FVector4(1.0f, 0.0f, 1.0f, 1.0f));
+	MaterialCache.emplace(UassetPath, DefaultMaterial);
+	return DefaultMaterial;
 }
 
 // ============================================================
@@ -261,14 +181,31 @@ UMaterial* FMaterialManager::LoadMaterialBinary(const FString& UassetPath)
 	return Material;
 }
 
-json::JSON FMaterialManager::ReadJsonFile(const FString& FilePath) const
+// 임포터용 — JSON 없이 머티리얼을 직접 만들고 .uasset 으로 저장한다.
+UMaterial* FMaterialManager::CreateImportedMaterialAsset(const FString& UassetPath, const FVector4& SectionColor,
+	const FString& DiffuseTexturePath, const FString& NormalTexturePath)
 {
-	std::ifstream File(FPaths::ToWide(FilePath).c_str());
-	if (!File.is_open()) return json::JSON(); // Null JSON 반환
+	FMaterialTemplate* Template = GetOrCreateTemplate(DefaultShaderPath);
+	if (!Template) return nullptr;
+	auto Buffers = CreateConstantBuffers(Template);
 
-	std::stringstream Buffer;
-	Buffer << File.rdbuf();
-	return json::JSON::Load(Buffer.str());
+	UMaterial* Material = UObjectManager::Get().CreateObject<UMaterial>();
+	Material->Create(UassetPath, Template, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(Buffers));
+	Material->SetShaderPathForSerialize(DefaultShaderPath);
+	Material->SetVector4Parameter("SectionColor", SectionColor);
+	Material->SetScalarParameter("HasNormalMap", NormalTexturePath.empty() ? 0.0f : 1.0f);
+
+	if (!DiffuseTexturePath.empty())
+		if (UTexture2D* Tex = UTexture2D::LoadFromFile(DiffuseTexturePath, Device, ETextureColorSpace::SRGB))
+			Material->SetTextureParameter("DiffuseTexture", Tex);
+	if (!NormalTexturePath.empty())
+		if (UTexture2D* Tex = UTexture2D::LoadFromFile(NormalTexturePath, Device, ETextureColorSpace::Linear))
+			Material->SetTextureParameter("NormalTexture", Tex);
+
+	Material->RebuildCachedSRVs();
+	SaveMaterial(Material, UassetPath);
+	MaterialCache.emplace(UassetPath, Material);
+	return Material;
 }
 
 TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> FMaterialManager::CreateConstantBuffers(FMaterialTemplate* Template)
@@ -294,239 +231,6 @@ TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> FMaterialManager::Create
 	}
 
 	return InjectedBuffers;
-}
-
-void FMaterialManager::ApplyParameters(UMaterial* Material, json::JSON& JsonData)
-{
-	if (!JsonData.hasKey(MatKeys::Parameters)) return;
-
-	for (auto& Pair : JsonData[MatKeys::Parameters].ObjectRange())
-	{
-		FString ParamName = Pair.first.c_str();
-		json::JSON& Value = Pair.second;
-
-		if (Value.JSONType() == json::JSON::Class::Array)
-		{
-			if (Value.length() == 3)
-			{
-				Material->SetVector3Parameter(ParamName, FVector((float)Value[0].ToFloat(), (float)Value[1].ToFloat(), (float)Value[2].ToFloat()));
-			}
-			else if (Value.length() == 4)
-			{
-				Material->SetVector4Parameter(ParamName, FVector4((float)Value[0].ToFloat(), (float)Value[1].ToFloat(), (float)Value[2].ToFloat(), (float)Value[3].ToFloat()));
-			}
-		}
-		else if (Value.JSONType() == json::JSON::Class::Floating || Value.JSONType() == json::JSON::Class::Integral)
-		{
-			Material->SetScalarParameter(ParamName, (float)Value.ToFloat());
-		}
-	}
-}
-
-void FMaterialManager::ApplyTextures(UMaterial* Material, json::JSON& JsonData)
-{
-	if (!JsonData.hasKey(MatKeys::Textures)) return;
-
-	for (auto& Pair : JsonData[MatKeys::Textures].ObjectRange())
-	{
-		FString SlotName = Pair.first.c_str();
-		FString TexturePath = Pair.second.ToString().c_str();
-		const bool bIsColorTexture =
-			SlotName == "DiffuseTexture" ||
-			SlotName == "EmissiveTexture" ||
-			SlotName == "Custom0Texture" ||
-			SlotName == "Custom1Texture";
-
-		UTexture2D* Texture = UTexture2D::LoadFromFile(
-			TexturePath,
-			Device,
-			bIsColorTexture ? ETextureColorSpace::SRGB : ETextureColorSpace::Linear);
-		if (Texture)
-		{
-			Material->SetTextureParameter(SlotName, Texture);
-		}
-	}
-}
-
-
-ERenderPass FMaterialManager::StringToRenderPass(const FString& Str) const
-{
-	using namespace RenderStateStrings;
-	return FromString(RenderPassMap, Str, ERenderPass::Opaque);
-}
-
-EBlendState FMaterialManager::StringToBlendState(const FString& Str, ERenderPass Pass) const
-{
-	using namespace RenderStateStrings;
-	if (!Str.empty())
-		return FromString(BlendStateMap, Str, EBlendState::Opaque);
-
-	// 문자열이 비어있으면 Pass 기반 기본값
-	switch (Pass)
-	{
-	case ERenderPass::Translucent:
-	case ERenderPass::Decal:
-	case ERenderPass::EditorLines:
-	case ERenderPass::PostProcess:
-	case ERenderPass::GizmoInner:
-	case ERenderPass::OverlayFont:
-		return EBlendState::AlphaBlend;
-	case ERenderPass::AdditiveDecal:
-		return EBlendState::Additive;
-	case ERenderPass::SelectionMask:
-		return EBlendState::NoColor;
-	default:
-		return EBlendState::Opaque;
-	}
-}
-
-EDepthStencilState FMaterialManager::StringToDepthStencilState(const FString& Str, ERenderPass Pass) const
-{
-	using namespace RenderStateStrings;
-	if (!Str.empty())
-		return FromString(DepthStencilStateMap, Str, EDepthStencilState::Default);
-
-	// 문자열이 비어있으면 Pass 기반 기본값
-	switch (Pass)
-	{
-	case ERenderPass::Decal:
-	case ERenderPass::AdditiveDecal:
-		return EDepthStencilState::DepthReadOnly;
-	case ERenderPass::SelectionMask:
-		return EDepthStencilState::StencilWrite;
-	case ERenderPass::PostProcess:
-	case ERenderPass::OverlayFont:
-		return EDepthStencilState::NoDepth;
-	case ERenderPass::GizmoOuter:
-		return EDepthStencilState::GizmoOutside;
-	case ERenderPass::GizmoInner:
-		return EDepthStencilState::GizmoInside;
-	default:
-		return EDepthStencilState::Default;
-	}
-}
-
-ERasterizerState FMaterialManager::StringToRasterizerState(const FString& Str, ERenderPass Pass) const
-{
-	using namespace RenderStateStrings;
-	if (!Str.empty())
-		return FromString(RasterizerStateMap, Str, ERasterizerState::SolidBackCull);
-
-	// 문자열이 비어있으면 Pass 기반 기본값
-	switch (Pass)
-	{
-	case ERenderPass::Decal:
-	case ERenderPass::AdditiveDecal:
-	case ERenderPass::SelectionMask:
-	case ERenderPass::PostProcess:
-		return ERasterizerState::SolidNoCull;
-	default:
-		return ERasterizerState::SolidBackCull;
-	}
-}
-
-void FMaterialManager::SaveToJSON(json::JSON& JsonData, const FString& MatFilePath)
-{
-	std::ofstream File(FPaths::ToWide(MatFilePath));
-	File << JsonData.dump();
-}
-
-bool FMaterialManager::InjectDefaultParameters(json::JSON& JsonData, FMaterialTemplate* Template, UMaterial* Material)
-{
-	const auto& Layout = Template->GetParameterInfo();
-	bool bInjected = false;
-
-	for (const auto& Pair : Layout)
-	{
-		const FString& ParamName = Pair.first;
-		const FMaterialParameterInfo* Info = Pair.second;
-
-		// 이미 JSON에 있으면 스킵
-		if (!JsonData[MatKeys::Parameters][ParamName].IsNull())
-			continue;
-
-		bInjected = true;
-
-		if (ParamName == "SectionColor")
-		{
-			JsonData[MatKeys::Parameters][ParamName] = json::Array(1.0f, 1.0f, 1.0f, 1.0f);
-			continue;
-		}
-
-		if (ParamName == "HasNormalMap")
-		{
-			JsonData[MatKeys::Parameters][ParamName] = 0.0f;
-			continue;
-		}
-
-		switch (Info->Size)
-		{
-			case sizeof(float) : // 4바이트 - Scalar
-			{
-				float Value = 0.f;
-				Material->GetScalarParameter(ParamName, Value);
-				JsonData[MatKeys::Parameters][ParamName] = Value;
-				break;
-			}
-			case sizeof(float) * 3: // 12바이트 - Vector3
-			{
-				FVector Value;
-				Material->GetVector3Parameter(ParamName, Value);
-				JsonData[MatKeys::Parameters][ParamName] = json::Array(Value.X, Value.Y, Value.Z);
-				break;
-			}
-			case sizeof(float) * 4: // 16바이트 - Vector4
-			{
-				FVector4 Value;
-				Material->GetVector4Parameter(ParamName, Value);
-				JsonData[MatKeys::Parameters][ParamName] = json::Array(Value.X, Value.Y, Value.Z, Value.W);
-				break;
-			}
-			case sizeof(float) * 16: // 64바이트 - Matrix
-			{
-				FMatrix Value;
-				Material->GetMatrixParameter(ParamName, Value);
-				auto MatArray = json::Array();
-				for (int i = 0; i < 16; ++i)
-					MatArray.append(Value.Data[i]);
-				JsonData[MatKeys::Parameters][ParamName] = MatArray;
-				break;
-			}
-			default:
-				break; // uint, bool 등 특수 케이스는 별도 처리 필요
-		}
-	}
-
-	return bInjected;
-}
-
-bool FMaterialManager::PurgeStaleParameters(json::JSON& JsonData, FMaterialTemplate* Template)
-{
-	if (!JsonData.hasKey(MatKeys::Parameters)) return false;
-
-	const auto& Layout = Template->GetParameterInfo();
-	json::JSON CleanParams = json::JSON::Make(json::JSON::Class::Object);
-	bool bPurged = false;
-
-	for (auto& Pair : JsonData[MatKeys::Parameters].ObjectRange())
-	{
-		FString ParamName = Pair.first.c_str();
-		if (Layout.find(ParamName) != Layout.end())
-		{
-			CleanParams[Pair.first] = Pair.second;
-		}
-		else
-		{
-			bPurged = true;
-		}
-	}
-
-	if (bPurged)
-	{
-		JsonData[MatKeys::Parameters] = std::move(CleanParams);
-	}
-
-	return bPurged;
 }
 
 FMaterialTemplate* FMaterialManager::GetOrCreateTemplate(const FString& ShaderPath)
