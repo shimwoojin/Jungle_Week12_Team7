@@ -20,8 +20,8 @@ public:
 	const TArray<FAssetListItem>& GetAvailableParticleSystemFiles() const;
 
 	// Higher-level runtime/bootstrap code registers the current default event manager here.
-	// This manager is non-owning; ParticleSystemManager only exposes it for later PSC injection.
-	// nullptr is a valid "not registered yet" state.
+	// Current policy is a single default manager. This manager is non-owning and
+	// exposed for PSC injection. nullptr is a valid "not registered yet" state.
 	void SetDefaultEventManager(AParticleEventManager* InManager);
 	AParticleEventManager* GetDefaultEventManager() const;
 
@@ -30,6 +30,6 @@ private:
 	TArray<FAssetListItem> AvailableParticleSystemFiles;
 
 	// Non-owning reference provided by a higher-level runtime/bootstrap layer.
-	// ParticleSystemManager does not create/destroy it, and PSC will consume this provider API later.
+	// ParticleSystemManager does not create/destroy it; PSC consumes this provider state.
 	AParticleEventManager* DefaultEventManager = nullptr;
 };

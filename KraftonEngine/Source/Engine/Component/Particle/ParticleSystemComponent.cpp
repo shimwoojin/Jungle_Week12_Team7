@@ -7,6 +7,7 @@
 #include "Particle/ParticleSystemManager.h"
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
 #include "Serialization/Archive.h"
+#include "Core/Logging/Log.h"
 
 #include <algorithm>
 
@@ -452,7 +453,20 @@ void UParticleSystemComponent::DestroyEmitterInstances()
 
 void UParticleSystemComponent::DispatchEventsToManager()
 {
-	if (!EventManager) { PendingEvents = {}; return; }
+	if (!EventManager)
+	{
+		static bool bWarnedMissingEventManager = false;
+		if (!bWarnedMissingEventManager)
+		{
+			UE_LOG("[ParticleSystemComponent] No default ParticleEventManager is registered. Pending particle events will be cleared without dispatch. This can be valid in preview/tool contexts, but runtime gameplay is expected to register a manager.");
+			bWarnedMissingEventManager = true;
+		}
+
+		// In phase 3 we still drain the merged event queue when no manager is bound.
+		// The DI path is operational, but runtime/bootstrap registration may still be missing.
+		PendingEvents = {};
+		return;
+	}
 	EventManager->HandleParticleSpawnEvents    (this, PendingEvents.Spawn);
 	EventManager->HandleParticleDeathEvents    (this, PendingEvents.Death);
 	EventManager->HandleParticleCollisionEvents(this, PendingEvents.Collision);

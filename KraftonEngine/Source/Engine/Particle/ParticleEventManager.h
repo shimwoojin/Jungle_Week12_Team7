@@ -26,6 +26,11 @@ public:
 	GENERATED_BODY()
 	AParticleEventManager();
 	~AParticleEventManager() override = default;
+	// A level/runtime-scoped manager can register itself as the current default
+	// provider. ParticleSystemManager stores only a non-owning reference, and
+	// PSC consumes it through the existing DI path.
+	void BeginPlay() override;
+	void EndPlay() override;
 
 	// PSC 가 호출 — 자신이 가진 이벤트를 그대로 manager 로 push.
 	void HandleParticleSpawnEvents    (UParticleSystemComponent* InPSC, const TArray<FParticleEventSpawnData>&    InEvents);
