@@ -6,12 +6,6 @@
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
 #include "Serialization/Archive.h"
 
-void UParticleLODLevel::Serialize(FArchive& Ar)
-{
-	UObject::Serialize(Ar);
-	SerializeProperties(Ar, PF_Save);
-}
-
 void UParticleLODLevel::PostDuplicate()
 {
 	UObject::PostDuplicate();

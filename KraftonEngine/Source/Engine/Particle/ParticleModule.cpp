@@ -2,12 +2,6 @@
 
 #include "Serialization/Archive.h"
 
-void UParticleModule::Serialize(FArchive& Ar)
-{
-	UObject::Serialize(Ar);
-	SerializeProperties(Ar, PF_Save);
-}
-
 void UParticleModule::PostDuplicate()
 {
 	UObject::PostDuplicate();

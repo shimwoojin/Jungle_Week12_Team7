@@ -46,8 +46,6 @@ public:
 	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Modules", Type=Array, AllowedClass=UParticleModule)
 	TArray<UParticleModule*> Modules;
 
-	// 직렬화
-	void Serialize(class FArchive& Ar) override;
 	void PostDuplicate() override;
 
 	// --- API ---

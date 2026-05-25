@@ -14,6 +14,8 @@ public:
     ~USkeleton() override = default;
 
     void Serialize(FArchive& Ar) override;
+    // 수동 바이너리 포맷 — 반사 직렬화 비활성.
+    bool ShouldReflectProperties() const override { return false; }
 
     const FString& GetAssetPathFileName() const
     {

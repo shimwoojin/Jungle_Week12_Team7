@@ -34,8 +34,8 @@ public:
 	UPROPERTY(Save, Instanced, Category="LOD", DisplayName="LOD Levels", Type=Array, AllowedClass=UParticleLODLevel)
 	TArray<UParticleLODLevel*> LODLevels;
 
-	// 직렬화
-	void Serialize(class FArchive& Ar) override;
+	// 로드 후 코어 모듈 보장 + 캐시 재구성 (반사 직렬화는 UObject 템플릿이 자동 처리).
+	void OnPostLoad(class FArchive& Ar) override;
 	void PostDuplicate() override;
 
 	// 새 Emitter생성 시 1회 호출

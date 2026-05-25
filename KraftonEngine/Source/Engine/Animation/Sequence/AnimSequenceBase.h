@@ -20,6 +20,8 @@ public:
     ~UAnimSequenceBase() override = default;
 
     void Serialize(FArchive& Ar) override;
+    // 수동 바이너리 포맷 — 반사 직렬화 비활성 (UAnimSequence/UAnimMontage 도 상속).
+    bool ShouldReflectProperties() const override { return false; }
 
     // ── 시간/길이 ──
     virtual float GetPlayLength() const

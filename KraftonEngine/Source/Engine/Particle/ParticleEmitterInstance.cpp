@@ -905,6 +905,7 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 			Data->Source.NoiseAmount = BeamTypeData->NoiseAmount;
 			Data->Source.NoiseFrequency = BeamTypeData->NoiseFrequency;
 			Data->Source.NoiseSpeed = BeamTypeData->NoiseSpeed;
+			Data->Source.bTileUV = BeamTypeData->bTileUV;
 		}
 		Data->Source.EmitterTime = EmitterTimeSeconds;
 	}
@@ -929,6 +930,8 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
 		{
 			Data->Source.MaxTessellation = RibbonTypeData->MaxTessellation;
+			Data->Source.TangentTension = RibbonTypeData->TangentTension;
+			Data->Source.TilesPerTrail = RibbonTypeData->TilesPerTrail;
 		}
 	}
 

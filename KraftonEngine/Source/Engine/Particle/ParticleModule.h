@@ -28,8 +28,6 @@ public:
 	UParticleModule() = default;
 	~UParticleModule() override = default;
 
-	// 직렬화
-	void Serialize(class FArchive& Ar) override;
 	void PostDuplicate() override;
 
 	// --- 카테고리/식별 ----------------------------------------------------------

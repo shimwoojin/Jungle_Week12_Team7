@@ -51,14 +51,9 @@ void APawn::UnPossessed()
 
 }
 
-void APawn::Serialize(FArchive& Ar)
-{
-	Super::Serialize(Ar);
-	Ar << bAutoPossessPlayer;
-	Ar << bUseControllerRotationPitch;
-	Ar << bUseControllerRotationYaw;
-	Ar << bUseControllerRotationRoll;
-}
+// 직렬화 오버라이드 제거: bAutoPossessPlayer / bUseControllerRotation* 4개는 모두
+// UPROPERTY(Save) 라 AActor 가 상속시킨 반사 직렬화(ShouldReflectProperties==true)로 자동 처리된다.
+// (기존 수동 Ar<< 는 반사와 중복이었음.)
 
 void APawn::ApplyControllerRotationToRoot()
 {
