@@ -132,17 +132,17 @@ void FParticleSystemSceneProxy::UpdateMesh()
 	if (!SpriteMaterial)
 	{
 		SpriteMaterial = FMaterialManager::Get().GetOrCreateMaterial(
-			"Content/Material/Particle/ParticleSprite.mat");
+			"Content/Material/Particle/ParticleSprite.uasset");
 	}
 	if (!MeshMaterial)
 	{
 		MeshMaterial = FMaterialManager::Get().GetOrCreateMaterial(
-			"Content/Material/Particle/ParticleMesh.mat");
+			"Content/Material/Particle/ParticleMesh.uasset");
 	}
 	if (!BeamTrailMaterial)
 	{
 		BeamTrailMaterial = FMaterialManager::Get().GetOrCreateMaterial(
-			"Content/Material/Particle/ParticleBeamTrail.mat");
+			"Content/Material/Particle/ParticleBeamTrail.uasset");
 	}
 
 	// Template이 있으면 emitter index별 RequiredModule.Material 캐싱.

@@ -19,7 +19,7 @@ void FEditorMaterialInspector::Render()
 {
 	bool bIsValid = ImGui::Begin("MaterialInspector");
 	bIsValid &= std::filesystem::exists(MaterialPath);
-	bIsValid &= MaterialPath.extension() == ".mat";
+	bIsValid &= (MaterialPath.extension() == ".uasset" || MaterialPath.extension() == ".mat");
 
 	if (!bIsValid)
 	{
@@ -27,21 +27,10 @@ void FEditorMaterialInspector::Render()
 		return;
 	}
 
-	if (CachedJson.IsNull())
-	{
-		std::ifstream File(MaterialPath);
-
-		std::stringstream Buffer;
-		Buffer << File.rdbuf();
-		CachedJson = json::JSON::Load(Buffer.str());
-	}
-
-
-	json::JSON JsonData = CachedJson;
-
-	TMap<const char*, FString> MatMap;
-	MatMap[MatKeys::PathFileName] = JsonData.hasKey(MatKeys::PathFileName) ? JsonData[MatKeys::PathFileName].ToString().c_str() : "";
-	ImGui::Selectable(MatMap[MatKeys::PathFileName].c_str());
+	// 바이너리(.uasset) 머티리얼은 JSON 로드가 불가하므로 객체에서 직접 경로를 표시.
+	// (파라미터/텍스처 편집은 아래에서 CachedMaterial 객체 기반으로 동작.)
+	const FString PathLabel = CachedMaterial ? CachedMaterial->GetAssetPathFileName() : FString();
+	ImGui::Selectable(PathLabel.c_str());
 
 	RenderShaderParameter();
 	RenderTextureSection();

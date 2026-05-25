@@ -83,7 +83,7 @@ UBillboardComponent* UHeightFogComponent::EnsureEditorBillboard()
 		Billboard->SetAbsoluteScale(true);
 		Billboard->SetEditorOnlyComponent(true);
 		Billboard->SetHiddenInComponentTree(true);
-		auto Material = FMaterialManager::Get().GetOrCreateMaterial("Content/Material/Editor/HeightFog.mat");
+		auto Material = FMaterialManager::Get().GetOrCreateMaterial("Content/Material/Editor/HeightFog.uasset");
 		Billboard->SetMaterial(Material);
 	}
 

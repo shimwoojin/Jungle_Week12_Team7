@@ -461,17 +461,18 @@ FString FObjImporter::ConvertMtlInfoToJson(const FObjMaterialInfo* MtlInfo)
 // MTL 정보에서 머티리얼 mat 파일로 변환하는 함수
 FString FObjImporter::ConvertMtlInfoToMat(const FObjMaterialInfo* MtlInfo)
 {
-	FString MatPath = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".mat";
+	const FString UassetPath = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".uasset";
+	const FString MatPath    = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".mat";
 
-	// 이미 존재하면 덮어쓰지 않음 (에디터에서 수정했을 수 있으므로)
-	if (std::filesystem::exists(FPaths::ToWide(MatPath)))
-		return MatPath;
+	// 이미 .uasset(또는 legacy .mat)이 있으면 그대로 사용 (덮어쓰지 않음)
+	if (std::filesystem::exists(FPaths::ToWide(UassetPath)) || std::filesystem::exists(FPaths::ToWide(MatPath)))
+		return UassetPath;
 
 	// Auto/ 디렉토리 보장
 	std::filesystem::create_directories(FPaths::ToWide("Content/Material/Auto"));
 
 	json::JSON JsonData;
-	JsonData["PathFileName"] = MatPath;
+	JsonData["PathFileName"] = UassetPath;
 	JsonData["Origin"] = "ObjImport";
 	JsonData["ShaderPath"] = "Shaders/Geometry/UberLit.hlsl";
 	JsonData["RenderPass"] = "Opaque";
@@ -504,10 +505,15 @@ FString FObjImporter::ConvertMtlInfoToMat(const FObjMaterialInfo* MtlInfo)
 		JsonData["Parameters"]["HasNormalMap"] = 0.0f;
 	}
 
-	std::ofstream File(FPaths::ToWide(MatPath));
-	File << JsonData.dump();
+	// JSON 스펙을 임시 .mat 으로 쓴 뒤 바이너리(.uasset)로 변환하고 임시본 제거.
+	{
+		std::ofstream File(FPaths::ToWide(MatPath));
+		File << JsonData.dump();
+	}
+	FMaterialManager::Get().GetOrCreateMaterial(MatPath);   // 빌드 + .uasset 변환(lazy)
+	std::error_code Ec; std::filesystem::remove(FPaths::ToWide(MatPath), Ec);
 
-	return MatPath;
+	return UassetPath;
 }
 
 FVector FObjImporter::RemapPosition(const FVector& ObjPos, EForwardAxis Axis)

@@ -236,17 +236,19 @@ void FFbxMaterialImporter::BuildSkeletalMaterials(const FFbxImportContext& Conte
 
 FString FFbxMaterialImporter::CreateOrUpdateMaterialAsset(const FFbxImportedMaterialInfo& MaterialInfo)
 {
-	const FString MatPath = "Content/Material/Auto/" + MaterialInfo.Name + ".mat";
+	const FString UassetPath = "Content/Material/Auto/" + MaterialInfo.Name + ".uasset";
+	const FString MatPath    = "Content/Material/Auto/" + MaterialInfo.Name + ".mat";
 
-	if (std::filesystem::exists(FPaths::ToWide(MatPath)))
+	// 이미 .uasset(또는 legacy .mat)이 있으면 그대로 사용
+	if (std::filesystem::exists(FPaths::ToWide(UassetPath)) || std::filesystem::exists(FPaths::ToWide(MatPath)))
 	{
-		return MatPath;
+		return UassetPath;
 	}
 
 	std::filesystem::create_directories(FPaths::ToWide("Content/Material/Auto"));
 
 	json::JSON JsonData;
-	JsonData["PathFileName"] = MatPath;
+	JsonData["PathFileName"] = UassetPath;
 	JsonData["Origin"] = "FbxImport";
 	JsonData["ShaderPath"] = "Shaders/Geometry/UberLit.hlsl";
 	JsonData["RenderPass"] = "Opaque";
@@ -277,8 +279,13 @@ FString FFbxMaterialImporter::CreateOrUpdateMaterialAsset(const FFbxImportedMate
 		JsonData["Parameters"]["HasNormalMap"] = 0.0f;
 	}
 
-	std::ofstream File(FPaths::ToWide(MatPath));
-	File << JsonData.dump();
+	// JSON 스펙을 임시 .mat 으로 쓴 뒤 바이너리(.uasset)로 변환하고 임시본 제거.
+	{
+		std::ofstream File(FPaths::ToWide(MatPath));
+		File << JsonData.dump();
+	}
+	FMaterialManager::Get().GetOrCreateMaterial(MatPath);   // 빌드 + .uasset 변환(lazy)
+	std::error_code Ec; std::filesystem::remove(FPaths::ToWide(MatPath), Ec);
 
-	return MatPath;
+	return UassetPath;
 }
