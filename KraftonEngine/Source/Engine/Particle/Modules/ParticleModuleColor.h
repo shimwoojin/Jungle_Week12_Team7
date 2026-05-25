@@ -2,6 +2,8 @@
 
 #include "Particle/ParticleModule.h"
 #include "Math/Vector.h"
+#include "Engine/Particle/Distributions/DistributionFloat.h"
+#include "Engine/Particle/Distributions/DistributionVector.h"
 
 #include "Source/Engine/Particle/Modules/ParticleModuleColor.generated.h"
 
@@ -23,7 +25,13 @@ public:
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
 
-	// Constant initial color. If this becomes a Distribution later, evaluate it with SpawnTime.
+	// Legacy constant fallback for assets saved before Initial Color used distributions.
 	UPROPERTY(Edit, Save, Category="Color", DisplayName="Initial Color")
 	FVector4 StartColor = { 1, 1, 1, 1 };
+
+	UPROPERTY(Edit, Save, Instanced, Category="Color", DisplayName="Initial Color", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* StartColorDistribution = nullptr;
+
+	UPROPERTY(Edit, Save, Instanced, Category="Color", DisplayName="Initial Alpha", Type=ObjectRef, AllowedClass=UDistributionFloat)
+	UDistributionFloat* StartAlphaDistribution = nullptr;
 };

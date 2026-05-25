@@ -67,6 +67,8 @@ namespace
 	constexpr int32 CurveSourceSizeByLife = 7;
 	constexpr int32 CurveSourceColorOverLifeRGB = 8;
 	constexpr int32 CurveSourceColorOverLifeAlpha = 9;
+	constexpr int32 CurveSourceInitialColorRGB = 10;
+	constexpr int32 CurveSourceInitialColorAlpha = 11;
 
 	uint32 GNextParticleEditorInstanceId = 0;
 
@@ -229,6 +231,7 @@ namespace
 			Cast<UParticleModuleAcceleration>(Module) ||
 			Cast<UParticleModuleSize>(Module) ||
 			Cast<UParticleModuleSizeByLife>(Module) ||
+			Cast<UParticleModuleColor>(Module) ||
 			Cast<UParticleModuleColorOverLife>(Module);
 	}
 
@@ -410,6 +413,23 @@ namespace
 			Distribution = UObjectManager::Get().CreateObject<UDistributionVectorConstant>(Outer);
 		}
 		return Distribution;
+	}
+
+	void EnsureInitialColorDistributions(UParticleModuleColor* Color)
+	{
+		if (!Color) return;
+		if (!Color->StartColorDistribution)
+		{
+			auto* Distribution = UObjectManager::Get().CreateObject<UDistributionVectorConstant>(Color);
+			Distribution->Constant = FVector(Color->StartColor.X, Color->StartColor.Y, Color->StartColor.Z);
+			Color->StartColorDistribution = Distribution;
+		}
+		if (!Color->StartAlphaDistribution)
+		{
+			auto* Distribution = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(Color);
+			Distribution->Constant = Color->StartColor.W;
+			Color->StartAlphaDistribution = Distribution;
+		}
 	}
 
 	float GetCurveValueOrDefault(const FFloatCurve& Curve, float DefaultValue)
@@ -2683,7 +2703,10 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Initial Color", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= Color4Field("Initial Color", Color->StartColor);
+					EnsureInitialColorDistributions(Color);
+					bChanged |= DrawVectorDistributionEditor("Color / RGB", Color->StartColorDistribution, Color, 0.01f, 0.0f, 1.0f, "SpawnTime");
+					ImGui::Separator();
+					bChanged |= DrawFloatDistributionEditor("Alpha", Color->StartAlphaDistribution, Color, 0.01f, 0.0f, 1.0f, "SpawnTime");
 				}
 			}
 			else if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
@@ -3041,6 +3064,32 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 		return true;
 	};
 
+	auto DrawInitialColorCurves = [&](UParticleModuleColor* Color) -> bool
+	{
+		EnsureInitialColorDistributions(Color);
+		auto* ColorCurveDistribution = Cast<UDistributionVectorCurve>(Color ? Color->StartColorDistribution : nullptr);
+		auto* AlphaCurveDistribution = Cast<UDistributionFloatCurve>(Color ? Color->StartAlphaDistribution : nullptr);
+		FFloatCurve* Curves[] = {
+			ColorCurveDistribution ? &ColorCurveDistribution->GetXCurve() : nullptr,
+			ColorCurveDistribution ? &ColorCurveDistribution->GetYCurve() : nullptr,
+			ColorCurveDistribution ? &ColorCurveDistribution->GetZCurve() : nullptr,
+			AlphaCurveDistribution ? &AlphaCurveDistribution->GetCurve() : nullptr
+		};
+		const char* Channels[] = { "Color.R", "Color.G", "Color.B", "Alpha.A" };
+		const ImU32 Colors[] = {
+			IM_COL32(255, 70, 70, 255),
+			IM_COL32(70, 230, 70, 255),
+			IM_COL32(80, 130, 255, 255),
+			IM_COL32(255, 230, 70, 255)
+		};
+		if (!Curves[0] && !Curves[1] && !Curves[2] && !Curves[3]) return false;
+		ImGui::TextUnformatted("Initial Color");
+		const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 46.0f);
+		bChanged |= DrawCurveGraph("InitialColorCombinedGraph", Curves, Channels, Colors, 4, CurveSourceInitialColorRGB,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+		return true;
+	};
+
 	if (UParticleModuleSpawn* Spawn = Cast<UParticleModuleSpawn>(Module))
 	{
 		bHasCurve = DrawSpawnCurves(Spawn);
@@ -3080,6 +3129,10 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 		bHasCurve |= Cast<UDistributionVectorCurve>(SizeByLife->LifeMultiplierDistribution) != nullptr;
 		bChanged |= DrawVectorCurveDistributionPanel("Size By Life", SizeByLife->LifeMultiplierDistribution, CurveSourceSizeByLife,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
+	else if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
+	{
+		bHasCurve = DrawInitialColorCurves(Color);
 	}
 	else if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
 	{
@@ -3372,6 +3425,12 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 	{
 		return TryVectorCurve(SizeByLife->LifeMultiplierDistribution, CurveSourceSizeByLife);
 	}
+	if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
+	{
+		EnsureInitialColorDistributions(Color);
+		return TryVectorCurve(Color->StartColorDistribution, CurveSourceInitialColorRGB) ||
+			TryFloatCurve(Color->StartAlphaDistribution, CurveSourceInitialColorRGB, 3);
+	}
 	if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
 	{
 		return TryVectorCurve(ColorOverLife->ColorOverLifeDistribution, CurveSourceColorOverLifeRGB) ||
@@ -3553,6 +3612,37 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 		if (UParticleModuleSizeByLife* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
 		{
 			return SelectVectorChannel(SizeByLife->LifeMultiplierDistribution, "Size By Life");
+		}
+		break;
+	case CurveSourceInitialColorRGB:
+		if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
+		{
+			auto* ColorCurveDistribution = Cast<UDistributionVectorCurve>(Color->StartColorDistribution);
+			if (ColorCurveDistribution && SelectedCurveChannel >= 0 && SelectedCurveChannel <= 2)
+			{
+				if (OutCurveName) *OutCurveName = "Initial Color";
+				switch (SelectedCurveChannel)
+				{
+				case 0:
+					if (OutChannelName) *OutChannelName = "Color.R";
+					return &ColorCurveDistribution->GetXCurve();
+				case 1:
+					if (OutChannelName) *OutChannelName = "Color.G";
+					return &ColorCurveDistribution->GetYCurve();
+				case 2:
+					if (OutChannelName) *OutChannelName = "Color.B";
+					return &ColorCurveDistribution->GetZCurve();
+				default:
+					break;
+				}
+			}
+			if (FFloatCurve* Curve = SelectFloatCurveAtChannel(Color->StartAlphaDistribution, "Initial Alpha", "Alpha.A", 3)) return Curve;
+		}
+		break;
+	case CurveSourceInitialColorAlpha:
+		if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
+		{
+			return SelectFloatCurve(Color->StartAlphaDistribution, "Initial Alpha", "Alpha");
 		}
 		break;
 	case CurveSourceColorOverLifeRGB:
