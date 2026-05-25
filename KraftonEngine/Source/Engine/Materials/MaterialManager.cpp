@@ -82,6 +82,29 @@ void FMaterialManager::ScanShaderPaths()
 	}
 }
 
+void FMaterialManager::ScanTexturePaths()
+{
+	AvailableTexturePaths.clear();
+
+	const std::filesystem::path TextureRoot = FPaths::RootDir() + L"Content/Texture/";
+	if (!std::filesystem::exists(TextureRoot))
+	{
+		return;
+	}
+
+	const std::filesystem::path ProjectRoot(FPaths::RootDir());
+	for (const auto& Entry : std::filesystem::recursive_directory_iterator(TextureRoot))
+	{
+		if (!Entry.is_regular_file()) continue;
+
+		const std::filesystem::path& Path = Entry.path();
+		if (Path.extension() != L".png") continue; // 에디터 텍스처 규칙(.png)
+
+		AvailableTexturePaths.push_back(
+			FPaths::ToUtf8(Path.lexically_relative(ProjectRoot).generic_wstring()));
+	}
+}
+
 UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 {
 	// 0. 경로 정규화: .mat → .uasset (캐시 키 = .uasset). legacy .mat 참조 호환.

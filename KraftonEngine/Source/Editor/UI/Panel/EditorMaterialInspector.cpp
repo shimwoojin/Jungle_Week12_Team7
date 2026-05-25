@@ -13,7 +13,8 @@ FEditorMaterialInspector::FEditorMaterialInspector(std::filesystem::path InPath)
 	CachedMaterial = FMaterialManager::Get().GetOrCreateMaterial(
 		FPaths::ToUtf8(InPath.lexically_relative(FPaths::RootDir()).generic_wstring())
 	);
-	FMaterialManager::Get().ScanShaderPaths(); // 셰이더 드롭다운 목록
+	FMaterialManager::Get().ScanShaderPaths();  // 셰이더 드롭다운 목록
+	FMaterialManager::Get().ScanTexturePaths(); // 텍스처 드롭다운 목록
 }
 
 void FEditorMaterialInspector::Render()
@@ -259,6 +260,43 @@ void FEditorMaterialInspector::RenderTextureSection()
 				}
 			}
 			ImGui::EndDragDropTarget();
+		}
+
+		// 텍스처 선택 드롭다운 (드래그&드롭 대안) — (None) 으로 슬롯 해제 가능.
+		const FString CurTexPath = Texture ? Texture->GetSourcePath() : FString();
+		const char* TexPreview = CurTexPath.empty() ? "(None)" : CurTexPath.c_str();
+		ImGui::SetNextItemWidth(220.0f);
+		if (ImGui::BeginCombo("##texsel", TexPreview))
+		{
+			if (ImGui::Selectable("(None)", CurTexPath.empty()))
+			{
+				CachedMaterial->SetTextureParameter(SlotName, nullptr);
+				CachedMaterial->RebuildCachedSRVs();
+			}
+			for (const FString& TexPath : FMaterialManager::Get().GetAvailableTexturePaths())
+			{
+				const bool bSelected = (TexPath == CurTexPath);
+				if (ImGui::Selectable(TexPath.c_str(), bSelected) && !bSelected)
+				{
+					ID3D11Device* Device = GEngine ? GEngine->GetRenderer().GetFD3DDevice().GetDevice() : nullptr;
+					const bool bIsColorTexture =
+						SlotName == "DiffuseTexture" ||
+						SlotName == "EmissiveTexture" ||
+						SlotName == "Custom0Texture" ||
+						SlotName == "Custom1Texture";
+					UTexture2D* NewTexture = UTexture2D::LoadFromFile(
+						TexPath, Device,
+						bIsColorTexture ? ETextureColorSpace::SRGB : ETextureColorSpace::Linear);
+					if (NewTexture)
+					{
+						CachedMaterial->SetTextureParameter(SlotName, NewTexture);
+						CachedMaterial->RebuildCachedSRVs();
+					}
+				}
+				if (bSelected)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
 		}
 
 		ImGui::PopID();

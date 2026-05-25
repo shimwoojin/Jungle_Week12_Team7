@@ -26,6 +26,7 @@ class FMaterialManager : public TSingleton<FMaterialManager>
 	TMap<FString, UMaterial*> MaterialCache;	//MatFilePath
 	TArray<FMaterialAssetListItem> AvailableMaterialFiles;
 	TArray<FString> AvailableShaderPaths;
+	TArray<FString> AvailableTexturePaths;
 
 	ID3D11Device* Device = nullptr;
 
@@ -56,6 +57,10 @@ public:
 	// 머티리얼 에디터 셰이더 선택용 — Shaders/ 하위 .hlsl(독립 셰이더, .hlsli include 제외) 열거.
 	void ScanShaderPaths();
 	const TArray<FString>& GetAvailableShaderPaths() const { return AvailableShaderPaths; }
+
+	// 머티리얼 에디터 텍스처 선택용 — Content/Texture/ 하위 이미지(.png) 열거.
+	void ScanTexturePaths();
+	const TArray<FString>& GetAvailableTexturePaths() const { return AvailableTexturePaths; }
 
 	// 머티리얼의 셰이더(=레이아웃 소스 & custom 대상) 교체 — 템플릿/CB 재구성. 실패 시 false.
 	bool SetMaterialShader(UMaterial* Material, const FString& ShaderPath);
