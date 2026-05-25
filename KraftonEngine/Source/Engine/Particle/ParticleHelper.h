@@ -421,6 +421,7 @@ struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 	float NoiseAmount = 0.0f;       // 수직 변위 진폭 (0 = 직선)
 	float NoiseFrequency = 1.0f;    // beam 길이당 sin파 횟수
 	float NoiseSpeed = 2.0f;        // 시간에 따른 noise 흐름 속도
+	bool bTileUV = true;            // beam 전체 길이에 따라 UV를 반복(tile)할지 여부
 	float EmitterTime = 0.0f;       // GT 누적 시간 (시간 기반 noise phase)
 };
 
@@ -435,6 +436,8 @@ struct FDynamicBeamEmitterData : FDynamicEmitterDataBase
 struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 {
 	int32 MaxTessellation = 1;
+	float TangentTension = 0.5f;    // ribbon tangent 보간 강도 (0 = 느슨함, 1 = 강함)
+	float TilesPerTrail = 1.0f;     // trail 전체 UV 반복 수
 };
 
 struct FDynamicRibbonEmitterData : FDynamicEmitterDataBase
