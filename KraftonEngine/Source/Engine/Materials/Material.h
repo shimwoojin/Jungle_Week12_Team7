@@ -38,9 +38,11 @@ private:
 	uint32 MaterialTemplateID; // 고유 ID
 	FShader* Shader; // 어떤 셰이더를 사용하는지
 	TMap<FString, FMaterialParameterInfo*> ParameterLayout; // 리플렉션 결과 : 쉐이더 constant buffer 레이아웃 정보
+	TArray<FShaderTextureBinding> TextureBindings;          // 리플렉션 결과 : t0~t7 텍스처 바인딩
 
 public:
 	const TMap<FString, FMaterialParameterInfo*>& GetParameterInfo() const { return ParameterLayout; }
+	const TArray<FShaderTextureBinding>& GetTextureBindings() const { return TextureBindings; }
 	void Create(FShader* InShader);
 
 	FShader* GetShader() const { return Shader; }
@@ -139,6 +141,9 @@ public:
 	virtual bool GetMatrixParameter(const FString& ParamName, FMatrix& Value) const;
 
 	TMap<FString, UTexture2D*>* GetTexture() { return &TextureParameters; }
+
+	// 셰이더 리플렉션된 텍스처 슬롯(t0~t7) — 에디터 텍스처 편집 UI 용. Template 없으면 빈 목록.
+	const TArray<FShaderTextureBinding>& GetTextureBindings() const;
 
 	void Bind(ID3D11DeviceContext* Context);
 

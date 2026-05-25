@@ -208,19 +208,32 @@ void FEditorMaterialInspector::RenderShaderParameter()
 
 void FEditorMaterialInspector::RenderTextureSection()
 {
-	TMap<FString, UTexture2D*>* Textures = CachedMaterial->GetTexture();
+	if (!CachedMaterial)
+		return;
 
-	for (auto& Pair : *Textures)
+	// 셰이더 리플렉션된 텍스처 슬롯(t0~t7) 전체를 노출 — 빈 슬롯도 드롭 타겟으로 표시.
+	const TArray<FShaderTextureBinding>& Bindings = CachedMaterial->GetTextureBindings();
+	if (Bindings.empty())
+		return;
+
+	ImGui::Separator();
+	ImGui::TextUnformatted("Textures");
+
+	for (const FShaderTextureBinding& Binding : Bindings)
 	{
-		FString SlotName = Pair.first.c_str();
-		UTexture2D* Texture = Pair.second;
+		const FString& SlotName = Binding.Name;
+		ImGui::PushID(SlotName.c_str()); // 슬롯별 ID 스코프
 
-		if (!Texture)
-			continue;
+		UTexture2D* Texture = nullptr;
+		CachedMaterial->GetTextureParameter(SlotName, Texture);
 
+		ImGui::Text("%s (t%u)", SlotName.c_str(), Binding.BindPoint);
 
-		ImGui::Text(SlotName.c_str());
-		ImGui::Image(Texture->GetSRV(), ImVec2(100, 100));
+		if (Texture && Texture->GetSRV())
+			ImGui::Image(Texture->GetSRV(), ImVec2(100, 100));
+		else
+			ImGui::Button("Drop\ntexture", ImVec2(100, 100)); // 빈 슬롯 placeholder = 드롭 타겟
+
 		if (ImGui::BeginDragDropTarget())
 		{
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PNGElement"))
@@ -244,10 +257,10 @@ void FEditorMaterialInspector::RenderTextureSection()
 					CachedMaterial->SetTextureParameter(SlotName, NewTexture);
 					CachedMaterial->RebuildCachedSRVs();
 				}
-
 			}
 			ImGui::EndDragDropTarget();
-
 		}
+
+		ImGui::PopID();
 	}
 }

@@ -18,6 +18,14 @@
 #include "Core/Types/CoreTypes.h"
 #include "Render/Types/RenderStateTypes.h"
 
+// 셰이더 텍스처 바인딩 리플렉션 결과 (머티리얼 슬롯 t0~t7).
+// Name = HLSL 텍스처 변수명(예: "DiffuseTexture"), BindPoint = register t#.
+struct FShaderTextureBinding
+{
+	FString Name;
+	uint32  BindPoint = 0;
+};
+
 //	Mesh Shape Enum — MeshBufferManager 조회용 (순수 기하 형상)
 enum class EMeshShape
 {

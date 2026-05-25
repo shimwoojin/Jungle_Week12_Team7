@@ -11,6 +11,7 @@
 void FMaterialTemplate::Create(FShader* InShader)
 {
 	ParameterLayout = InShader->GetParameterLayout(); // 셰이더에서 리플렉션된 파라미터 레이아웃 정보 확보
+	TextureBindings = InShader->GetTextureBindings(); // t0~t7 텍스처 바인딩도 확보
 	Shader = InShader;
 }
 
@@ -242,15 +243,39 @@ const FString& UMaterial::GetTexturePathFileName(const FString& TextureName)cons
 	return EmptyString;
 }
 
+const TArray<FShaderTextureBinding>& UMaterial::GetTextureBindings() const
+{
+	static const TArray<FShaderTextureBinding> Empty;
+	return Template ? Template->GetTextureBindings() : Empty;
+}
+
 void UMaterial::RebuildCachedSRVs()
 {
 	for (int s = 0; s < (int)EMaterialTextureSlot::Max; s++)
-	{
 		CachedSRVs[s] = nullptr;
-		UTexture2D* Tex = nullptr;
-		FString SlotName = MaterialTextureSlot::ToString(s) + "Texture";
-		if (GetTextureParameter(SlotName, Tex) && Tex && Tex->GetSRV())
-			CachedSRVs[s] = Tex->GetSRV();
+
+	const TArray<FShaderTextureBinding>& Bindings = GetTextureBindings();
+	if (!Bindings.empty())
+	{
+		// 리플렉션된 바인딩: 텍스처 변수명 → register(t#) 로 SRV 배치 (셰이더 선언 그대로).
+		for (const FShaderTextureBinding& B : Bindings)
+		{
+			if (B.BindPoint >= (uint32)EMaterialTextureSlot::Max) continue;
+			UTexture2D* Tex = nullptr;
+			if (GetTextureParameter(B.Name, Tex) && Tex && Tex->GetSRV())
+				CachedSRVs[B.BindPoint] = Tex->GetSRV();
+		}
+	}
+	else
+	{
+		// 폴백(Template 없는 TransientShader 등): 고정 enum 규칙.
+		for (int s = 0; s < (int)EMaterialTextureSlot::Max; s++)
+		{
+			UTexture2D* Tex = nullptr;
+			FString SlotName = MaterialTextureSlot::ToString(s) + "Texture";
+			if (GetTextureParameter(SlotName, Tex) && Tex && Tex->GetSRV())
+				CachedSRVs[s] = Tex->GetSRV();
+		}
 	}
 }
 
