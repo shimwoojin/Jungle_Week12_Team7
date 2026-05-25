@@ -13,6 +13,7 @@ FEditorMaterialInspector::FEditorMaterialInspector(std::filesystem::path InPath)
 	CachedMaterial = FMaterialManager::Get().GetOrCreateMaterial(
 		FPaths::ToUtf8(InPath.lexically_relative(FPaths::RootDir()).generic_wstring())
 	);
+	FMaterialManager::Get().ScanShaderPaths(); // 셰이더 드롭다운 목록
 }
 
 void FEditorMaterialInspector::Render()
@@ -116,13 +117,34 @@ void FEditorMaterialInspector::RenderRenderStateSection()
 		ImGui::EndCombo();
 	}
 
-	// Custom shader 토글
+	// 셰이더 선택 (= 레이아웃 소스 & custom 강제 대상) — 변경 시 템플릿/CB 재구성.
+	const bool bIsInstance = CachedMaterial->IsMaterialInstance();
+	ImGui::BeginDisabled(bIsInstance);
+
+	const FString& CurShaderPath = CachedMaterial->GetShaderPathForSerialize();
+	const char* ShaderPreview = CurShaderPath.empty() ? "(none)" : CurShaderPath.c_str();
+	if (ImGui::BeginCombo("Shader", ShaderPreview))
+	{
+		for (const FString& Path : FMaterialManager::Get().GetAvailableShaderPaths())
+		{
+			const bool bSelected = (Path == CurShaderPath);
+			if (ImGui::Selectable(Path.c_str(), bSelected) && !bSelected)
+				FMaterialManager::Get().SetMaterialShader(CachedMaterial, Path);
+			if (bSelected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	// Custom shader 토글 — ON 이면 위 셰이더를 강제(퍼뮤테이션 도출 우회), OFF면 엔진이 도출.
 	bool bUseCustom = CachedMaterial->WasCustomShaderRequested();
 	if (ImGui::Checkbox("Use Custom Shader", &bUseCustom))
 		CachedMaterial->SetUseCustomShader(bUseCustom);
 
-	const FString& ShaderPath = CachedMaterial->GetShaderPathForSerialize();
-	ImGui::TextDisabled("Shader: %s", ShaderPath.empty() ? "(none)" : ShaderPath.c_str());
+	ImGui::EndDisabled();
+
+	if (bIsInstance)
+		ImGui::TextDisabled("(Material Instance: 셰이더는 부모에서 상속)");
 
 	ImGui::Separator();
 }
@@ -133,48 +155,53 @@ void FEditorMaterialInspector::RenderShaderParameter()
 
 	for (const auto& [ParamName, Info] : Layout)
 	{
-		ImGui::Text(ParamName.c_str());
+		ImGui::PushID(ParamName.c_str()); // 파라미터별 ID 스코프 — 동일 타입 다중 파라미터 ID 충돌 방지
+		ImGui::TextUnformatted(ParamName.c_str());
 		
 		switch (Info->Size)
 		{
 			case sizeof(float) : // 4바이트 - Scalar
 			{
-				float Param;
-				bool bIsValid = CachedMaterial->GetScalarParameter(ParamName, Param);
-				ImGui::DragFloat("##floatParam", &Param);
-				CachedMaterial->SetScalarParameter(ParamName, Param);
+				float Param = 0.0f;
+				CachedMaterial->GetScalarParameter(ParamName, Param);
+				if (ImGui::DragFloat("##scalar", &Param))
+					CachedMaterial->SetScalarParameter(ParamName, Param);
 				break;
 			}
 			case sizeof(float) * 3: // 12바이트 - Vector3
 			{
 				FVector Param;
-				bool bIsValid = CachedMaterial->GetVector3Parameter(ParamName, Param);
-				ImGui::DragFloat3("##float3Param", &Param.X);
-				CachedMaterial->SetVector3Parameter(ParamName, Param);
+				CachedMaterial->GetVector3Parameter(ParamName, Param);
+				if (ImGui::DragFloat3("##vec3", &Param.X))
+					CachedMaterial->SetVector3Parameter(ParamName, Param);
 				break;
 			}
 			case sizeof(float) * 4: // 16바이트 - Vector4
 			{
 				FVector4 Param;
-				bool bIsValid = CachedMaterial->GetVector4Parameter(ParamName, Param);
-				ImGui::DragFloat4("##float4Param", &Param.X);
-				CachedMaterial->SetVector4Parameter(ParamName, Param);
+				CachedMaterial->GetVector4Parameter(ParamName, Param);
+				if (ImGui::DragFloat4("##vec4", &Param.X))
+					CachedMaterial->SetVector4Parameter(ParamName, Param);
 				break;
 			}
 			case sizeof(float) * 16: // 64바이트 - Matrix
 			{
 				FMatrix Param;
-				bool bIsValid = CachedMaterial->GetMatrixParameter(ParamName, Param);
-				ImGui::DragFloat4("##matrix1Param", Param.Data);
-				ImGui::DragFloat4("##matrix2Param", Param.Data + 4);
-				ImGui::DragFloat4("##matrix3Param", Param.Data + 4);
-				ImGui::DragFloat4("##matrix4Param", Param.Data + 4);
-				CachedMaterial->SetMatrixParameter(ParamName, Param);
+				CachedMaterial->GetMatrixParameter(ParamName, Param);
+				bool bChanged = false;
+				bChanged |= ImGui::DragFloat4("##row0", Param.Data + 0);
+				bChanged |= ImGui::DragFloat4("##row1", Param.Data + 4);
+				bChanged |= ImGui::DragFloat4("##row2", Param.Data + 8);
+				bChanged |= ImGui::DragFloat4("##row3", Param.Data + 12);
+				if (bChanged)
+					CachedMaterial->SetMatrixParameter(ParamName, Param);
 				break;
 			}
 			default:
 				break; // uint, bool 등 특수 케이스는 별도 처리 필요
 		}
+
+		ImGui::PopID();
 	}
 
 }

@@ -30,6 +30,8 @@ public:
 
 	UMaterial* GetParent() const { return Parent; }
 
+	bool IsMaterialInstance() const override { return true; }
+
 protected:
 	// 직접 UObject 포인터 — 자산 reflection 대상 아님 (load 단계에서 MaterialManager가 imperative하게 주입).
 	UMaterial* Parent = nullptr;

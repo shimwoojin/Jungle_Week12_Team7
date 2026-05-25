@@ -154,6 +154,9 @@ public:
 	// 에디터 토글 — ON 이면 머티리얼 자신의(레이아웃 소스) 셰이더를 강제 바인딩, OFF면 도출 복귀.
 	void     SetUseCustomShader(bool bEnable) { SetCustomShader(bEnable ? GetShader() : nullptr); }
 
+	// MaterialInstance 판별 (에디터: 인스턴스는 셰이더를 부모에서 상속하므로 셰이더/custom 변경 비활성).
+	virtual bool IsMaterialInstance() const { return false; }
+
 	// 바이너리 직렬화용 셰이더 경로(레이아웃 소스) — Manager 가 Create 후 주입.
 	void           SetShaderPathForSerialize(const FString& InPath) { ShaderPathForSerialize = InPath; }
 	const FString& GetShaderPathForSerialize() const { return ShaderPathForSerialize; }

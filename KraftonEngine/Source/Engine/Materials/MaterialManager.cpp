@@ -59,6 +59,29 @@ void FMaterialManager::ScanMaterialAssets()
 	}
 }
 
+void FMaterialManager::ScanShaderPaths()
+{
+	AvailableShaderPaths.clear();
+
+	const std::filesystem::path ShaderRoot = FPaths::RootDir() + L"Shaders/";
+	if (!std::filesystem::exists(ShaderRoot))
+	{
+		return;
+	}
+
+	const std::filesystem::path ProjectRoot(FPaths::RootDir());
+	for (const auto& Entry : std::filesystem::recursive_directory_iterator(ShaderRoot))
+	{
+		if (!Entry.is_regular_file()) continue;
+
+		const std::filesystem::path& Path = Entry.path();
+		if (Path.extension() != L".hlsl") continue; // .hlsli(include) 제외 — 독립 셰이더만
+
+		AvailableShaderPaths.push_back(
+			FPaths::ToUtf8(Path.lexically_relative(ProjectRoot).generic_wstring()));
+	}
+}
+
 UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 {
 	// 0. 경로 정규화: .mat → .uasset (캐시 키 = .uasset). legacy .mat 참조 호환.
@@ -212,6 +235,30 @@ UMaterial* FMaterialManager::CreateImportedMaterialAsset(const FString& UassetPa
 UMaterial* FMaterialManager::CreateMaterialAsset(const FString& UassetPath)
 {
 	return CreateImportedMaterialAsset(UassetPath, FVector4(1.0f, 1.0f, 1.0f, 1.0f), FString(), FString());
+}
+
+// 머티리얼의 셰이더(레이아웃 소스 & custom 대상)를 교체한다. 템플릿/CB 를 재구성하므로
+// 레이아웃이 달라지면 파라미터 값은 초기화되고 텍스처 슬롯은 유지(RebuildCachedSRVs).
+// 컴파일 실패(부적합 셰이더)거나 인스턴스면 변경을 거부한다.
+bool FMaterialManager::SetMaterialShader(UMaterial* Material, const FString& ShaderPath)
+{
+	if (!Material || Material->IsMaterialInstance())
+		return false;
+
+	FMaterialTemplate* Template = GetOrCreateTemplate(ShaderPath);
+	if (!Template)
+		return false; // FindOrCreate 실패(엔트리포인트 없음/컴파일 오류 등) → 변경 거부
+
+	auto Buffers = CreateConstantBuffers(Template);
+	Material->Create(Material->GetAssetPathFileName(), Template,
+		Material->GetDomain(), Material->GetBlendMode(), std::move(Buffers));
+	Material->SetShaderPathForSerialize(ShaderPath);
+
+	if (Material->WasCustomShaderRequested())
+		Material->SetCustomShader(Template->GetShader());
+
+	Material->RebuildCachedSRVs();
+	return true;
 }
 
 TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> FMaterialManager::CreateConstantBuffers(FMaterialTemplate* Template)
