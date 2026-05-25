@@ -93,6 +93,9 @@ protected:
 	// 필수가 아니지만, runtime gameplay가 외부 particle event delivery를 기대한다면 soft requirement다.
 	// nullptr도 유효한 미주입 상태이며, 이 경우 PSC는 provider 상태를 다시 동기화할 수 있다.
 	void RefreshEventManagerBinding();
+	// Automatic LOD selection in phase 2 only computes a raw distance-based LOD index.
+	// Hysteresis / switch delay are intentionally deferred to a later pass.
+	void UpdateAutomaticLODSelection();
 	void ClampCurrentLODIndex();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;

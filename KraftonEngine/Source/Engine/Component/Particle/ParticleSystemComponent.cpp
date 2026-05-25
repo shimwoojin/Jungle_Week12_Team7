@@ -5,6 +5,7 @@
 #include "Particle/ParticleEmitterInstance.h"
 #include "Particle/ParticleEventManager.h"
 #include "Particle/ParticleSystemManager.h"
+#include "GameFramework/World.h"
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
 #include "Serialization/Archive.h"
 #include "Core/Logging/Log.h"
@@ -148,6 +149,14 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		Template->BuildEmitters();
 		ClampCurrentLODIndex();
 		CreateEmitterInstances();
+	}
+
+	if (Template->bUseAutomaticLOD)
+	{
+		// Phase 2 wires only raw automatic LOD selection. Hysteresis and switch
+		// delay are deferred to a later pass, so runtime ticking may override a
+		// manually-set current index while automatic mode remains enabled.
+		UpdateAutomaticLODSelection();
 	}
 
 	// PSC가 현재 선택한 LOD를 source of truth로 들고 있고, instance는 매 tick 그 값을 따른다.
@@ -472,6 +481,32 @@ void UParticleSystemComponent::RefreshEventManagerBinding()
 	}
 }
 
+void UParticleSystemComponent::UpdateAutomaticLODSelection()
+{
+	if (!Template || !Template->bUseAutomaticLOD)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FMinimalViewInfo ActivePOV;
+	if (!World->GetActivePOV(ActivePOV))
+	{
+		// Preview/tool or partial-runtime contexts may not have an active POV yet.
+		// Keep the current manual/runtime-selected index unchanged in that case.
+		return;
+	}
+
+	const float DistanceToView = FVector::Distance(ActivePOV.Location, GetWorldLocation());
+	CurrentLODIndex = Template->GetLODIndexForDistance(DistanceToView);
+	ClampCurrentLODIndex();
+}
+
 void UParticleSystemComponent::DestroyEmitterInstances()
 {
 	for (FParticleEmitterInstance* Inst : EmitterInstances) delete Inst;
@@ -544,8 +579,8 @@ void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
 {
 	ClampCurrentLODIndex();
 
-	// distance 기반 자동 선택은 아직 없으므로, 현재는 PSC의 수동 LOD index를 그대로 전달한다.
-	// 단, 선택 index는 ParticleSystem의 현재 LOD 개수 범위로 clamp한다.
+	// LOD selection is computed elsewhere (manual setter or raw automatic selection),
+	// and this function only propagates the already-chosen index to emitter instances.
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
 	{
 		if (!Inst)
