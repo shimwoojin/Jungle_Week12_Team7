@@ -67,6 +67,11 @@ public:
 	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Sync Modes", Type=Array)
 	TArray<uint8> RegularModuleSyncModes;
 
+	// Inherited regular modules carry an explicit LOD0 source-module binding so
+	// derived sync is less fragile than raw array-position matching.
+	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Source LOD0 Indices", Type=Array)
+	TArray<int32> RegularModuleSourceLOD0Indices;
+
 	void PostDuplicate() override;
 
 	// --- API ---
@@ -74,8 +79,12 @@ public:
 	void UpdateFromLOD0(UParticleLODLevel* LOD0);
 	ELODModuleSyncMode GetRegularModuleSyncMode(int32 ModuleIndex) const;
 	void SetRegularModuleSyncMode(int32 ModuleIndex, ELODModuleSyncMode InMode);
+	int32 GetRegularModuleSourceLOD0Index(int32 ModuleIndex) const;
+	void SetRegularModuleSourceLOD0Index(int32 ModuleIndex, int32 SourceIndex);
 	bool HasRegularModuleOverrides() const;
 	void ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode = ELODModuleSyncMode::InheritFromLOD0);
+	void ResetRegularModuleSourceLOD0Indices(int32 DefaultSourceIndex = -1, bool bMapToCurrentIndex = false);
+	void NormalizeRegularModuleSyncMetadata();
 
 	// 동일 카테고리 중복/required 충돌 등을 검증. true 면 정상.
 	bool ValidateModules() const;

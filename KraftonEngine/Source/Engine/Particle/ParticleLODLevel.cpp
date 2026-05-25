@@ -92,40 +92,109 @@ namespace
 		}
 
 		TargetLOD->ResetRegularModuleSyncModes(ELODModuleSyncMode::InheritFromLOD0);
+		TargetLOD->ResetRegularModuleSourceLOD0Indices(-1, true);
+	}
+
+	bool IsPlausibleRegularModuleBinding(UParticleModule* DerivedModule, UParticleModule* SourceModule)
+	{
+		if (!DerivedModule || !SourceModule)
+		{
+			return false;
+		}
+
+		return DerivedModule->GetCategory() == SourceModule->GetCategory() &&
+			DerivedModule->GetClass() == SourceModule->GetClass();
+	}
+
+	bool CanUseSourceBoundRegularModuleSync(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
+	{
+		if (!TargetLOD || !LOD0)
+		{
+			return false;
+		}
+
+		if (TargetLOD->RegularModuleSyncModes.size() != TargetLOD->Modules.size() ||
+			TargetLOD->RegularModuleSourceLOD0Indices.size() != TargetLOD->Modules.size())
+		{
+			return false;
+		}
+
+		for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(TargetLOD->Modules.size()); ++ModuleIndex)
+		{
+			if (TargetLOD->GetRegularModuleSyncMode(ModuleIndex) == ELODModuleSyncMode::Override)
+			{
+				continue;
+			}
+
+			const int32 SourceIndex = TargetLOD->GetRegularModuleSourceLOD0Index(ModuleIndex);
+			if (SourceIndex < 0 || SourceIndex >= static_cast<int32>(LOD0->Modules.size()))
+			{
+				return false;
+			}
+
+			if (!IsPlausibleRegularModuleBinding(TargetLOD->Modules[ModuleIndex], LOD0->Modules[SourceIndex]))
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	void SyncRegularModulesFromLOD0(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
 	{
 		if (!TargetLOD->HasRegularModuleOverrides() ||
-			TargetLOD->RegularModuleSyncModes.size() != TargetLOD->Modules.size())
+			!CanUseSourceBoundRegularModuleSync(TargetLOD, LOD0))
 		{
 			// Full-copy remains the compatibility bridge while we introduce
-			// module-level override metadata incrementally.
+			// explicit source bindings for inherited regular modules.
 			FullCopyRegularModulesFromLOD0(TargetLOD, LOD0);
 			return;
 		}
 
 		TArray<UParticleModule*> PreviousModules = TargetLOD->Modules;
 		TArray<uint8> PreviousSyncModes = TargetLOD->RegularModuleSyncModes;
+		TArray<int32> PreviousSourceLOD0Indices = TargetLOD->RegularModuleSourceLOD0Indices;
 		TargetLOD->Modules.clear();
 		TargetLOD->RegularModuleSyncModes.clear();
+		TargetLOD->RegularModuleSourceLOD0Indices.clear();
 
 		for (int32 SourceIndex = 0; SourceIndex < static_cast<int32>(LOD0->Modules.size()); ++SourceIndex)
 		{
-			const bool bKeepOverrideModule =
-				SourceIndex < static_cast<int32>(PreviousModules.size()) &&
-				SourceIndex < static_cast<int32>(PreviousSyncModes.size()) &&
-				DecodeSyncMode(PreviousSyncModes[SourceIndex]) == ELODModuleSyncMode::Override &&
-				PreviousModules[SourceIndex] != nullptr;
-
-			if (bKeepOverrideModule)
+			UParticleModule* MatchedInheritedModule = nullptr;
+			int32 MatchedPreviousIndex = -1;
+			for (int32 PreviousIndex = 0; PreviousIndex < static_cast<int32>(PreviousModules.size()); ++PreviousIndex)
 			{
-				PreviousModules[SourceIndex]->SetOuter(TargetLOD);
-				TargetLOD->Modules.push_back(PreviousModules[SourceIndex]);
+				if (PreviousModules[PreviousIndex] == nullptr ||
+					PreviousIndex >= static_cast<int32>(PreviousSyncModes.size()) ||
+					PreviousIndex >= static_cast<int32>(PreviousSourceLOD0Indices.size()) ||
+					DecodeSyncMode(PreviousSyncModes[PreviousIndex]) != ELODModuleSyncMode::InheritFromLOD0 ||
+					PreviousSourceLOD0Indices[PreviousIndex] != SourceIndex)
+				{
+					continue;
+				}
+
+				if (!IsPlausibleRegularModuleBinding(PreviousModules[PreviousIndex], LOD0->Modules[SourceIndex]))
+				{
+					continue;
+				}
+
+				MatchedInheritedModule = PreviousModules[PreviousIndex];
+				MatchedPreviousIndex = PreviousIndex;
+				break;
+			}
+
+			if (MatchedInheritedModule)
+			{
+				MatchedInheritedModule->SetOuter(TargetLOD);
+				TargetLOD->Modules.push_back(MatchedInheritedModule);
 				TargetLOD->SetRegularModuleSyncMode(
 					static_cast<int32>(TargetLOD->Modules.size()) - 1,
-					ELODModuleSyncMode::Override);
-				PreviousModules[SourceIndex] = nullptr;
+					ELODModuleSyncMode::InheritFromLOD0);
+				TargetLOD->SetRegularModuleSourceLOD0Index(
+					static_cast<int32>(TargetLOD->Modules.size()) - 1,
+					SourceIndex);
+				PreviousModules[MatchedPreviousIndex] = nullptr;
 				continue;
 			}
 
@@ -139,9 +208,12 @@ namespace
 			TargetLOD->SetRegularModuleSyncMode(
 				static_cast<int32>(TargetLOD->Modules.size()) - 1,
 				ELODModuleSyncMode::InheritFromLOD0);
+			TargetLOD->SetRegularModuleSourceLOD0Index(
+				static_cast<int32>(TargetLOD->Modules.size()) - 1,
+				SourceIndex);
 		}
 
-		for (int32 PreviousIndex = static_cast<int32>(LOD0->Modules.size());
+		for (int32 PreviousIndex = 0;
 		     PreviousIndex < static_cast<int32>(PreviousModules.size());
 		     ++PreviousIndex)
 		{
@@ -160,6 +232,9 @@ namespace
 			TargetLOD->SetRegularModuleSyncMode(
 				static_cast<int32>(TargetLOD->Modules.size()) - 1,
 				ELODModuleSyncMode::Override);
+			TargetLOD->SetRegularModuleSourceLOD0Index(
+				static_cast<int32>(TargetLOD->Modules.size()) - 1,
+				-1);
 			PreviousModules[PreviousIndex] = nullptr;
 		}
 
@@ -331,10 +406,7 @@ void UParticleLODLevel::PostDuplicate()
 		Module->PostDuplicate();
 	}
 
-	if (RegularModuleSyncModes.size() != Modules.size())
-	{
-		ResetRegularModuleSyncModes();
-	}
+	NormalizeRegularModuleSyncMetadata();
 }
 
 void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
@@ -366,6 +438,16 @@ UParticleLODLevel::ELODModuleSyncMode UParticleLODLevel::GetRegularModuleSyncMod
 	return DecodeSyncMode(RegularModuleSyncModes[ModuleIndex]);
 }
 
+int32 UParticleLODLevel::GetRegularModuleSourceLOD0Index(int32 ModuleIndex) const
+{
+	if (ModuleIndex < 0 || ModuleIndex >= static_cast<int32>(RegularModuleSourceLOD0Indices.size()))
+	{
+		return -1;
+	}
+
+	return RegularModuleSourceLOD0Indices[ModuleIndex];
+}
+
 void UParticleLODLevel::SetRegularModuleSyncMode(int32 ModuleIndex, ELODModuleSyncMode InMode)
 {
 	if (ModuleIndex < 0)
@@ -379,6 +461,21 @@ void UParticleLODLevel::SetRegularModuleSyncMode(int32 ModuleIndex, ELODModuleSy
 	}
 
 	RegularModuleSyncModes[ModuleIndex] = EncodeSyncMode(InMode);
+}
+
+void UParticleLODLevel::SetRegularModuleSourceLOD0Index(int32 ModuleIndex, int32 SourceIndex)
+{
+	if (ModuleIndex < 0)
+	{
+		return;
+	}
+
+	while (static_cast<int32>(RegularModuleSourceLOD0Indices.size()) <= ModuleIndex)
+	{
+		RegularModuleSourceLOD0Indices.push_back(-1);
+	}
+
+	RegularModuleSourceLOD0Indices[ModuleIndex] = SourceIndex;
 }
 
 bool UParticleLODLevel::HasRegularModuleOverrides() const
@@ -401,6 +498,43 @@ void UParticleLODLevel::ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMo
 	for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(Modules.size()); ++ModuleIndex)
 	{
 		RegularModuleSyncModes.push_back(EncodeSyncMode(DefaultMode));
+	}
+}
+
+void UParticleLODLevel::ResetRegularModuleSourceLOD0Indices(int32 DefaultSourceIndex, bool bMapToCurrentIndex)
+{
+	RegularModuleSourceLOD0Indices.clear();
+
+	for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(Modules.size()); ++ModuleIndex)
+	{
+		RegularModuleSourceLOD0Indices.push_back(bMapToCurrentIndex ? ModuleIndex : DefaultSourceIndex);
+	}
+}
+
+void UParticleLODLevel::NormalizeRegularModuleSyncMetadata()
+{
+	if (RegularModuleSyncModes.size() != Modules.size())
+	{
+		ResetRegularModuleSyncModes();
+	}
+
+	if (RegularModuleSourceLOD0Indices.size() != Modules.size())
+	{
+		ResetRegularModuleSourceLOD0Indices();
+	}
+
+	for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(Modules.size()); ++ModuleIndex)
+	{
+		if (GetRegularModuleSyncMode(ModuleIndex) == ELODModuleSyncMode::Override)
+		{
+			SetRegularModuleSourceLOD0Index(ModuleIndex, -1);
+			continue;
+		}
+
+		if (GetRegularModuleSourceLOD0Index(ModuleIndex) < 0)
+		{
+			SetRegularModuleSourceLOD0Index(ModuleIndex, ModuleIndex);
+		}
 	}
 }
 
@@ -491,6 +625,7 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 	InModule->SetOuter(this);
 	Modules.push_back(InModule);
 	SetRegularModuleSyncMode(static_cast<int32>(Modules.size()) - 1, ELODModuleSyncMode::Override);
+	SetRegularModuleSourceLOD0Index(static_cast<int32>(Modules.size()) - 1, -1);
 	return true;
 }
 
@@ -523,6 +658,10 @@ bool UParticleLODLevel::RemoveModule(UParticleModule* InModule)
 			if (i < static_cast<int32>(RegularModuleSyncModes.size()))
 			{
 				RegularModuleSyncModes.erase(RegularModuleSyncModes.begin() + i);
+			}
+			if (i < static_cast<int32>(RegularModuleSourceLOD0Indices.size()))
+			{
+				RegularModuleSourceLOD0Indices.erase(RegularModuleSourceLOD0Indices.begin() + i);
 			}
 			return true;
 		}
