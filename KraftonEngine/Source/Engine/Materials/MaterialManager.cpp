@@ -3,6 +3,7 @@
 #include <fstream>
 #include "Materials/Material.h"
 #include "Materials/MaterialInstance.h"
+#include "Materials/MaterialDomain.h"  // Phase 1: Domain/BlendMode 도출 (dormant)
 #include "Platform/Paths.h"
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Resource/Buffer.h"
