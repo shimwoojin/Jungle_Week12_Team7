@@ -11,6 +11,7 @@ class UParticleModule;
 class UParticleSystemComponent;
 class AActor;
 class IEditorPreviewViewportClient;
+struct FFloatCurve;
 struct ImVec2;
 
 // =============================================================================
@@ -50,7 +51,8 @@ private:
 	void RenderEmitterStrip(ImVec2 Size);
 	void RenderPropertyPanel(ImVec2 Size);
 	void RenderPreviewViewport(ImVec2 Size);
-	void RenderCurveEditor(ImVec2 Size); // 현재는 backend 미구현 placeholder
+	void RenderCurveEditor(ImVec2 Size);
+	bool RenderSelectedCurveKeyDetails();
 
 	// emitter strip 의 1 column 렌더
 	void RenderEmitterColumn(UParticleEmitter* Emitter, int32 EmitterIndex);
@@ -63,10 +65,14 @@ private:
 	void RenderAddModulePopup();
 	void DuplicateSelectedModule();
 	void RemoveSelectedModule();
+	void ClearSelectedCurveKey();
+	FFloatCurve* GetSelectedCurve(FString* OutCurveName = nullptr, FString* OutChannelName = nullptr) const;
 
 	void SelectSystem();
 	void SelectEmitter(int32 EmitterIndex);
 	void SelectModule(int32 EmitterIndex, int32 ModuleIndex);
+	void SelectModuleCurve(int32 EmitterIndex, int32 ModuleIndex);
+	bool SelectFirstCurveForModule(UParticleModule* Module);
 
 	void RebuildPreview(bool bResetSimulation = true);
 	void RestartPreview();
@@ -89,11 +95,15 @@ private:
 	int32 InstanceId = 0;
 	int32 SelectedEmitterIndex = -1;
 	int32 SelectedModuleIndex  = -1; // -1=Emitter, -100/-101/-102=Required/Spawn/TypeData, 0..=LOD.Modules
+	int32 SelectedCurveSource  = -1;
+	int32 SelectedCurveChannel = -1;
+	int32 SelectedCurveKeyIndex = -1;
 	int32 CurrentLODIndex      = 0;
+	bool  bDraggingCurveKey    = false;
 
-	float EmitterStripHeight = 280.0f;
+	float EmitterStripHeight = 320.0f;
 	float DetailsWidth       = 420.0f;
-	float CurvePanelHeight   = 190.0f;
+	float CurvePanelHeight   = 280.0f;
 	float SimulationSpeed    = 1.0f;
 	bool  bSimPlaying        = true;
 	bool  bPendingClose      = false;
