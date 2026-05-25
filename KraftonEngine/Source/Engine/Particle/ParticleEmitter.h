@@ -49,7 +49,9 @@ public:
 	void EnsureLOD0CoreModules();
 
 	// 새 LOD level 을 생성. 현재는 Required + Spawn 기본 모듈만 생성.
-	// LOD0 모듈 복사/보간은 UpdateFromLOD0() 구현 시 처리.
+	// Derived LOD는 이후 SynchronizeDerivedLODFromLOD0() / UpdateFromLOD0()
+	// 경로에서 inherited data resync, override preservation, reduction reapply,
+	// and full-copy fallback policy를 적용받는다.
 	UParticleLODLevel* CreateLODLevel(int32 InLevel);
 	void               SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedLOD);
 	void               RemoveLODLevel(int32 InLevel);

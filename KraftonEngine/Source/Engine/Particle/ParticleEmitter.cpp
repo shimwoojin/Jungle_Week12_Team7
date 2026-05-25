@@ -218,9 +218,10 @@ void UParticleEmitter::SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedL
 	{
 		if (LOD0 != DerivedLOD)
 		{
-			// Full-copy remains the current migration bridge. Phase 4 begins adding
-			// module-level override metadata, but runtime still expects a materialized
-			// per-LOD module graph until a future effective-LOD build path exists.
+			// LOD0 is the master source for inherited derived-LOD data. The derived
+			// resync path keeps explicit overrides local, reapplies inherited
+			// reduction policy, and can still fall back to a materialized full-copy
+			// rebuild when metadata-driven sync is not trustworthy enough.
 			DerivedLOD->UpdateFromLOD0(LOD0);
 		}
 	}

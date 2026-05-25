@@ -148,8 +148,8 @@ namespace
 		if (!TargetLOD->HasRegularModuleOverrides() ||
 			!CanUseSourceBoundRegularModuleSync(TargetLOD, LOD0))
 		{
-			// Full-copy remains the compatibility bridge while we introduce
-			// explicit source bindings for inherited regular modules.
+			// Metadata-driven partial resync is not trustworthy here, so rebuild the
+			// derived regular-module graph from LOD0 and reset inherited bindings.
 			FullCopyRegularModulesFromLOD0(TargetLOD, LOD0);
 			return;
 		}
@@ -244,6 +244,32 @@ namespace
 		{
 			DestroyLODModule(PreviousModule);
 		}
+	}
+
+	void ResynchronizeInheritedCoreSlotsFromLOD0(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
+	{
+		if (!TargetLOD || !LOD0)
+		{
+			return;
+		}
+
+		// Inherited core slots re-materialize directly from LOD0. Derived overrides
+		// remain untouched because their sync flags already opt out at the slot level.
+		SyncCoreModuleSlotFromLOD0(TargetLOD->RequiredModule, LOD0->RequiredModule, TargetLOD, TargetLOD->bSyncRequiredModuleFromLOD0);
+		SyncCoreModuleSlotFromLOD0(TargetLOD->SpawnModule, LOD0->SpawnModule, TargetLOD, TargetLOD->bSyncSpawnModuleFromLOD0);
+		SyncCoreModuleSlotFromLOD0(TargetLOD->TypeDataModule, LOD0->TypeDataModule, TargetLOD, TargetLOD->bSyncTypeDataModuleFromLOD0);
+	}
+
+	void ResynchronizeInheritedRegularModulesFromLOD0(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
+	{
+		if (!TargetLOD || !LOD0)
+		{
+			return;
+		}
+
+		// Inherited regular modules follow their explicit LOD0 source bindings.
+		// Explicit override modules stay local to the derived LOD and are preserved.
+		SyncRegularModulesFromLOD0(TargetLOD, LOD0);
 	}
 
 	float GetLODReductionScale(const UParticleLODLevel* TargetLOD)
@@ -373,6 +399,19 @@ namespace
 		ApplyBeamLODReduction(TargetLOD, ReductionScale);
 		ApplyOptionalFeatureLODReductionBoundary(TargetLOD);
 	}
+
+	void ReapplyInheritedLODReductionFromLOD0(UParticleLODLevel* TargetLOD)
+	{
+		if (!TargetLOD)
+		{
+			return;
+		}
+
+		// Reduction stays a distinct post-sync shaping phase. It recalculates
+		// cheaper inherited lower-LOD variants after source-driven resync and does
+		// not redefine which slots/modules are explicit overrides.
+		ApplyDeferredLODReductionPolicy(TargetLOD);
+	}
 }
 
 void UParticleLODLevel::PostDuplicate()
@@ -419,17 +458,17 @@ void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 		return;
 	}
 
-	// Structural sync still runs first. Full-copy remains the migration fallback,
-	// while module-level metadata preserves override-oriented slots/modules and
-	// deferred reduction policy turns inherited lower LODs into cheaper variants.
+	// LOD0 acts as the master/source for inherited derived-LOD data.
+	// This path re-materializes inherited core slots, re-syncs inherited regular
+	// modules from their explicit LOD0 source bindings, reapplies reduction for
+	// inherited cost shaping, preserves explicit overrides, and falls back to a
+	// full-copy rebuild when metadata-driven regular-module resync is untrustworthy.
 	NormalizeCoreSlotSyncMetadata();
 	bEnabled = LOD0->bEnabled;
 
-	SyncCoreModuleSlotFromLOD0(RequiredModule, LOD0->RequiredModule, this, bSyncRequiredModuleFromLOD0);
-	SyncCoreModuleSlotFromLOD0(SpawnModule, LOD0->SpawnModule, this, bSyncSpawnModuleFromLOD0);
-	SyncCoreModuleSlotFromLOD0(TypeDataModule, LOD0->TypeDataModule, this, bSyncTypeDataModuleFromLOD0);
-	SyncRegularModulesFromLOD0(this, LOD0);
-	ApplyDeferredLODReductionPolicy(this);
+	ResynchronizeInheritedCoreSlotsFromLOD0(this, LOD0);
+	ResynchronizeInheritedRegularModulesFromLOD0(this, LOD0);
+	ReapplyInheritedLODReductionFromLOD0(this);
 }
 
 UParticleLODLevel::ELODModuleSyncMode UParticleLODLevel::GetRegularModuleSyncMode(int32 ModuleIndex) const
