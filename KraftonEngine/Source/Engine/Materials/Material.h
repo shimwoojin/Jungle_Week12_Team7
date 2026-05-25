@@ -74,7 +74,7 @@ struct FMaterialConstantBuffer
 };
 
 //파라미터 값 + 텍스처 (런타임 데이터)
-//JSON으로 직렬화되는 데이터
+// 바이너리(.uasset)로 직렬화 — Manager 가 Serialize 를 위임
 UCLASS()
 class UMaterial : public UObject
 {

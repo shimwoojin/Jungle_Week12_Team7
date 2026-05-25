@@ -249,11 +249,7 @@ void FEditorMaterialInspector::RenderTextureSection()
 					ContentItem.Path.lexically_relative(FPaths::RootDir()).generic_wstring()
 				);
 				ID3D11Device* Device = GEngine ? GEngine->GetRenderer().GetFD3DDevice().GetDevice() : nullptr;
-				const bool bIsColorTexture =
-					SlotName == "DiffuseTexture" ||
-					SlotName == "EmissiveTexture" ||
-					SlotName == "Custom0Texture" ||
-					SlotName == "Custom1Texture";
+				const bool bIsColorTexture = MaterialTextureSlot::IsSRGBTextureSlot(SlotName);
 				UTexture2D* NewTexture = UTexture2D::LoadFromFile(
 					NewTexturePath,
 					Device,
@@ -284,11 +280,7 @@ void FEditorMaterialInspector::RenderTextureSection()
 				if (ImGui::Selectable(TexPath.c_str(), bSelected) && !bSelected)
 				{
 					ID3D11Device* Device = GEngine ? GEngine->GetRenderer().GetFD3DDevice().GetDevice() : nullptr;
-					const bool bIsColorTexture =
-						SlotName == "DiffuseTexture" ||
-						SlotName == "EmissiveTexture" ||
-						SlotName == "Custom0Texture" ||
-						SlotName == "Custom1Texture";
+					const bool bIsColorTexture = MaterialTextureSlot::IsSRGBTextureSlot(SlotName);
 					UTexture2D* NewTexture = UTexture2D::LoadFromFile(
 						TexPath, Device,
 						bIsColorTexture ? ETextureColorSpace::SRGB : ETextureColorSpace::Linear);

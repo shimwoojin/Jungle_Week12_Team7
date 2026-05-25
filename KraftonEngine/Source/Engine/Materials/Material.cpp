@@ -115,10 +115,7 @@ bool UMaterial::SetParameter(const FString& Name, const void* Data, uint32 Size)
 	auto It = ConstantBufferMap.find(Info.BufferName);
 	if (It == ConstantBufferMap.end()) return false;
 
-	It->second->SetData(Data, Size, Info.Offset);
-	It->second->bDirty = true;
-
-	It->second->Upload(GEngine->GetRenderer().GetFD3DDevice().GetDeviceContext());
+	It->second->SetData(Data, Size, Info.Offset); // SetData 가 bDirty 설정. 업로드는 draw-build 의 FlushDirtyBuffers 가 dirty CB 만 일괄 처리.
 	return true;
 }
 
@@ -144,13 +141,12 @@ bool UMaterial::SetTextureParameter(const FString& ParamName, UTexture2D* Textur
 {
 	TextureParameters[ParamName] = Texture;
 
-	// CachedSRVs 갱신 — 슬롯 이름과 매칭되면 즉시 반영
-	for (int s = 0; s < (int)EMaterialTextureSlot::Max; s++)
+	// 리플렉션 텍스처 바인딩(이름→register)으로 CachedSRV 즉시 갱신 — RebuildCachedSRVs 와 동일 규칙.
+	for (const FShaderTextureBinding& B : GetTextureBindings())
 	{
-		FString SlotName = MaterialTextureSlot::ToString(s) + "Texture";
-		if (ParamName == SlotName)
+		if (B.Name == ParamName && B.BindPoint < (uint32)EMaterialTextureSlot::Max)
 		{
-			CachedSRVs[s] = (Texture && Texture->GetSRV()) ? Texture->GetSRV() : nullptr;
+			CachedSRVs[B.BindPoint] = (Texture && Texture->GetSRV()) ? Texture->GetSRV() : nullptr;
 			break;
 		}
 	}
@@ -376,11 +372,7 @@ void UMaterial::Serialize(FArchive& Ar)
 			if (!TexturePath.empty())
 			{
 				ID3D11Device* Device = GEngine->GetRenderer().GetFD3DDevice().GetDevice();
-				const bool bIsColorTexture =
-					SlotName == "DiffuseTexture" ||
-					SlotName == "EmissiveTexture" ||
-					SlotName == "Custom0Texture" ||
-					SlotName == "Custom1Texture";
+				const bool bIsColorTexture = MaterialTextureSlot::IsSRGBTextureSlot(SlotName);
 				UTexture2D* Loaded = UTexture2D::LoadFromFile(
 					TexturePath,
 					Device,
