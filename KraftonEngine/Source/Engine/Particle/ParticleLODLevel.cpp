@@ -6,6 +6,38 @@
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
 #include "Serialization/Archive.h"
 
+namespace
+{
+	template<typename T>
+	T* DuplicateModuleForLOD(T* SourceModule, UParticleLODLevel* TargetLOD)
+	{
+		if (!SourceModule || !TargetLOD)
+		{
+			return nullptr;
+		}
+
+		T* DuplicatedModule = Cast<T>(SourceModule->Duplicate(TargetLOD));
+		if (DuplicatedModule)
+		{
+			DuplicatedModule->SetOuter(TargetLOD);
+		}
+
+		return DuplicatedModule;
+	}
+
+	template<typename T>
+	void DestroyLODModule(T*& Module)
+	{
+		if (!Module)
+		{
+			return;
+		}
+
+		UObjectManager::Get().DestroyObject(Module);
+		Module = nullptr;
+	}
+}
+
 void UParticleLODLevel::PostDuplicate()
 {
 	UObject::PostDuplicate();
@@ -42,7 +74,39 @@ void UParticleLODLevel::PostDuplicate()
 
 void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 {
-	// TODO: LOD 보간/복사
+	if (!LOD0 || LOD0 == this)
+	{
+		return;
+	}
+
+	// Phase 1 uses a full-copy policy only. Lower-LOD reduction/interpolation
+	// rules are deferred so derived LODs first become valid, non-empty copies.
+	DestroyLODModule(RequiredModule);
+	DestroyLODModule(SpawnModule);
+	DestroyLODModule(TypeDataModule);
+
+	for (UParticleModule*& Module : Modules)
+	{
+		DestroyLODModule(Module);
+	}
+	Modules.clear();
+
+	bEnabled = LOD0->bEnabled;
+
+	RequiredModule = DuplicateModuleForLOD(LOD0->RequiredModule, this);
+	SpawnModule = DuplicateModuleForLOD(LOD0->SpawnModule, this);
+	TypeDataModule = DuplicateModuleForLOD(LOD0->TypeDataModule, this);
+
+	for (UParticleModule* SourceModule : LOD0->Modules)
+	{
+		UParticleModule* DuplicatedModule = DuplicateModuleForLOD(SourceModule, this);
+		if (!DuplicatedModule)
+		{
+			continue;
+		}
+
+		Modules.push_back(DuplicatedModule);
+	}
 }
 
 bool UParticleLODLevel::ValidateModules() const

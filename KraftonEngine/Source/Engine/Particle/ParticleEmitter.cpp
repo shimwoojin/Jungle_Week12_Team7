@@ -210,6 +210,7 @@ void UParticleEmitter::EnsureLOD0CoreModules()
 UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)     
 { 
 	if (InLevel < 0) InLevel = 0;
+	const bool bIsDerivedLOD = InLevel > 0;
 
 	if (UParticleLODLevel* Existing = GetLODLevel(InLevel))
 	{
@@ -236,6 +237,16 @@ UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)
 	else
 	{
 		LODLevels.insert(LODLevels.begin() + InLevel, NewLOD);
+	}
+
+	if (bIsDerivedLOD)
+	{
+		if (UParticleLODLevel* LOD0 = GetLODLevel(0))
+		{
+			// Phase 1 keeps lower LOD creation simple: start from a full LOD0 copy
+			// and defer any reduction/interpolation policy to later passes.
+			NewLOD->UpdateFromLOD0(LOD0);
+		}
 	}
 
 	return NewLOD;
