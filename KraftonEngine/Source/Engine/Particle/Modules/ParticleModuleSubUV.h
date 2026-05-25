@@ -5,6 +5,12 @@
 
 #include "Source/Engine/Particle/Modules/ParticleModuleSubUV.generated.h"
 
+// =============================================================================
+// UParticleModuleSubUV
+//   현재 구현은 StartFrame/EndFrame/FrameRate 기반이다.
+//   FrameRate가 0보다 크면 particle age seconds 기준으로 frame을 진행하고,
+//   아니면 Particle->RelativeTime(0..1) 기준으로 StartFrame~EndFrame을 보간한다.
+// =============================================================================
 UCLASS()
 class UParticleModuleSubUV : public UParticleModule
 {

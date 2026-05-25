@@ -142,6 +142,7 @@ public:
 	UParticleSystemComponent*   GetComponent()     const { return Component; }
 	UParticleLODLevel*          GetCurrentLOD()    const;
 	float                       GetEmitterTimeSeconds() const { return EmitterTimeSeconds; }
+	// 현재 loop 안에서의 emitter time(seconds). Initial Distribution의 SpawnTime 기준이다.
 	float                       GetCurrentLoopTimeSeconds() const { return CurrentLoopTimeSeconds; }
 	bool                        UsesLocalSpace()   const;
 	// simulation space는 Required.bUseLocalSpace에 따라 local/world 중 하나로 고정된다.
@@ -168,6 +169,7 @@ protected:
 	virtual int32 SpawnInternal(int32 Count, float StartTime, float Increment, float StepDeltaTime);
 
 	// 활성 입자 전체에 대해 모듈 Update + RelativeTime 적용 + Kill.
+	// Over-Life 모듈은 여기서 증가한 Particle->RelativeTime(0..1)을 기준으로 Distribution을 평가한다.
 	virtual void UpdateParticles(float DeltaTime);
 
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.

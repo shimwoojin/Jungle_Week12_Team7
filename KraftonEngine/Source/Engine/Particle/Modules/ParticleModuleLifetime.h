@@ -24,6 +24,8 @@ public:
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
 
+	// Evaluated with SpawnTime: emitter-loop seconds at which the particle is spawned.
+	// This determines max lifetime; it is not evaluated with Particle->RelativeTime.
 	UPROPERTY(Edit, Save, Instanced, Category="Lifetime", DisplayName="Lifetime Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* LifetimeDistribution = nullptr;
 };

@@ -24,6 +24,7 @@ public:
 	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	            float DeltaTime) override;
 
+	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
 	UPROPERTY(Edit, Save, Instanced, Category="Size By Life", DisplayName="Life Multiplier Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
 	UDistributionVector* LifeMultiplierDistribution = nullptr;
 };

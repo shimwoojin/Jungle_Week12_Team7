@@ -26,9 +26,11 @@ public:
 	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	            float DeltaTime) override;
 
+	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
 	UPROPERTY(Edit, Save, Instanced, Category="Color Over Life", DisplayName="Color Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
 	UDistributionVector* ColorOverLifeDistribution = nullptr;
 
+	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
 	UPROPERTY(Edit, Save, Instanced, Category="Color Over Life", DisplayName="Alpha Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* AlphaOverLifeDistribution = nullptr;
 

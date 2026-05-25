@@ -7,7 +7,9 @@
 
 // =============================================================================
 // UParticleModuleSpawn
-//   초당 spawn rate 와 1회 burst 를 정의. Rate/RateScale은 Distribution에서 평가한다.
+//   초당 spawn rate 와 1회 burst 를 정의한다.
+//   Rate/RateScale Distribution은 emitter loop time 기준으로 평가한다.
+//   Burst Entry.Time도 emitter loop 기준 seconds이다.
 // =============================================================================
 UCLASS()
 class UParticleModuleSpawn : public UParticleModule
@@ -29,14 +31,17 @@ public:
 	                                float& OutSpawnAmount) const;
 	uint32 RequiredBytesPerInstance() const override { return sizeof(FSpawnModuleInstancePayload); }
 
+	// Evaluated with emitter loop time sampled at the middle of the current tick.
 	UPROPERTY(Edit, Save, Instanced, Category="Spawn", DisplayName="Rate Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* RateDistribution = nullptr;
 
+	// Evaluated with emitter loop time sampled at the middle of the current tick.
 	UPROPERTY(Edit, Save, Instanced, Category="Spawn", DisplayName="Rate Scale Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* RateScaleDistribution = nullptr;
 
 	struct FBurstEntry
 	{
+		// Emitter loop 기준 burst 발생 시간(seconds). Particle->RelativeTime이 아니다.
 		float Time   = 0.0f;
 		int32 Count  = 0;
 	};

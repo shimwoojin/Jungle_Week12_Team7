@@ -16,6 +16,14 @@ struct FBaseParticle;
 //   추가로 입자별 payload 바이트 (RequiredBytes) 와 emitter 인스턴스 전역
 //   payload (RequiredBytesPerInstance) 를 요청할 수 있다.
 //
+//   [Distribution 평가 시간 규칙]
+//   - Initial 계열 모듈은 Spawn()에서 SpawnTime을 Distribution에 넘긴다.
+//     SpawnTime은 현재 emitter loop 안에서 이 particle이 생성된 시간(seconds)이다.
+//   - Over-Life 계열 모듈은 Update()에서 Particle->RelativeTime을 Distribution에 넘긴다.
+//     RelativeTime은 particle 생명 기준 0..1 정규화 시간이다.
+//   - Spawn Rate처럼 emitter 전체 흐름을 따르는 값은 CurrentLoopTimeSeconds 계열을 쓴다.
+//   - FrameRate처럼 초 단위 진행이 필요한 값은 particle age seconds를 별도로 계산해서 쓴다.
+//
 //   Emitter::CacheEmitterModuleInfo() 가 모든 모듈을 훑어 ParticleSize 와
 //   ModuleOffsetMap 을 계산한다. 모듈 자신은 layout 을 모르고, 호출 시점에
 //   주어진 Offset 만 사용한다.

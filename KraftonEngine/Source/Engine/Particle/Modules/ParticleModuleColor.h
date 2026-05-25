@@ -7,7 +7,7 @@
 
 // =============================================================================
 // UParticleModuleColor
-//   Initial Color 전용 모듈.
+//   Initial Color 전용 모듈. Spawn 시 한 번 적용된다.
 //   생존 시간에 따른 color/alpha 변화는 UParticleModuleColorOverLife가 담당한다.
 // =============================================================================
 UCLASS()
@@ -23,6 +23,7 @@ public:
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
 
+	// Constant initial color. If this becomes a Distribution later, evaluate it with SpawnTime.
 	UPROPERTY(Edit, Save, Category="Color", DisplayName="Initial Color")
 	FVector4 StartColor = { 1, 1, 1, 1 };
 };

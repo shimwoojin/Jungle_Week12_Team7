@@ -309,11 +309,17 @@ namespace
 	}
 
 	bool DrawFloatDistributionEditor(const char* Label, UDistributionFloat*& Distribution, UObject* Outer,
-	                                 float Speed = 0.05f, float Min = 0.0f, float Max = 0.0f)
+	                                 float Speed = 0.05f, float Min = 0.0f, float Max = 0.0f,
+	                                 const char* TimeBasisText = nullptr)
 	{
 		bool bChanged = false;
 		ImGui::PushID(Label);
 		ImGui::TextUnformatted(Label);
+		if (TimeBasisText && TimeBasisText[0] != '\0')
+		{
+			ImGui::SameLine();
+			ImGui::TextDisabled("[%s]", TimeBasisText);
+		}
 
 		EnsureFloatDistribution(Distribution, Outer);
 
@@ -394,11 +400,17 @@ namespace
 	}
 
 	bool DrawVectorDistributionEditor(const char* Label, UDistributionVector*& Distribution, UObject* Outer,
-	                                  float Speed = 0.1f, float Min = 0.0f, float Max = 0.0f)
+	                                  float Speed = 0.1f, float Min = 0.0f, float Max = 0.0f,
+	                                  const char* TimeBasisText = nullptr)
 	{
 		bool bChanged = false;
 		ImGui::PushID(Label);
 		ImGui::TextUnformatted(Label);
+		if (TimeBasisText && TimeBasisText[0] != '\0')
+		{
+			ImGui::SameLine();
+			ImGui::TextDisabled("[%s]", TimeBasisText);
+		}
 
 		EnsureVectorDistribution(Distribution, Outer);
 
@@ -1512,9 +1524,9 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DrawFloatDistributionEditor("Rate", Spawn->RateDistribution, Spawn, 1.0f, 0.0f, 10000.0f);
+					bChanged |= DrawFloatDistributionEditor("Rate", Spawn->RateDistribution, Spawn, 1.0f, 0.0f, 10000.0f, "EmitterTime");
 					ImGui::Separator();
-					bChanged |= DrawFloatDistributionEditor("Rate Scale", Spawn->RateScaleDistribution, Spawn, 0.01f, 0.0f, 10.0f);
+					bChanged |= DrawFloatDistributionEditor("Rate Scale", Spawn->RateScaleDistribution, Spawn, 0.01f, 0.0f, 10.0f, "EmitterTime");
 					if (ImGui::TreeNodeEx("Bursts", ImGuiTreeNodeFlags_DefaultOpen))
 					{
 						for (int32 i = 0; i < static_cast<int32>(Spawn->BurstList.size()); ++i)
@@ -1549,14 +1561,14 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Lifetime", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DrawFloatDistributionEditor("Lifetime", Lifetime->LifetimeDistribution, Lifetime, 0.05f, 0.001f, 60.0f);
+					bChanged |= DrawFloatDistributionEditor("Lifetime", Lifetime->LifetimeDistribution, Lifetime, 0.05f, 0.001f, 60.0f, "SpawnTime");
 				}
 			}
 			else if (UParticleModuleLocation* Location = Cast<UParticleModuleLocation>(Module))
 			{
 				if (ImGui::CollapsingHeader("Location", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DrawVectorDistributionEditor("Start Location", Location->StartLocationDistribution, Location, 0.1f);
+					bChanged |= DrawVectorDistributionEditor("Start Location", Location->StartLocationDistribution, Location, 0.1f, 0.0f, 0.0f, "SpawnTime");
 					bChanged |= ImGui::Checkbox("World Space Override", &Location->bWorldSpaceOverride);
 				}
 			}
@@ -1564,7 +1576,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Velocity", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DrawVectorDistributionEditor("Start Velocity", Velocity->StartVelocityDistribution, Velocity, 0.1f);
+					bChanged |= DrawVectorDistributionEditor("Start Velocity", Velocity->StartVelocityDistribution, Velocity, 0.1f, 0.0f, 0.0f, "SpawnTime");
 					bChanged |= ImGui::Checkbox("In World Space", &Velocity->bInWorldSpace);
 				}
 			}
@@ -1572,7 +1584,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Const Acceleration", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= DrawVectorDistributionEditor("Acceleration", Acceleration->AccelerationDistribution, Acceleration, 0.1f);
+					bChanged |= DrawVectorDistributionEditor("Acceleration", Acceleration->AccelerationDistribution, Acceleration, 0.1f, 0.0f, 0.0f, "SpawnTime");
 				}
 			}
 			else if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
@@ -1588,9 +1600,9 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				if (ImGui::CollapsingHeader("Color Over Life", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					ImGui::TextDisabled("Evaluated by Particle RelativeTime (0..1). RGB uses vector distribution, alpha uses float distribution.");
-					bChanged |= DrawVectorDistributionEditor("Color / RGB", ColorOverLife->ColorOverLifeDistribution, ColorOverLife, 0.01f, 0.0f, 1.0f);
+					bChanged |= DrawVectorDistributionEditor("Color / RGB", ColorOverLife->ColorOverLifeDistribution, ColorOverLife, 0.01f, 0.0f, 1.0f, "RelativeTime");
 					ImGui::Separator();
-					bChanged |= DrawFloatDistributionEditor("Alpha", ColorOverLife->AlphaOverLifeDistribution, ColorOverLife, 0.01f, 0.0f, 1.0f);
+					bChanged |= DrawFloatDistributionEditor("Alpha", ColorOverLife->AlphaOverLifeDistribution, ColorOverLife, 0.01f, 0.0f, 1.0f, "RelativeTime");
 					bChanged |= ImGui::Checkbox("Multiply Base Color", &ColorOverLife->bMultiplyBaseColor);
 				}
 			}
@@ -1599,7 +1611,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				if (ImGui::CollapsingHeader("Initial Size", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					ImGui::TextDisabled("SpawnTime is emitter-loop time. Size by life is separated into another module.");
-					bChanged |= DrawVectorDistributionEditor("Start Size", Size->StartSizeDistribution, Size, 0.1f, 0.0f, 10000.0f);
+					bChanged |= DrawVectorDistributionEditor("Start Size", Size->StartSizeDistribution, Size, 0.1f, 0.0f, 10000.0f, "SpawnTime");
 				}
 			}
 			else if (UParticleModuleSizeByLife* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
@@ -1607,7 +1619,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				if (ImGui::CollapsingHeader("Size By Life", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					ImGui::TextDisabled("Evaluated by Particle RelativeTime (0..1). This distribution usually uses a 0..1 curve.");
-					bChanged |= DrawVectorDistributionEditor("Life Multiplier", SizeByLife->LifeMultiplierDistribution, SizeByLife, 0.01f, 0.0f, 10000.0f);
+					bChanged |= DrawVectorDistributionEditor("Life Multiplier", SizeByLife->LifeMultiplierDistribution, SizeByLife, 0.01f, 0.0f, 10000.0f, "RelativeTime");
 				}
 			}
 			else if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))

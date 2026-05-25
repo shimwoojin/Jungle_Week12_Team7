@@ -26,6 +26,7 @@ public:
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
 
+	// Evaluated with SpawnTime: emitter-loop seconds at which the particle is spawned.
 	UPROPERTY(Edit, Save, Instanced, Category="Size", DisplayName="Start Size Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
 	UDistributionVector* StartSizeDistribution = nullptr;
 };
