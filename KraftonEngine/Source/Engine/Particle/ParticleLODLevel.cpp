@@ -63,6 +63,8 @@ namespace
 		UParticleLODLevel* TargetLOD,
 		bool bShouldSyncFromLOD0)
 	{
+		// Core slots only re-materialize from LOD0 while they remain inherited.
+		// Once a derived LOD explicitly overrides the slot, preserve it as-is.
 		if (!bShouldSyncFromLOD0)
 		{
 			return;
@@ -406,6 +408,7 @@ void UParticleLODLevel::PostDuplicate()
 		Module->PostDuplicate();
 	}
 
+	NormalizeCoreSlotSyncMetadata();
 	NormalizeRegularModuleSyncMetadata();
 }
 
@@ -419,6 +422,7 @@ void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 	// Structural sync still runs first. Full-copy remains the migration fallback,
 	// while module-level metadata preserves override-oriented slots/modules and
 	// deferred reduction policy turns inherited lower LODs into cheaper variants.
+	NormalizeCoreSlotSyncMetadata();
 	bEnabled = LOD0->bEnabled;
 
 	SyncCoreModuleSlotFromLOD0(RequiredModule, LOD0->RequiredModule, this, bSyncRequiredModuleFromLOD0);
@@ -489,6 +493,24 @@ bool UParticleLODLevel::HasRegularModuleOverrides() const
 	}
 
 	return false;
+}
+
+void UParticleLODLevel::NormalizeCoreSlotSyncMetadata()
+{
+	// Required/Spawn cannot be meaningfully "removed" in a derived override state,
+	// so malformed null overrides fall back to inherited re-materialization.
+	if (!RequiredModule && !bSyncRequiredModuleFromLOD0)
+	{
+		bSyncRequiredModuleFromLOD0 = true;
+	}
+
+	if (!SpawnModule && !bSyncSpawnModuleFromLOD0)
+	{
+		bSyncSpawnModuleFromLOD0 = true;
+	}
+
+	// TypeData uses nullptr as a valid "default sprite path" override, so keep the
+	// explicit override state when the derived LOD intentionally clears the slot.
 }
 
 void UParticleLODLevel::ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode)
@@ -587,6 +609,7 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 		RequiredModule = Required;
 		RequiredModule->SetOuter(this);
+		// Explicit assignment means this derived LOD now owns the slot override.
 		bSyncRequiredModuleFromLOD0 = false;
 		return true;
 	}
@@ -598,6 +621,8 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 		SpawnModule = Spawn;
 		SpawnModule->SetOuter(this);
+		// Keep automatic reduction aligned with the sync flag: inherited slots can
+		// still be reduced, explicit derived spawn overrides should be preserved.
 		bSyncSpawnModuleFromLOD0 = false;
 		return true;
 	}
@@ -609,6 +634,8 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 		TypeDataModule = TypeData;
 		TypeDataModule->SetOuter(this);
+		// TypeData override can intentionally diverge from LOD0, including later
+		// using nullptr to fall back to the sprite/default rendering path.
 		bSyncTypeDataModuleFromLOD0 = false;
 		return true;
 	}
@@ -646,6 +673,8 @@ bool UParticleLODLevel::RemoveModule(UParticleModule* InModule)
 	if (TypeDataModule == InModule)
 	{
 		TypeDataModule = nullptr;
+		// Clearing type data is a valid explicit override: the derived LOD falls
+		// back to the sprite/default path instead of re-materializing from LOD0.
 		bSyncTypeDataModuleFromLOD0 = false;
 		return true;
 	}

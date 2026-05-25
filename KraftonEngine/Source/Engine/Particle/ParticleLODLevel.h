@@ -55,6 +55,8 @@ public:
 	// Phase 4/5 keeps lightweight module-level sync metadata as a bridge toward
 	// a future Base + Override LOD model. Full property-level overrides and
 	// deeper reduction/scaling policy are still intentionally deferred.
+	// true: this slot is still inherited/materialized from LOD0.
+	// false: preserve the current derived slot instance as an explicit override.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Required Module From LOD0")
 	bool bSyncRequiredModuleFromLOD0 = true;
 
@@ -84,6 +86,7 @@ public:
 	bool HasRegularModuleOverrides() const;
 	void ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode = ELODModuleSyncMode::InheritFromLOD0);
 	void ResetRegularModuleSourceLOD0Indices(int32 DefaultSourceIndex = -1, bool bMapToCurrentIndex = false);
+	void NormalizeCoreSlotSyncMetadata();
 	void NormalizeRegularModuleSyncMetadata();
 
 	// 동일 카테고리 중복/required 충돌 등을 검증. true 면 정상.
