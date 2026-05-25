@@ -14,16 +14,10 @@
 #include "Modules/ParticleModuleSize.h"
 #include "Serialization/Archive.h"
 
-void UParticleEmitter::Serialize(FArchive& Ar)
+void UParticleEmitter::OnPostLoad(FArchive& /*Ar*/)
 {
-	UObject::Serialize(Ar);
-	SerializeProperties(Ar, PF_Save);
-
-	if (Ar.IsLoading())
-	{
-		EnsureLOD0CoreModules();
-		CacheEmitterModuleInfo();
-	}
+	EnsureLOD0CoreModules();
+	CacheEmitterModuleInfo();
 }
 
 void UParticleEmitter::PostDuplicate()

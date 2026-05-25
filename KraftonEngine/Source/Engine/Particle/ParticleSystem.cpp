@@ -5,15 +5,9 @@
 #include "Object/Reflection/ObjectFactory.h"
 #include "Serialization/Archive.h"
 
-void UParticleSystem::Serialize(FArchive& Ar)
+void UParticleSystem::OnPostLoad(FArchive& /*Ar*/)
 {
-	UObject::Serialize(Ar);
-	SerializeProperties(Ar, PF_Save);
-
-	if (Ar.IsLoading())
-	{
-		BuildEmitters();
-	}
+	BuildEmitters();
 }
 
 UObject* UParticleSystem::Duplicate(UObject* NewOuter) const

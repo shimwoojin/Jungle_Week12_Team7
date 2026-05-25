@@ -288,29 +288,24 @@ namespace
 	TArray<FName> SplitTagsCommaSep(const FString& In);
 }
 
-void AActor::Serialize(FArchive& Ar)
+void AActor::OnPreSave(FArchive& /*Ar*/)
 {
-	UObject::Serialize(Ar);
 	// 소유 포인터(OwnedComponents/RootComponent/Outer)는 직렬화 제외 — 복제 단계에서 재구성.
-	if (Ar.IsSaving())
-	{
-		PendingActorLocation = GetActorLocation();
-		PendingActorRotation = GetActorRotation();
-		PendingActorScale = GetActorScale();
-		PendingActorVisible = bVisible;
-		PendingTagsString = JoinTagsCommaSep(Tags);
-	}
+	// 반사 직렬화 전에 트랜스폼/태그를 Save 프로퍼티(Pending*)로 스냅샷.
+	PendingActorLocation = GetActorLocation();
+	PendingActorRotation = GetActorRotation();
+	PendingActorScale = GetActorScale();
+	PendingActorVisible = bVisible;
+	PendingTagsString = JoinTagsCommaSep(Tags);
+}
 
-	SerializeProperties(Ar, PF_Save);
-
-	if (Ar.IsLoading())
-	{
-		SetActorLocation(PendingActorLocation);
-		SetActorRotation(PendingActorRotation);
-		SetActorScale(PendingActorScale);
-		SetVisible(PendingActorVisible);
-		SetTags(SplitTagsCommaSep(PendingTagsString));
-	}
+void AActor::OnPostLoad(FArchive& /*Ar*/)
+{
+	SetActorLocation(PendingActorLocation);
+	SetActorRotation(PendingActorRotation);
+	SetActorScale(PendingActorScale);
+	SetVisible(PendingActorVisible);
+	SetTags(SplitTagsCommaSep(PendingTagsString));
 }
 
 bool AActor::HasTag(const FName& Tag) const

@@ -31,7 +31,10 @@ public:
 
 	bool HasActorBegunPlay() const { return bActorHasBegunPlay; }
 
-	void Serialize(FArchive& Ar) override;
+	// 트랜스폼/태그는 OnPreSave 에서 Pending* 로 스냅샷, OnPostLoad 에서 복원
+	// (반사 직렬화 자체는 UObject 템플릿이 자동 처리).
+	void OnPreSave(FArchive& Ar) override;
+	void OnPostLoad(FArchive& Ar) override;
 	UObject* Duplicate(UObject* NewOuter = nullptr) const override;
 
 	void PreGetEditableProperties() override;

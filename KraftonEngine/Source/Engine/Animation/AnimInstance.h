@@ -62,6 +62,9 @@ public:
 	UAnimInstance() = default;
 	~UAnimInstance() override = default;
 
+	// 서브클래스가 path 등만 수동 직렬화 — 반사 직렬화 비활성 (lean PIE duplicate 유지).
+	bool ShouldReflectProperties() const override { return false; }
+
 	// ── 후크 ──
 	virtual void NativeInitializeAnimation() {}
 	virtual void NativeUpdateAnimation(float DeltaSeconds) { (void)DeltaSeconds; }
