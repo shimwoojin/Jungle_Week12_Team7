@@ -5,8 +5,6 @@
 
 #include "Source/Engine/Particle/Distributions/DistributionFloatCurve.generated.h"
 
-class FArchive;
-
 // =============================================================================
 // UDistributionFloatCurve
 //   Unreal Cascade의 DistributionFloatConstantCurve 계열처럼 Time -> float 값을
@@ -31,8 +29,7 @@ public:
 	void SetConstant(float Value);
 	void SetLinear(float StartTime, float StartValue, float EndTime, float EndValue);
 
-	void Serialize(FArchive& Ar) override;
-
 private:
+	UPROPERTY(Save, Type=Struct, Struct=FFloatCurve)
 	FFloatCurve Curve;
 };

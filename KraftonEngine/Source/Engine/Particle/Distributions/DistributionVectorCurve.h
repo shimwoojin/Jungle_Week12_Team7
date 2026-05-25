@@ -5,8 +5,6 @@
 
 #include "Source/Engine/Particle/Distributions/DistributionVectorCurve.generated.h"
 
-class FArchive;
-
 // =============================================================================
 // UDistributionVectorCurve
 //   Time -> FVector 값을 X/Y/Z 세 개의 FFloatCurve로 평가한다.
@@ -36,10 +34,13 @@ public:
 	void SetConstant(const FVector& Value);
 	void SetLinear(float StartTime, const FVector& StartValue, float EndTime, const FVector& EndValue);
 
-	void Serialize(FArchive& Ar) override;
-
 private:
+	UPROPERTY(Save, Type=Struct, Struct=FFloatCurve)
 	FFloatCurve XCurve;
+
+	UPROPERTY(Save, Type=Struct, Struct=FFloatCurve)
 	FFloatCurve YCurve;
+
+	UPROPERTY(Save, Type=Struct, Struct=FFloatCurve)
 	FFloatCurve ZCurve;
 };
