@@ -224,10 +224,6 @@ bool UMaterial::GetMatrixParameter(const FString& ParamName, FMatrix& Value) con
 	return true;
 }
 
-void UMaterial::Bind(ID3D11DeviceContext* Context)
-{
-}
-
 const FString& UMaterial::GetTexturePathFileName(const FString& TextureName)const
 {
 	auto it = TextureParameters.find(TextureName);

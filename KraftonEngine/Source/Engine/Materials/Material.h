@@ -37,11 +37,11 @@ class FMaterialTemplate
 private:
 	uint32 MaterialTemplateID; // 고유 ID
 	FShader* Shader; // 어떤 셰이더를 사용하는지
-	TMap<FString, FMaterialParameterInfo*> ParameterLayout; // 리플렉션 결과 : 쉐이더 constant buffer 레이아웃 정보
+	TMap<FString, std::shared_ptr<FMaterialParameterInfo>> ParameterLayout; // 리플렉션 결과 : cbuffer 레이아웃(셰이더와 수명 공유)
 	TArray<FShaderTextureBinding> TextureBindings;          // 리플렉션 결과 : t0~t7 텍스처 바인딩
 
 public:
-	const TMap<FString, FMaterialParameterInfo*>& GetParameterInfo() const { return ParameterLayout; }
+	const TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& GetParameterInfo() const { return ParameterLayout; }
 	const TArray<FShaderTextureBinding>& GetTextureBindings() const { return TextureBindings; }
 	void Create(FShader* InShader);
 
@@ -126,7 +126,7 @@ public:
 
 	const uint8* GetRawPtr(const FString& BufferName, uint32 Offset) const;
 
-	const TMap<FString, FMaterialParameterInfo*> GetParameterInfo() const { return Template->GetParameterInfo(); }
+	const TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& GetParameterInfo() const { return Template->GetParameterInfo(); }
 
 	virtual bool SetScalarParameter(const FString& ParamName, float Value);
 	virtual bool SetVector3Parameter(const FString& ParamName, const FVector& Value);
@@ -144,8 +144,6 @@ public:
 
 	// 셰이더 리플렉션된 텍스처 슬롯(t0~t7) — 에디터 텍스처 편집 UI 용. Template 없으면 빈 목록.
 	const TArray<FShaderTextureBinding>& GetTextureBindings() const;
-
-	void Bind(ID3D11DeviceContext* Context);
 
 	virtual FShader* GetShader() const { return Template ? Template->GetShader() : TransientShader; }
 

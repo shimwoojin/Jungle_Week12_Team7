@@ -295,7 +295,7 @@ TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> FMaterialManager::Create
 
 	for (const auto& BufferInfo : RequiredBuffers)
 	{
-		const FMaterialParameterInfo* ParamInfo = BufferInfo.second;
+		const FMaterialParameterInfo* ParamInfo = BufferInfo.second.get();
 
 		if (std::find(CreatedBuffers.begin(), CreatedBuffers.end(), ParamInfo->BufferName) != CreatedBuffers.end())
 			continue;
@@ -335,7 +335,8 @@ FMaterialTemplate* FMaterialManager::GetOrCreateTemplate(const FString& ShaderPa
 
 FMaterialManager::~FMaterialManager()
 {
-	if (!Device)
+	// Device 가 살아있을 때(명시적 Release 미호출 시) GPU 버퍼/템플릿을 해제. Release 가 Device 를 null 로 만든다.
+	if (Device)
 	{
 		Release();
 	}

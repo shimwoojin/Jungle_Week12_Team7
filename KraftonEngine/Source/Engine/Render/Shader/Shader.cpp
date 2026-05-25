@@ -323,7 +323,7 @@ void FShader::CreateInputLayoutFromReflection(ID3D11Device* InDevice, ID3DBlob* 
 }
 
 //셰이더 컴파일 후 호출. 셰이더 코드의 cbuffer, 텍스처 샘플러 선언을 분석해서 outlayout에 채워넣음. 이 정보는 머티리얼 템플릿이 생성될 때 참조되어야 하므로 셰이더 내부에서 제공하는 형태로 존재해야 함.
-void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, FMaterialParameterInfo*>& OutLayout)
+void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& OutLayout)
 {
 	ID3D11ShaderReflection* Reflector = nullptr;
 	D3DReflect(ShaderBlob->GetBufferPointer(), ShaderBlob->GetBufferSize(),
@@ -354,7 +354,7 @@ void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, FMaterialPa
 			D3D11_SHADER_VARIABLE_DESC VarDesc;
 			Var->GetDesc(&VarDesc);
 
-			FMaterialParameterInfo* Info = new FMaterialParameterInfo();
+			auto Info = std::make_shared<FMaterialParameterInfo>();
 			Info->BufferName = BufferName;
 			Info->SlotIndex = SlotIndex;
 			Info->Offset = VarDesc.StartOffset;

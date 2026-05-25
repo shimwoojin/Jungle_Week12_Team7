@@ -49,7 +49,7 @@ namespace MaterialTextureSlot
 			return FString("Custom1");
 
 		default:
-			throw "How";
+			return FString(); // 알 수 없는 슬롯 — 빈 문자열 반환(렌더/직렬화 경로에서 throw 금지)
 		}
 	}
 }
