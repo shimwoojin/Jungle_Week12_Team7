@@ -38,6 +38,7 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	if (Template)
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 
@@ -70,6 +71,7 @@ void UParticleSystemComponent::Activate(bool bReset)
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 
@@ -111,6 +113,7 @@ void UParticleSystemComponent::BeginPlay()
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 	}
 
 	if (bAutoActivate) Activate(bResetOnActivate);
@@ -143,6 +146,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	if (EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 
@@ -214,6 +218,7 @@ void UParticleSystemComponent::CreateRenderState()
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 	UPrimitiveComponent::CreateRenderState();
@@ -253,10 +258,7 @@ void UParticleSystemComponent::PostEditProperty(const char* PropertyName)
 	if (std::strcmp(PropertyName, "CurrentLODIndex") == 0 ||
 		std::strcmp(PropertyName, "LOD Level") == 0)
 	{
-		if (CurrentLODIndex < 0)
-		{
-			CurrentLODIndex = 0;
-		}
+		ClampCurrentLODIndex();
 
 		ApplyCurrentLODToEmitterInstances();
 
@@ -299,10 +301,7 @@ void UParticleSystemComponent::PostDuplicate()
 	bHasWarnedMissingEventManager = false;
 	MissingEventManagerTimeSeconds = 0.0f;
 
-	if (CurrentLODIndex < 0)
-	{
-		CurrentLODIndex = 0;
-	}
+	ClampCurrentLODIndex();
 
 	LoadTemplateFromPath();
 
@@ -329,10 +328,7 @@ void UParticleSystemComponent::Serialize(FArchive& Ar)
 		bHasWarnedMissingEventManager = false;
 		MissingEventManagerTimeSeconds = 0.0f;
 
-		if (CurrentLODIndex < 0)
-		{
-			CurrentLODIndex = 0;
-		}
+		ClampCurrentLODIndex();
 
 		LoadTemplateFromPath();
 
@@ -409,6 +405,7 @@ void UParticleSystemComponent::RebuildInstances(bool bReset)
 	if (Template)
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 	else
@@ -450,6 +447,7 @@ void UParticleSystemComponent::CreateEmitterInstances()
 	if (!Template) return;
 
 	Template->BuildEmitters();
+	ClampCurrentLODIndex();
 
 	for (UParticleEmitter* Emitter : Template->Emitters)
 	{
@@ -508,14 +506,46 @@ void UParticleSystemComponent::DispatchEventsToManager()
 	PendingEvents = {};
 }
 
-void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
+void UParticleSystemComponent::SetCurrentLODIndex(int32 InLODIndex)
+{
+	CurrentLODIndex = InLODIndex;
+	ClampCurrentLODIndex();
+	ApplyCurrentLODToEmitterInstances();
+
+	PushDynamicDataToProxy();
+	MarkWorldBoundsDirty();
+}
+
+void UParticleSystemComponent::ClampCurrentLODIndex()
 {
 	if (CurrentLODIndex < 0)
 	{
 		CurrentLODIndex = 0;
 	}
 
+	if (!Template)
+	{
+		return;
+	}
+
+	Template->EnsureLODDistances();
+
+	const int32 MaxLODCount = Template->GetMaxLODCount();
+	if (MaxLODCount <= 0)
+	{
+		CurrentLODIndex = 0;
+		return;
+	}
+
+	CurrentLODIndex = std::clamp(CurrentLODIndex, 0, MaxLODCount - 1);
+}
+
+void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
+{
+	ClampCurrentLODIndex();
+
 	// distance 기반 자동 선택은 아직 없으므로, 현재는 PSC의 수동 LOD index를 그대로 전달한다.
+	// 단, 선택 index는 ParticleSystem의 현재 LOD 개수 범위로 clamp한다.
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
 	{
 		if (!Inst)

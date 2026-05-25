@@ -42,7 +42,7 @@ namespace
 
 void UParticleEmitter::OnPostLoad(FArchive& /*Ar*/)
 {
-	EnsureLOD0CoreModules();
+	EnsureLODCoreModules();
 	CacheEmitterModuleInfo();
 }
 
@@ -61,13 +61,13 @@ void UParticleEmitter::PostDuplicate()
 		LODLevel->PostDuplicate();
 	}
 
-	EnsureLOD0CoreModules();
+	EnsureLODCoreModules();
 	CacheEmitterModuleInfo();
 }
 
 void UParticleEmitter::InitializeDefaultLODLevel()
 {
-	EnsureLOD0CoreModules();
+	EnsureLODCoreModules();
 
 	UParticleLODLevel* LOD0 = GetLODLevel(0);
 	if (!LOD0)
@@ -167,42 +167,44 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 	}
 }
 
-void UParticleEmitter::EnsureLOD0CoreModules()
+void UParticleEmitter::EnsureLODCoreModules()
 {
-	UParticleLODLevel* LOD0 = nullptr;
-
 	if (LODLevels.empty())
 	{
-		LOD0 = CreateLODLevel(0);
-	}
-	else
-	{
-		LOD0 = LODLevels[0];
+		CreateLODLevel(0);
 	}
 
-	if (!LOD0)
+	for (UParticleLODLevel* LOD : LODLevels)
 	{
-		return;
-	}
-
-	if (!LOD0->RequiredModule)
-	{
-		auto* Required = UObjectManager::Get().CreateObject<UParticleModuleRequired>(LOD0);
-		if (Required)
+		if (!LOD)
 		{
-			Required->SetToSensibleDefaults(this);
-			LOD0->RequiredModule = Required;
+			continue;
+		}
+
+		if (!LOD->RequiredModule)
+		{
+			auto* Required = UObjectManager::Get().CreateObject<UParticleModuleRequired>(LOD);
+			if (Required)
+			{
+				Required->SetToSensibleDefaults(this);
+				LOD->RequiredModule = Required;
+			}
+		}
+
+		if (!LOD->SpawnModule)
+		{
+			auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(LOD);
+			if (Spawn)
+			{
+				LOD->SpawnModule = Spawn;
+			}
 		}
 	}
+}
 
-	if (!LOD0->SpawnModule)
-	{
-		auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(LOD0);
-		if (Spawn)
-		{
-			LOD0->SpawnModule = Spawn;
-		}
-	}
+void UParticleEmitter::EnsureLOD0CoreModules()
+{
+	EnsureLODCoreModules();
 }
 
 UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)     
@@ -276,39 +278,49 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 	CachedLayout.ModuleOffsets.clear();
 	CachedLayout.InstanceModuleOffsets.clear();
 
-	UParticleLODLevel* LOD0 = GetLODLevel(0);
-	if (!LOD0) return;
+	EnsureLODCoreModules();
 
-	auto CacheModule = [this, LOD0](UParticleModule* Module)
+	auto CacheModule = [this](UParticleLODLevel* LOD, UParticleModule* Module)
 		{
-			if (!Module) return;
+			if (!LOD || !Module) return;
 
-			const uint32 Bytes = Module->RequiredBytes(LOD0);
-			if (Bytes > 0)
+			if (CachedLayout.ModuleOffsets.find(Module) == CachedLayout.ModuleOffsets.end())
 			{
-				CachedLayout.ModuleOffsets[Module] = CachedLayout.ParticleStride;
-				CachedLayout.ParticleStride =
-					ParticleUtils::AlignParticleDataSize(CachedLayout.ParticleStride + Bytes);
+				const uint32 Bytes = Module->RequiredBytes(LOD);
+				if (Bytes > 0)
+				{
+					CachedLayout.ModuleOffsets[Module] = CachedLayout.ParticleStride;
+					CachedLayout.ParticleStride =
+						ParticleUtils::AlignParticleDataSize(CachedLayout.ParticleStride + Bytes);
+				}
 			}
 
-			const uint32 InstanceBytes = Module->RequiredBytesPerInstance();
-			if (InstanceBytes > 0)
+			if (CachedLayout.InstanceModuleOffsets.find(Module) == CachedLayout.InstanceModuleOffsets.end())
 			{
-				CachedLayout.InstancePayloadSize =
-					ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize);
-				CachedLayout.InstanceModuleOffsets[Module] = CachedLayout.InstancePayloadSize;
-				CachedLayout.InstancePayloadSize =
-					ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize + InstanceBytes);
+				const uint32 InstanceBytes = Module->RequiredBytesPerInstance();
+				if (InstanceBytes > 0)
+				{
+					CachedLayout.InstancePayloadSize =
+						ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize);
+					CachedLayout.InstanceModuleOffsets[Module] = CachedLayout.InstancePayloadSize;
+					CachedLayout.InstancePayloadSize =
+						ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize + InstanceBytes);
+				}
 			}
 		};
 
-	CacheModule(LOD0->RequiredModule);
-	CacheModule(LOD0->SpawnModule);
-	CacheModule(LOD0->TypeDataModule);
-
-	for (UParticleModule* Module : LOD0->Modules)
+	for (UParticleLODLevel* LOD : LODLevels)
 	{
-		CacheModule(Module);
+		if (!LOD) continue;
+
+		CacheModule(LOD, LOD->RequiredModule);
+		CacheModule(LOD, LOD->SpawnModule);
+		CacheModule(LOD, LOD->TypeDataModule);
+
+		for (UParticleModule* Module : LOD->Modules)
+		{
+			CacheModule(LOD, Module);
+		}
 	}
 }
 
@@ -321,11 +333,17 @@ uint32 UParticleEmitter::GetModuleOffset(const UParticleModule* M) const
 
 FParticleEmitterInstance* UParticleEmitter::CreateInstance(UParticleSystemComponent* InComponent)
 {
-	UParticleLODLevel* LOD0 = GetLODLevel(0);
-
-	if (LOD0 && LOD0->TypeDataModule)
+	// Instance subclass is chosen from TypeData. TypeData should usually be
+	// consistent across LODs, but do not hard-code LOD 0 here: use the first
+	// valid TypeData available in the emitter's LOD list.
+	for (UParticleLODLevel* LOD : LODLevels)
 	{
-		if (FParticleEmitterInstance* Inst = LOD0->TypeDataModule->CreateInstance(InComponent))
+		if (!LOD || !LOD->TypeDataModule)
+		{
+			continue;
+		}
+
+		if (FParticleEmitterInstance* Inst = LOD->TypeDataModule->CreateInstance(InComponent))
 		{
 			return Inst;
 		}

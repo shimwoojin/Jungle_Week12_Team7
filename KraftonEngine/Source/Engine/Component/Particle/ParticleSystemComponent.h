@@ -66,6 +66,9 @@ public:
 	int32 GetEmitterInstanceCount() const { return static_cast<int32>(EmitterInstances.size()); }
 	FParticleEmitterInstance* GetEmitterInstance(int32 Index) const;
 
+	int32 GetCurrentLODIndex() const { return CurrentLODIndex; }
+	void  SetCurrentLODIndex(int32 InLODIndex);
+
 	void RebuildInstances(bool bReset = true);
 	const FString& GetTemplatePath() const { return TemplatePath.ToString(); }
 
@@ -90,6 +93,7 @@ protected:
 	// 필수가 아니지만, runtime gameplay가 외부 particle event delivery를 기대한다면 soft requirement다.
 	// nullptr도 유효한 미주입 상태이며, 이 경우 PSC는 provider 상태를 다시 동기화할 수 있다.
 	void RefreshEventManagerBinding();
+	void ClampCurrentLODIndex();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
 	void LoadTemplateFromPath();
