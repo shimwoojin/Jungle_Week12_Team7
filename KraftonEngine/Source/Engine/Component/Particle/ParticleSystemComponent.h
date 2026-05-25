@@ -86,7 +86,9 @@ protected:
 	void DestroyEmitterInstances();
 	void DispatchEventsToManager();
 	// PSC는 EventManager를 직접 탐색/생성하지 않고, 상위 particle runtime provider가
-	// 등록한 default manager를 이 helper로 주입받는다. nullptr도 유효한 미주입 상태다.
+	// 등록한 default manager를 이 helper로 주입받는다. EventManager는 basic playback/rendering에는
+	// 필수가 아니지만, runtime gameplay가 외부 particle event delivery를 기대한다면 soft requirement다.
+	// nullptr도 유효한 미주입 상태이며, 이 경우 PSC는 provider 상태를 다시 동기화할 수 있다.
 	void RefreshEventManagerBinding();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
@@ -120,8 +122,12 @@ protected:
 	TArray<FParticleEmitterInstance*> EmitterInstances;
 
 	// Higher-level particle runtime system이 주입하는 non-owning dependency.
-	// PSC는 이 manager를 직접 찾거나 만들지 않고, provider 상태를 로컬 필드로만 반영한다.
+	// PSC는 이 manager를 직접 찾거나 만들지 않는다.
+	// EventManager가 없어도 particle playback/rendering은 계속 가능하지만,
+	// 외부 gameplay/event-delivery use case는 manager registration을 기대한다.
 	AParticleEventManager* EventManager = nullptr;
+	bool bHasWarnedMissingEventManager = false;
+	float MissingEventManagerTimeSeconds = 0.0f;
 
 	// PSC 가 매 프레임 누적한 이벤트 (모든 emitter merge).
 	struct FPendingEvents

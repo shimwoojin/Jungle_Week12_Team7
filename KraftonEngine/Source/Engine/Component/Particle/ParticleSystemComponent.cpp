@@ -32,6 +32,8 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	}
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+	bHasWarnedMissingEventManager = false;
+	MissingEventManagerTimeSeconds = 0.0f;
 
 	if (Template)
 	{
@@ -83,6 +85,7 @@ void UParticleSystemComponent::Activate(bool bReset)
 void UParticleSystemComponent::Deactivate()
 {
 	bActive = false;
+	MissingEventManagerTimeSeconds = 0.0f;
 }
 
 void UParticleSystemComponent::ResetParticles()
@@ -93,6 +96,8 @@ void UParticleSystemComponent::ResetParticles()
 	}
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+	bHasWarnedMissingEventManager = false;
+	MissingEventManagerTimeSeconds = 0.0f;
 
 	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
@@ -124,6 +129,14 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	UPrimitiveComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	if (!EventManager)
+	{
+		// BeginPlay ordering can leave PSC briefly unbound even though a manager registers
+		// later in the same runtime startup path. Re-query the provider, but do not do
+		// any discovery or spawning here.
+		RefreshEventManagerBinding();
+	}
+
 	if (!bActive) return;
 	if (!Template) return;
 
@@ -151,6 +164,15 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 		StepDeltaTime = AccumulatedTime;
 		AccumulatedTime = 0.0f;
+	}
+
+	if (!EventManager)
+	{
+		MissingEventManagerTimeSeconds += StepDeltaTime;
+	}
+	else
+	{
+		MissingEventManagerTimeSeconds = 0.0f;
 	}
 
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
@@ -274,6 +296,8 @@ void UParticleSystemComponent::PostDuplicate()
 	DestroyEmitterInstances();
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+	bHasWarnedMissingEventManager = false;
+	MissingEventManagerTimeSeconds = 0.0f;
 
 	if (CurrentLODIndex < 0)
 	{
@@ -302,6 +326,8 @@ void UParticleSystemComponent::Serialize(FArchive& Ar)
 		DestroyEmitterInstances();
 		AccumulatedTime = 0.0f;
 		PendingEvents = {};
+		bHasWarnedMissingEventManager = false;
+		MissingEventManagerTimeSeconds = 0.0f;
 
 		if (CurrentLODIndex < 0)
 		{
@@ -442,6 +468,10 @@ void UParticleSystemComponent::CreateEmitterInstances()
 void UParticleSystemComponent::RefreshEventManagerBinding()
 {
 	SetEventManager(FParticleSystemManager::Get().GetDefaultEventManager());
+	if (EventManager)
+	{
+		MissingEventManagerTimeSeconds = 0.0f;
+	}
 }
 
 void UParticleSystemComponent::DestroyEmitterInstances()
@@ -455,18 +485,22 @@ void UParticleSystemComponent::DispatchEventsToManager()
 {
 	if (!EventManager)
 	{
-		static bool bWarnedMissingEventManager = false;
-		if (!bWarnedMissingEventManager)
+		const float WarningDelaySeconds = 0.5f;
+		if (!bHasWarnedMissingEventManager &&
+			MissingEventManagerTimeSeconds >= WarningDelaySeconds)
 		{
-			UE_LOG("[ParticleSystemComponent] No default ParticleEventManager is registered. Pending particle events will be cleared without dispatch. This can be valid in preview/tool contexts, but runtime gameplay is expected to register a manager.");
-			bWarnedMissingEventManager = true;
+			UE_LOG("[ParticleSystemComponent] No default ParticleEventManager is registered for this PSC. Particle playback/rendering can continue without it, but persistent missing-manager state means external particle events will not be delivered. This can be valid in preview/tool contexts; runtime gameplay that expects event delivery should register a manager.");
+			bHasWarnedMissingEventManager = true;
 		}
 
-		// In phase 3 we still drain the merged event queue when no manager is bound.
-		// The DI path is operational, but runtime/bootstrap registration may still be missing.
+		// EventManager is optional for basic particle playback/rendering, but external
+		// gameplay/event-delivery use cases expect runtime registration. We still drain
+		// undelivered events in this phase instead of buffering or falling back locally.
 		PendingEvents = {};
 		return;
 	}
+
+	MissingEventManagerTimeSeconds = 0.0f;
 	EventManager->HandleParticleSpawnEvents    (this, PendingEvents.Spawn);
 	EventManager->HandleParticleDeathEvents    (this, PendingEvents.Death);
 	EventManager->HandleParticleCollisionEvents(this, PendingEvents.Collision);

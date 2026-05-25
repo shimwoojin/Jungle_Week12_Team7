@@ -21,7 +21,9 @@ public:
 
 	// Higher-level runtime/bootstrap code registers the current default event manager here.
 	// Current policy is a single default manager. This manager is non-owning and
-	// exposed for PSC injection. nullptr is a valid "not registered yet" state.
+	// exposed for PSC injection. Basic particle playback/rendering does not require it,
+	// but runtime gameplay that expects external particle event delivery should register one.
+	// nullptr is a valid "not registered yet" state.
 	void SetDefaultEventManager(AParticleEventManager* InManager);
 	AParticleEventManager* GetDefaultEventManager() const;
 
