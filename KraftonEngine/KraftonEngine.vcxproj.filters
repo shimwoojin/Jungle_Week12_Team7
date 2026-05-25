@@ -567,6 +567,9 @@
     <FxCompile Include="Shaders\Lighting\VSMBlur.hlsl">
       <Filter>Shaders\Lighting</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Particle\BeamTrail.hlsl">
+      <Filter>Shaders\Particle</Filter>
+    </FxCompile>
     <FxCompile Include="Shaders\Particle\Mesh.hlsl">
       <Filter>Shaders\Particle</Filter>
     </FxCompile>
@@ -1304,6 +1307,9 @@
     <ClCompile Include="Source\Engine\Particle\ParticleSystemManager.cpp">
       <Filter>Source\Engine\Particle</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
@@ -1326,6 +1332,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.cpp">
@@ -2345,6 +2354,9 @@
     <ClInclude Include="Source\Engine\Materials\Material.h">
       <Filter>Source\Engine\Materials</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Materials\MaterialDomain.h">
+      <Filter>Source\Engine\Materials</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Materials\MaterialInstance.h">
       <Filter>Source\Engine\Materials</Filter>
     </ClInclude>
@@ -2498,6 +2510,9 @@
     <ClInclude Include="Source\Engine\Particle\ParticleSystemManager.h">
       <Filter>Source\Engine\Particle</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleCollision.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
@@ -2520,6 +2535,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.h">
@@ -2814,6 +2832,9 @@
       <Filter>Source\Engine\Render\Types</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\Types\ShadowSettings.h">
+      <Filter>Source\Engine\Render\Types</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Render\Types\VertexFactoryType.h">
       <Filter>Source\Engine\Render\Types</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\Types\VertexTypes.h">
