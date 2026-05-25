@@ -3,6 +3,7 @@
 #include "Resource/ResourceManager.h"
 #include "Editor/UI/ContentBrowser/ContentItem.h"
 #include "Engine/Materials/Material.h"
+#include "Engine/Materials/MaterialDomain.h"
 #include "Engine/Runtime/Engine.h"
 #include "Engine/Texture/Texture2D.h"
 
@@ -31,10 +32,99 @@ void FEditorMaterialInspector::Render()
 	const FString PathLabel = CachedMaterial ? CachedMaterial->GetAssetPathFileName() : FString();
 	ImGui::Selectable(PathLabel.c_str());
 
+	RenderRenderStateSection();
 	RenderShaderParameter();
 	RenderTextureSection();
 
+	if (CachedMaterial)
+	{
+		ImGui::Separator();
+		if (ImGui::Button("Save"))
+		{
+			const FString SavePath = CachedMaterial->GetAssetPathFileName();
+			if (!SavePath.empty())
+			{
+				FMaterialManager::Get().SaveMaterial(CachedMaterial, SavePath);
+			}
+		}
+	}
+
 	ImGui::End();
+}
+
+namespace
+{
+	struct FDomainOption { const char* Label; EMaterialDomain Value; };
+	struct FBlendOption  { const char* Label; EBlendMode Value; };
+
+	// enum 정렬 순서대로 — 인덱스 = enum 값.
+	const FDomainOption GDomainOptions[] = {
+		{ "Surface",     EMaterialDomain::Surface },
+		{ "PostProcess", EMaterialDomain::PostProcess },
+		{ "UI",          EMaterialDomain::UI },
+		{ "Decal",       EMaterialDomain::Decal },
+	};
+	const FBlendOption GBlendOptions[] = {
+		{ "Opaque",      EBlendMode::Opaque },
+		{ "Masked",      EBlendMode::Masked },
+		{ "Translucent", EBlendMode::Translucent },
+		{ "Additive",    EBlendMode::Additive },
+		{ "Modulate",    EBlendMode::Modulate },
+	};
+}
+
+void FEditorMaterialInspector::RenderRenderStateSection()
+{
+	if (!CachedMaterial)
+		return;
+
+	// Domain 드롭다운
+	const EMaterialDomain CurDomain = CachedMaterial->GetDomain();
+	const char* DomainLabel = "";
+	for (const FDomainOption& Opt : GDomainOptions)
+		if (Opt.Value == CurDomain) { DomainLabel = Opt.Label; break; }
+
+	if (ImGui::BeginCombo("Domain", DomainLabel))
+	{
+		for (const FDomainOption& Opt : GDomainOptions)
+		{
+			const bool bSelected = (Opt.Value == CurDomain);
+			if (ImGui::Selectable(Opt.Label, bSelected))
+				CachedMaterial->SetDomainBlend(Opt.Value, CachedMaterial->GetBlendMode());
+			if (bSelected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	// BlendMode 드롭다운
+	const EBlendMode CurBlend = CachedMaterial->GetBlendMode();
+	const char* BlendLabel = "";
+	for (const FBlendOption& Opt : GBlendOptions)
+		if (Opt.Value == CurBlend) { BlendLabel = Opt.Label; break; }
+
+	if (ImGui::BeginCombo("Blend Mode", BlendLabel))
+	{
+		for (const FBlendOption& Opt : GBlendOptions)
+		{
+			const bool bSelected = (Opt.Value == CurBlend);
+			if (ImGui::Selectable(Opt.Label, bSelected))
+				CachedMaterial->SetDomainBlend(CachedMaterial->GetDomain(), Opt.Value);
+			if (bSelected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	// Custom shader 토글
+	bool bUseCustom = CachedMaterial->WasCustomShaderRequested();
+	if (ImGui::Checkbox("Use Custom Shader", &bUseCustom))
+		CachedMaterial->SetUseCustomShader(bUseCustom);
+
+	const FString& ShaderPath = CachedMaterial->GetShaderPathForSerialize();
+	ImGui::TextDisabled("Shader: %s", ShaderPath.empty() ? "(none)" : ShaderPath.c_str());
+
+	ImGui::Separator();
 }
 
 void FEditorMaterialInspector::RenderShaderParameter()

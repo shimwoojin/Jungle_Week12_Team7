@@ -151,6 +151,8 @@ public:
 	void     SetCustomShader(FShader* InShader) { TransientShader = InShader; bUseCustomShader = (InShader != nullptr); }
 	// 직렬화에서 custom-shader '의도' 판정 (로드 직후 TransientShader 가 아직 null 이므로 플래그만 본다)
 	bool     WasCustomShaderRequested() const { return bUseCustomShader; }
+	// 에디터 토글 — ON 이면 머티리얼 자신의(레이아웃 소스) 셰이더를 강제 바인딩, OFF면 도출 복귀.
+	void     SetUseCustomShader(bool bEnable) { SetCustomShader(bEnable ? GetShader() : nullptr); }
 
 	// 바이너리 직렬화용 셰이더 경로(레이아웃 소스) — Manager 가 Create 후 주입.
 	void           SetShaderPathForSerialize(const FString& InPath) { ShaderPathForSerialize = InPath; }

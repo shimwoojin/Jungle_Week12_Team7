@@ -17,6 +17,7 @@ public:
 	void Render();
 
 private:
+	void RenderRenderStateSection();
 	void RenderShaderParameter();
 	void RenderTextureSection();
 

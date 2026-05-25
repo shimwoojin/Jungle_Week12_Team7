@@ -208,6 +208,12 @@ UMaterial* FMaterialManager::CreateImportedMaterialAsset(const FString& UassetPa
 	return Material;
 }
 
+// 에디터 Create Material 팩토리용 — 흰색 기본 머티리얼(텍스처 없음)을 생성·저장·캐시.
+UMaterial* FMaterialManager::CreateMaterialAsset(const FString& UassetPath)
+{
+	return CreateImportedMaterialAsset(UassetPath, FVector4(1.0f, 1.0f, 1.0f, 1.0f), FString(), FString());
+}
+
 TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> FMaterialManager::CreateConstantBuffers(FMaterialTemplate* Template)
 {
 

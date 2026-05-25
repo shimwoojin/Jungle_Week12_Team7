@@ -43,6 +43,12 @@ public:
 	UMaterial* CreateImportedMaterialAsset(const FString& UassetPath, const FVector4& SectionColor,
 		const FString& DiffuseTexturePath, const FString& NormalTexturePath);
 
+	// 에디터 Create Material 팩토리용 — 빈(흰색) 머티리얼을 만들어 .uasset 으로 저장.
+	UMaterial* CreateMaterialAsset(const FString& UassetPath);
+
+	// 바이너리(.uasset) 저장 — 인스펙터 Save 버튼 / 팩토리에서 호출.
+	bool SaveMaterial(UMaterial* Material, const FString& UassetPath);
+
 	void ScanMaterialAssets();
 	const TArray<FMaterialAssetListItem>& GetAvailableMaterialFiles() const { return AvailableMaterialFiles; }
 
@@ -51,8 +57,7 @@ private:
 	// 셰이더로 Template 생성 또는 캐시에서 반환
 	FMaterialTemplate* GetOrCreateTemplate(const FString& ShaderPath);
 
-	// 바이너리(.uasset) 직렬화 — exemplar = ParticleSystemManager.
-	bool       SaveMaterial(UMaterial* Material, const FString& UassetPath);
+	// 바이너리(.uasset) 직렬화 — exemplar = ParticleSystemManager. (SaveMaterial 은 public: 에디터 Save)
 	UMaterial* LoadMaterialBinary(const FString& UassetPath);
 
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> CreateConstantBuffers(FMaterialTemplate* Template);

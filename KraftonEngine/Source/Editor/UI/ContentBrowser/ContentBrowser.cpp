@@ -592,7 +592,15 @@ void FEditorContentBrowserWidget::DrawContents()
 					}
 				}
 			}
-			if (ImGui::MenuItem("Particle System"))
+			if (ImGui::MenuItem("Material"))
+				{
+					FString CreatedPath;
+					if (FAssetFactory::CreateMaterial(FPaths::ToUtf8(BrowserContext.CurrentPath), "NewMaterial", CreatedPath))
+					{
+						Refresh();
+					}
+				}
+				if (ImGui::MenuItem("Particle System"))
 			{
 				FString CreatedPath;
 				if (FAssetFactory::CreateParticleSystem(
