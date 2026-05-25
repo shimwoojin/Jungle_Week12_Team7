@@ -66,7 +66,32 @@ UObject* UObject::DuplicateWithArchiveContext(UObject* NewOuter, FDuplicateArchi
 
 void UObject::Serialize(FArchive& Ar)
 {
-	// 기본 UObject는 직렬화할 상태 없음.
+	// Template Method: 직렬화 단계를 고정 순서로 호출한다.
+	// 이 경로(obj->Serialize)는 에셋(.uasset)/복제(Duplicate)에서만 사용된다.
+	// 씬 저장은 SceneSaveManager 가 SerializeProperties 를 직접 호출하므로 이 경로를 타지 않는다.
+	SerializeIdentity(Ar);
+
+	if (Ar.IsSaving())
+	{
+		OnPreSave(Ar);
+	}
+
+	if (ShouldReflectProperties())
+	{
+		SerializeProperties(Ar, PF_Save);
+	}
+
+	SerializeExtra(Ar);
+
+	if (Ar.IsLoading())
+	{
+		OnPostLoad(Ar);
+	}
+}
+
+void UObject::SerializeIdentity(FArchive& Ar)
+{
+	// 기본 UObject는 손수 직렬화할 상태가 ObjectName 뿐.
 	// UUID/InternalIndex/Name은 직렬화 금지 (복제 시 새로 발급).
 	Ar << ObjectName;
 }

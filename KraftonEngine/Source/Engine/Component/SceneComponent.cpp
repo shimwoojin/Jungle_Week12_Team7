@@ -85,24 +85,20 @@ void USceneComponent::PostEditProperty(const char* PropertyName)
 	}
 }
 
-void USceneComponent::Serialize(FArchive& Ar)
+void USceneComponent::OnPreSave(FArchive& /*Ar*/)
 {
-	if (Ar.IsSaving())
-	{
-		CachedEditRotator = RelativeTransform.GetRotator();
-		bCachedEulerDirty = false;
-	}
+	// 반사 직렬화 전에 Euler 캐시를 현재 Quat 으로부터 스냅샷.
+	CachedEditRotator = RelativeTransform.GetRotator();
+	bCachedEulerDirty = false;
+}
 
-	UActorComponent::Serialize(Ar);
+void USceneComponent::OnPostLoad(FArchive& /*Ar*/)
+{
 	// ParentComponent / ChildComponents 는 직렬화 제외 — 복제 단계에서 명시적으로 재구성.
-
-	if (Ar.IsLoading())
-	{
-		RelativeTransform.SetRotation(CachedEditRotator);
-		bTransformDirty = true;
-		bCachedEulerDirty = false;
-		bInverseWorldDirty = true;
-	}
+	RelativeTransform.SetRotation(CachedEditRotator);
+	bTransformDirty = true;
+	bCachedEulerDirty = false;
+	bInverseWorldDirty = true;
 }
 
 USceneComponent::USceneComponent()

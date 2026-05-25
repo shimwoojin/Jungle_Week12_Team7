@@ -30,7 +30,9 @@ public:
 	void PreGetEditableProperties() override;
 	void PostEditProperty(const char* PropertyName) override;
 
-	void Serialize(FArchive& Ar) override;
+	// 반사 직렬화 전/후 훅 (Euler 캐시 스냅샷/복원). 반사 자체는 UObject 기본값(true)으로 자동.
+	void OnPreSave(FArchive& Ar) override;
+	void OnPostLoad(FArchive& Ar) override;
 
 	virtual void UpdateWorldMatrix() const;
 	virtual void AddWorldOffset(const FVector& WorldDelta);

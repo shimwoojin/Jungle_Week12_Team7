@@ -55,8 +55,23 @@ public:
 
 	virtual UObject* Duplicate(UObject* NewOuter = nullptr) const;
 	UObject* DuplicateWithArchiveContext(UObject* NewOuter, FDuplicateArchiveContext& DuplicateContext) const;
+	// Template Method 진입점. 고정 순서로 직렬화 단계를 오케스트레이션한다.
+	// (단계: SerializeIdentity → OnPreSave[저장] → SerializeProperties[ShouldReflectProperties()==true]
+	//        → SerializeExtra → OnPostLoad[로드])
+	// 이 경로는 obj->Serialize() — 즉 에셋(.uasset)/복제(Duplicate) 에서만 사용된다.
+	// 씬 저장은 SceneSaveManager 가 SerializeProperties 를 직접 호출하므로 아래 훅은 돌지 않는다.
 	virtual void Serialize(FArchive& Ar);
 	void SerializeProperties(FArchive& Ar, uint32 RequiredFlags);
+
+protected:
+	// ── 직렬화 훅 (서브클래스가 필요한 것만 오버라이드) ──
+	virtual void SerializeIdentity(FArchive& Ar);                  // 기본: ObjectName 직렬화
+	virtual bool ShouldReflectProperties() const { return true; }  // UPROPERTY(Save) 자동 반사. 수동 포맷 클래스만 false 로 opt-out
+	virtual void OnPreSave(FArchive& /*Ar*/) {}                    // 반사 전(저장) — 스냅샷 등
+	virtual void SerializeExtra(FArchive& /*Ar*/) {}               // 반사로 못 담는 수동 필드
+	virtual void OnPostLoad(FArchive& /*Ar*/) {}                   // 반사 후(로드) — 파생 상태 재구성
+
+public:
 	virtual void PostDuplicate() {}
 
 	virtual void GetEditableProperties(TArray<FPropertyValue>& OutProps);

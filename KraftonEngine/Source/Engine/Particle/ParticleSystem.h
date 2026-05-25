@@ -39,8 +39,8 @@ public:
 	UPROPERTY(Edit, Save, Category="System", DisplayName="Use Fixed Relative Bounding Box")
 	bool bUseFixedRelativeBoundingBox = true;
 
-	// 직렬화 / Duplicate
-	void Serialize(class FArchive& Ar) override;
+	// 로드 후 BuildEmitters (반사 직렬화는 UObject 템플릿이 자동 처리).
+	void OnPostLoad(class FArchive& Ar) override;
 	UObject* Duplicate(UObject* NewOuter = nullptr) const override;
 	void PostDuplicate() override;
 
