@@ -93,9 +93,10 @@ protected:
 	// 필수가 아니지만, runtime gameplay가 외부 particle event delivery를 기대한다면 soft requirement다.
 	// nullptr도 유효한 미주입 상태이며, 이 경우 PSC는 provider 상태를 다시 동기화할 수 있다.
 	void RefreshEventManagerBinding();
-	// Automatic LOD selection in phase 2 only computes a raw distance-based LOD index.
-	// Hysteresis / switch delay are intentionally deferred to a later pass.
-	void UpdateAutomaticLODSelection();
+	// Automatic LOD selection now includes stabilization. Raw distance still drives
+	// the choice, but hysteresis and switch delay suppress boundary chatter.
+	void UpdateAutomaticLODSelection(float DeltaTime);
+	void ResetAutomaticLODTransitionState();
 	void ClampCurrentLODIndex();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
@@ -135,6 +136,11 @@ protected:
 	AParticleEventManager* EventManager = nullptr;
 	bool bHasWarnedMissingEventManager = false;
 	float MissingEventManagerTimeSeconds = 0.0f;
+
+	// Automatic LOD stabilization state. A candidate LOD must remain valid long
+	// enough before it replaces CurrentLODIndex.
+	int32 PendingAutomaticLODIndex = -1;
+	float PendingAutomaticLODTimeSeconds = 0.0f;
 
 	// PSC 가 매 프레임 누적한 이벤트 (모든 emitter merge).
 	struct FPendingEvents

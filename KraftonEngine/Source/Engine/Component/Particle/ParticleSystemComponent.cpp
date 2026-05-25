@@ -35,6 +35,7 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	PendingEvents = {};
 	bHasWarnedMissingEventManager = false;
 	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 
 	if (Template)
 	{
@@ -68,6 +69,7 @@ void UParticleSystemComponent::Activate(bool bReset)
 {
 	bActive = true;
 	RefreshEventManagerBinding();
+	ResetAutomaticLODTransitionState();
 
 	if (Template && EmitterInstances.empty())
 	{
@@ -89,6 +91,7 @@ void UParticleSystemComponent::Deactivate()
 {
 	bActive = false;
 	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 }
 
 void UParticleSystemComponent::ResetParticles()
@@ -101,6 +104,7 @@ void UParticleSystemComponent::ResetParticles()
 	PendingEvents = {};
 	bHasWarnedMissingEventManager = false;
 	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 
 	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
@@ -153,10 +157,13 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	if (Template->bUseAutomaticLOD)
 	{
-		// Phase 2 wires only raw automatic LOD selection. Hysteresis and switch
-		// delay are deferred to a later pass, so runtime ticking may override a
-		// manually-set current index while automatic mode remains enabled.
-		UpdateAutomaticLODSelection();
+		// Phase 3 keeps automatic mode authoritative during runtime ticking, but
+		// now stabilizes raw distance-based selection with hysteresis and delay.
+		UpdateAutomaticLODSelection(DeltaTime);
+	}
+	else
+	{
+		ResetAutomaticLODTransitionState();
 	}
 
 	// PSC가 현재 선택한 LOD를 source of truth로 들고 있고, instance는 매 tick 그 값을 따른다.
@@ -309,6 +316,7 @@ void UParticleSystemComponent::PostDuplicate()
 	PendingEvents = {};
 	bHasWarnedMissingEventManager = false;
 	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 
 	ClampCurrentLODIndex();
 
@@ -336,6 +344,7 @@ void UParticleSystemComponent::Serialize(FArchive& Ar)
 		PendingEvents = {};
 		bHasWarnedMissingEventManager = false;
 		MissingEventManagerTimeSeconds = 0.0f;
+		ResetAutomaticLODTransitionState();
 
 		ClampCurrentLODIndex();
 
@@ -452,6 +461,7 @@ void UParticleSystemComponent::CreateEmitterInstances()
 {
 	DestroyEmitterInstances();
 	RefreshEventManagerBinding();
+	ResetAutomaticLODTransitionState();
 
 	if (!Template) return;
 
@@ -481,7 +491,13 @@ void UParticleSystemComponent::RefreshEventManagerBinding()
 	}
 }
 
-void UParticleSystemComponent::UpdateAutomaticLODSelection()
+void UParticleSystemComponent::ResetAutomaticLODTransitionState()
+{
+	PendingAutomaticLODIndex = -1;
+	PendingAutomaticLODTimeSeconds = 0.0f;
+}
+
+void UParticleSystemComponent::UpdateAutomaticLODSelection(float DeltaTime)
 {
 	if (!Template || !Template->bUseAutomaticLOD)
 	{
@@ -498,13 +514,78 @@ void UParticleSystemComponent::UpdateAutomaticLODSelection()
 	if (!World->GetActivePOV(ActivePOV))
 	{
 		// Preview/tool or partial-runtime contexts may not have an active POV yet.
-		// Keep the current manual/runtime-selected index unchanged in that case.
+		// Keep the current manual/runtime-selected index unchanged in that case,
+		// and drop any pending transition because the source view is unavailable.
+		ResetAutomaticLODTransitionState();
 		return;
 	}
 
 	const float DistanceToView = FVector::Distance(ActivePOV.Location, GetWorldLocation());
-	CurrentLODIndex = Template->GetLODIndexForDistance(DistanceToView);
+	const int32 RawTargetLODIndex = Template->GetLODIndexForDistance(DistanceToView);
+	int32 StabilizedTargetLODIndex = CurrentLODIndex;
+	const float Hysteresis = std::max(0.0f, Template->LODDistanceHysteresis);
+
+	if (RawTargetLODIndex > CurrentLODIndex)
+	{
+		while (StabilizedTargetLODIndex < RawTargetLODIndex)
+		{
+			const int32 NextLODIndex = StabilizedTargetLODIndex + 1;
+			const float EnterDistance = Template->GetLODDistance(NextLODIndex) + Hysteresis;
+			if (DistanceToView < EnterDistance)
+			{
+				break;
+			}
+
+			StabilizedTargetLODIndex = NextLODIndex;
+		}
+	}
+	else if (RawTargetLODIndex < CurrentLODIndex)
+	{
+		while (StabilizedTargetLODIndex > RawTargetLODIndex)
+		{
+			const float ReturnDistance = std::max(
+				0.0f,
+				Template->GetLODDistance(StabilizedTargetLODIndex) - Hysteresis);
+			if (DistanceToView >= ReturnDistance)
+			{
+				break;
+			}
+
+			--StabilizedTargetLODIndex;
+		}
+	}
+
+	if (StabilizedTargetLODIndex == CurrentLODIndex)
+	{
+		ResetAutomaticLODTransitionState();
+		return;
+	}
+
+	const float SwitchDelay = std::max(0.0f, Template->LODSwitchDelay);
+	if (SwitchDelay <= 0.0f)
+	{
+		CurrentLODIndex = StabilizedTargetLODIndex;
+		ClampCurrentLODIndex();
+		ResetAutomaticLODTransitionState();
+		return;
+	}
+
+	if (PendingAutomaticLODIndex != StabilizedTargetLODIndex)
+	{
+		PendingAutomaticLODIndex = StabilizedTargetLODIndex;
+		PendingAutomaticLODTimeSeconds = 0.0f;
+		return;
+	}
+
+	PendingAutomaticLODTimeSeconds += std::max(0.0f, DeltaTime);
+	if (PendingAutomaticLODTimeSeconds < SwitchDelay)
+	{
+		return;
+	}
+
+	CurrentLODIndex = PendingAutomaticLODIndex;
 	ClampCurrentLODIndex();
+	ResetAutomaticLODTransitionState();
 }
 
 void UParticleSystemComponent::DestroyEmitterInstances()
@@ -512,6 +593,7 @@ void UParticleSystemComponent::DestroyEmitterInstances()
 	for (FParticleEmitterInstance* Inst : EmitterInstances) delete Inst;
 	EmitterInstances.clear();
 	PendingEvents = {};
+	ResetAutomaticLODTransitionState();
 }
 
 void UParticleSystemComponent::DispatchEventsToManager()
@@ -545,6 +627,7 @@ void UParticleSystemComponent::SetCurrentLODIndex(int32 InLODIndex)
 {
 	CurrentLODIndex = InLODIndex;
 	ClampCurrentLODIndex();
+	ResetAutomaticLODTransitionState();
 	ApplyCurrentLODToEmitterInstances();
 
 	PushDynamicDataToProxy();
@@ -579,8 +662,8 @@ void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
 {
 	ClampCurrentLODIndex();
 
-	// LOD selection is computed elsewhere (manual setter or raw automatic selection),
-	// and this function only propagates the already-chosen index to emitter instances.
+	// LOD selection is computed elsewhere (manual setter or stabilized automatic
+	// selection), and this function only propagates the already-chosen index.
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
 	{
 		if (!Inst)
