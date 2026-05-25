@@ -14,8 +14,8 @@ class UParticleSystemComponent;
 // UParticleEmitter
 //   하나의 emitter (= LODLevels 의 묶음). PSC 가 emitter 하나마다 한 개의
 //   FParticleEmitterInstance 를 만든다.
-//   CacheEmitterModuleInfo() 에서 LOD0 의 모듈을 훑어 CachedLayout 을 계산해두면
-//   EmitterInstance 가 그대로 사용한다.
+//   CacheEmitterModuleInfo() 는 모든 LOD 의 모듈을 훑어 payload layout 을 계산한다.
+//   런타임에서 LOD가 바뀌어도 module payload offset 이 존재해야 하기 때문이다.
 // =============================================================================
 UCLASS()
 class UParticleEmitter : public UObject
@@ -40,7 +40,9 @@ public:
 
 	// 새 Emitter생성 시 1회 호출
 	void InitializeDefaultLODLevel();
-	// 필수 슬롯만 보장
+	// 모든 LOD의 필수 슬롯을 보장한다. LOD가 하나도 없으면 LOD 0을 생성한다.
+	void EnsureLODCoreModules();
+	// Legacy compatibility wrapper. 새 코드에서는 EnsureLODCoreModules()를 사용한다.
 	void EnsureLOD0CoreModules();
 
 	// 새 LOD level 을 생성. 현재는 Required + Spawn 기본 모듈만 생성.

@@ -66,6 +66,9 @@ public:
 	int32 GetEmitterInstanceCount() const { return static_cast<int32>(EmitterInstances.size()); }
 	FParticleEmitterInstance* GetEmitterInstance(int32 Index) const;
 
+	int32 GetCurrentLODIndex() const { return CurrentLODIndex; }
+	void  SetCurrentLODIndex(int32 InLODIndex);
+
 	void RebuildInstances(bool bReset = true);
 	const FString& GetTemplatePath() const { return TemplatePath.ToString(); }
 
@@ -85,6 +88,7 @@ protected:
 	void CreateEmitterInstances();
 	void DestroyEmitterInstances();
 	void DispatchEventsToManager();
+	void ClampCurrentLODIndex();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
 	void LoadTemplateFromPath();

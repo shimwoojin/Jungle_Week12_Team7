@@ -39,6 +39,18 @@ public:
 	UPROPERTY(Edit, Save, Category="System", DisplayName="Use Fixed Relative Bounding Box")
 	bool bUseFixedRelativeBoundingBox = true;
 
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Use Automatic LOD")
+	bool bUseAutomaticLOD = false;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Distances", Type=Array)
+	TArray<float> LODDistances;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Distance Hysteresis", Min=0.0f)
+	float LODDistanceHysteresis = 100.0f;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="LOD Switch Delay", Min=0.0f)
+	float LODSwitchDelay = 0.0f;
+
 	// 로드 후 BuildEmitters (반사 직렬화는 UObject 템플릿이 자동 처리).
 	void OnPostLoad(class FArchive& Ar) override;
 	UObject* Duplicate(UObject* NewOuter = nullptr) const override;
@@ -51,6 +63,12 @@ public:
 
 	int32 GetEmitterCount() const { return static_cast<int32>(Emitters.size()); }
 	UParticleEmitter* GetEmitter(int32 Index) const;
+
+	int32 GetMaxLODCount() const;
+	void  EnsureLODDistances();
+	int32 GetLODIndexForDistance(float Distance) const;
+	float GetLODDistance(int32 LODIndex) const;
+	void  SetLODDistance(int32 LODIndex, float Distance);
 
 	// 모든 emitter 의 CacheEmitterModuleInfo() 호출.
 	void BuildEmitters();
