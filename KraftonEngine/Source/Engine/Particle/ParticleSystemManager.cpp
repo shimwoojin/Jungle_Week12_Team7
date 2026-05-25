@@ -120,6 +120,16 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 	return true;
 }
 
+void FParticleSystemManager::SetDefaultEventManager(AParticleEventManager* InManager)
+{
+	DefaultEventManager = InManager;
+}
+
+AParticleEventManager* FParticleSystemManager::GetDefaultEventManager() const
+{
+	return DefaultEventManager;
+}
+
 void FParticleSystemManager::RefreshAvailableParticleSystems()
 {
 	// Content 전체를 훑고 아래 ReadMetadata에서 ParticleSystem 타입만 거른다 — 저장 위치 무관.
