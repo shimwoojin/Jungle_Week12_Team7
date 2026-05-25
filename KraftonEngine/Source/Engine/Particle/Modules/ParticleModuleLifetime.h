@@ -7,8 +7,9 @@
 
 // =============================================================================
 // UParticleModuleLifetime
-//   입자가 생성될 때 한 번 호출되어 RelativeTime/OneOverMaxLifetime 을 설정.
-//   Lifetime 값은 Distribution에서만 평가한다.
+//   입자가 생성될 때 한 번 호출되어 OneOverMaxLifetime 을 설정한다.
+//   SpawnTime은 particle relative time이 아니라 emitter-loop 기준 시간이며,
+//   Lifetime Distribution 평가에만 사용한다.
 // =============================================================================
 UCLASS()
 class UParticleModuleLifetime : public UParticleModule

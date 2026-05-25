@@ -31,6 +31,17 @@ void UParticleModuleLifetime::Spawn(FParticleEmitterInstance* Owner, uint32 Modu
 
 	Life = std::max(0.001f, Life);
 
-	Particle->RelativeTime = std::clamp(SpawnTime, 0.0f, 1.0f);
 	Particle->OneOverMaxLifetime = 1.0f / Life;
+
+	float SpawnOffsetSeconds = 0.0f;
+	if (Owner)
+	{
+		SpawnOffsetSeconds = std::max(
+			0.0f,
+			SpawnTime - Owner->GetCurrentLoopTimeSeconds());
+	}
+
+	// 현재 tick 순서는 Spawn -> Update이므로 프레임 중간에 태어난 입자는
+	// 음수 relative time에서 시작해야 Update 후 실제 age가 맞는다.
+	Particle->RelativeTime = -SpawnOffsetSeconds * Particle->OneOverMaxLifetime;
 }

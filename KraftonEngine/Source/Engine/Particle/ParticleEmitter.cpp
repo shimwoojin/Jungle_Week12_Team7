@@ -11,9 +11,13 @@
 #include "Modules/ParticleModuleLocation.h"
 #include "Modules/ParticleModuleVelocity.h"
 #include "Modules/ParticleModuleColor.h"
+#include "Modules/ParticleModuleColorOverLife.h"
 #include "Modules/ParticleModuleSize.h"
+#include "Modules/ParticleModuleSizeByLife.h"
 #include "Serialization/Archive.h"
 #include "Particle/Distributions/DistributionVectorUniform.h"
+
+#include <type_traits>
 
 namespace
 {
@@ -83,6 +87,19 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 			return false;
 		};
 
+	auto HasModuleClass = [LOD0](auto* ClassTag) -> bool
+		{
+			using TModule = std::remove_pointer_t<decltype(ClassTag)>;
+			for (UParticleModule* Module : LOD0->Modules)
+			{
+				if (Cast<TModule>(Module))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
 	if (!HasModuleCategory(UParticleModule::EModuleCategory::Lifetime))
 	{
 		auto* Lifetime = UObjectManager::Get().CreateObject<UParticleModuleLifetime>(LOD0);
@@ -116,7 +133,7 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		}
 	}
 
-	if (!HasModuleCategory(UParticleModule::EModuleCategory::Color))
+	if (!HasModuleClass(static_cast<UParticleModuleColor*>(nullptr)))
 	{
 		auto* Color = UObjectManager::Get().CreateObject<UParticleModuleColor>(LOD0);
 		if (Color)
@@ -126,7 +143,17 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		}
 	}
 
-	if (!HasModuleCategory(UParticleModule::EModuleCategory::Size))
+	if (!HasModuleClass(static_cast<UParticleModuleColorOverLife*>(nullptr)))
+	{
+		auto* ColorOverLife = UObjectManager::Get().CreateObject<UParticleModuleColorOverLife>(LOD0);
+		if (ColorOverLife)
+		{
+			ColorOverLife->SetToSensibleDefaults(this);
+			LOD0->AddModule(ColorOverLife);
+		}
+	}
+
+	if (!HasModuleClass(static_cast<UParticleModuleSize*>(nullptr)))
 	{
 		auto* Size = UObjectManager::Get().CreateObject<UParticleModuleSize>(LOD0);
 		if (Size)

@@ -22,11 +22,11 @@ public:
 
 	struct FSpawnModuleInstancePayload
 	{
-		float LastProcessedTime = 0.0f;
+		float LastProcessedBurstTime = 0.0f;
 	};
 
-	virtual void GetSpawnAmount(FParticleEmitterInstance* Owner, float DeltaTime, float EmitterTime,
-	                            float& OutSpawnAmount, int32& OutBurstCount) const;
+	virtual void GetRateSpawnAmount(FParticleEmitterInstance* Owner, float DeltaTime, float EmitterTime,
+	                                float& OutSpawnAmount) const;
 	uint32 RequiredBytesPerInstance() const override { return sizeof(FSpawnModuleInstancePayload); }
 
 	UPROPERTY(Edit, Save, Instanced, Category="Spawn", DisplayName="Rate Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
@@ -39,7 +39,6 @@ public:
 	{
 		float Time   = 0.0f;
 		int32 Count  = 0;
-		bool  bFired = false;
 	};
 	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Bursts", Type=Array)
 	TArray<FBurstEntry> BurstList;

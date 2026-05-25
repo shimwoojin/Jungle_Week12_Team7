@@ -1310,6 +1310,9 @@
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColor.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleEventGenerator.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
@@ -1323,6 +1326,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSize.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.cpp">
@@ -2513,6 +2519,9 @@
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColor.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleEventGenerator.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
@@ -2526,6 +2535,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSize.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.h">

@@ -8,8 +8,10 @@
 
 // =============================================================================
 // UParticleModuleSize
-//   Spawn 시 BaseSize/Size를 Distribution으로 설정한다.
-//   Update에서 size-over-life도 Distribution으로 샘플된 EndSizeScale을 사용한다.
+//   Initial Size 전용 모듈.
+//   SpawnTime은 particle relative time이 아니라 emitter-loop 기준 시간이며,
+//   StartSizeDistribution 평가에만 사용한다.
+//   생존 시간에 따른 size 변화는 UParticleModuleSizeByLife가 담당한다.
 // =============================================================================
 UCLASS()
 class UParticleModuleSize : public UParticleModule
@@ -19,25 +21,11 @@ public:
 	UParticleModuleSize();
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::Size; }
-	const char*     GetDisplayName() const override { return "Size"; }
-
-	struct FSizeParticlePayload
-	{
-		FVector EndSizeScale = {1, 1, 1};
-	};
+	const char*     GetDisplayName() const override { return "Initial Size"; }
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-	            float DeltaTime) override;
-	uint32 RequiredBytes(UParticleLODLevel* LODLevel) const override { (void)LODLevel; return sizeof(FSizeParticlePayload); }
 
 	UPROPERTY(Edit, Save, Instanced, Category="Size", DisplayName="Start Size Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
 	UDistributionVector* StartSizeDistribution = nullptr;
-
-	UPROPERTY(Edit, Save, Instanced, Category="Size", DisplayName="End Size Scale Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
-	UDistributionVector* EndSizeScaleDistribution = nullptr;
-
-	UPROPERTY(Edit, Save, Category="Size", DisplayName="Animate Over Life")
-	bool bAnimateOverLife = false;
 };

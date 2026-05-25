@@ -33,11 +33,13 @@
 
 #include "Particle/Modules/ParticleModuleCollision.h"
 #include "Particle/Modules/ParticleModuleColor.h"
+#include "Particle/Modules/ParticleModuleColorOverLife.h"
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleLifetime.h"
 #include "Particle/Modules/ParticleModuleLocation.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/Modules/ParticleModuleSize.h"
+#include "Particle/Modules/ParticleModuleSizeByLife.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleSubUV.h"
 #include "Particle/Modules/ParticleModuleVelocity.h"
@@ -1168,7 +1170,6 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 							UParticleModuleSpawn::FBurstEntry Entry;
 							Entry.Time = 0.0f;
 							Entry.Count = 10;
-							Entry.bFired = false;
 							Spawn->BurstList.push_back(Entry);
 							bChanged = true;
 						}
@@ -1208,21 +1209,37 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			}
 			else if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
 			{
-				if (ImGui::CollapsingHeader("Color", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::CollapsingHeader("Initial Color", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= Color4Field("Start Color", Color->StartColor);
-					bChanged |= Color4Field("End Color", Color->EndColor);
+					ImGui::TextDisabled("SpawnTime is emitter-loop time. Over-life color uses Particle RelativeTime in a separate module.");
+					bChanged |= Color4Field("Initial Color", Color->StartColor);
+				}
+			}
+			else if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
+			{
+				if (ImGui::CollapsingHeader("Color Over Life", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::TextDisabled("Evaluated by Particle RelativeTime (0..1). Curve support can replace this lerp later.");
+					bChanged |= Color4Field("Start Color", ColorOverLife->StartColor);
+					bChanged |= Color4Field("End Color", ColorOverLife->EndColor);
+					bChanged |= ImGui::Checkbox("Multiply Base Color", &ColorOverLife->bMultiplyBaseColor);
 				}
 			}
 			else if (UParticleModuleSize* Size = Cast<UParticleModuleSize>(Module))
 			{
-				if (ImGui::CollapsingHeader("Size", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::CollapsingHeader("Initial Size", ImGuiTreeNodeFlags_DefaultOpen))
 				{
+					ImGui::TextDisabled("SpawnTime is emitter-loop time. Size by life is separated into another module.");
 					bChanged |= DrawVectorDistributionEditor("Start Size", Size->StartSizeDistribution, Size, 0.1f, 0.0f, 10000.0f);
-
-					ImGui::Separator();
-					bChanged |= DrawVectorDistributionEditor("End Size Scale", Size->EndSizeScaleDistribution, Size, 0.01f, 0.0f, 10000.0f);
-					bChanged |= ImGui::Checkbox("Animate Over Life", &Size->bAnimateOverLife);
+				}
+			}
+			else if (UParticleModuleSizeByLife* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
+			{
+				if (ImGui::CollapsingHeader("Size By Life", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::TextDisabled("Evaluated by Particle RelativeTime (0..1). Curve support can replace this lerp later.");
+					bChanged |= DragFloat3Field("Start Size Scale", SizeByLife->StartSizeScale, 0.01f, 0.0f, 10000.0f);
+					bChanged |= DragFloat3Field("End Size Scale", SizeByLife->EndSizeScale, 0.01f, 0.0f, 10000.0f);
 				}
 			}
 			else if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
@@ -1450,8 +1467,10 @@ void FParticleEditorWidget::RenderAddModulePopup()
 		AddRegular("Initial Location", UParticleModule::EModuleCategory::Location, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleLocation>(LOD, Emitter); });
 		AddRegular("Initial Velocity", UParticleModule::EModuleCategory::Velocity, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleVelocity>(LOD, Emitter); });
 		AddRegular("Const Acceleration", UParticleModule::EModuleCategory::Acceleration, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleAcceleration>(LOD, Emitter); });
-		AddRegular("Color", UParticleModule::EModuleCategory::Color, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleColor>(LOD, Emitter); });
-		AddRegular("Size", UParticleModule::EModuleCategory::Size, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSize>(LOD, Emitter); });
+		AddRegular("Initial Color", UParticleModule::EModuleCategory::Color, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleColor>(LOD, Emitter); });
+		AddRegular("Color Over Life", UParticleModule::EModuleCategory::Color, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleColorOverLife>(LOD, Emitter); });
+		AddRegular("Initial Size", UParticleModule::EModuleCategory::Size, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSize>(LOD, Emitter); });
+		AddRegular("Size By Life", UParticleModule::EModuleCategory::Size, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSizeByLife>(LOD, Emitter); });
 		AddRegular("Collision", UParticleModule::EModuleCategory::Collision, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleCollision>(LOD, Emitter); });
 		AddRegular("Event Generator", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventGenerator>(LOD, Emitter); });
 		AddRegular("Sub Image Index", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUV>(LOD, Emitter); });

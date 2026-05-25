@@ -63,7 +63,10 @@ public:
 	//   Owner          : 호출한 emitter 인스턴스
 	//   ModuleOffset   : 이 모듈의 payload 가 BaseParticle 끝에서 시작하는 byte offset
 	//                    (모듈이 RequiredBytes()>0 일 때만 의미가 있음)
-	//   SpawnTime      : 입자 RelativeTime 기준 0..1 (sub-frame interp 용)
+	//   SpawnTime      : 현재 emitter loop 안에서 이 particle이 생성된 시간(seconds).
+	//                    Initial Distribution / Curve 평가용 시간이며,
+	//                    Particle->RelativeTime 이 아니다.
+	//                    Over-Life 계열 모듈은 SpawnTime 대신 Particle->RelativeTime을 사용한다.
 	//   Particle       : 초기화 대상 입자 (BaseParticle 헤더, 뒤에 payload)
 	virtual void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	                   float SpawnTime, FBaseParticle* Particle) {}
