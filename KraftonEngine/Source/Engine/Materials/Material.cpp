@@ -92,18 +92,15 @@ UMaterial::~UMaterial()
 }
 
 void UMaterial::Create(const FString& InPathFileName, FMaterialTemplate* InTemplate,
-	ERenderPass InRenderPass,
-	EBlendState InBlend,
-	EDepthStencilState InDepth,
-	ERasterizerState InRaster,
+	EMaterialDomain InDomain,
+	EBlendMode InBlendMode,
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>>&& InBuffers)
 {
 	PathFileName = InPathFileName;
 	Template = InTemplate;
-	RenderPass = InRenderPass;
-	BlendState = InBlend;
-	DepthStencilState = InDepth;
-	RasterizerState = InRaster;
+	Domain = InDomain;
+	BlendMode = InBlendMode;
+	RecomputeRenderState();  // 저수준 렌더상태 도출
 
 	ConstantBufferMap = std::move(InBuffers);
 }
@@ -354,7 +351,13 @@ UMaterial* UMaterial::CreateTransient(ERenderPass InPass, EBlendState InBlend,
 {
 	UMaterial* Mat = UObjectManager::Get().CreateObject<UMaterial>();
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> EmptyBuffers;
-	Mat->Create(FString("__transient__"), nullptr, InPass, InBlend, InDepth, InRaster, std::move(EmptyBuffers));
+	// Transient(Gizmo/Decal/Text/SubUV)는 Domain 으로 표현되지 않는 고정 패스/상태를 쓰므로
+	// 저수준 4개를 모두 override 로 박아 정확히 보존한다 (Domain/BlendMode 는 무의미).
+	Mat->Create(FString("__transient__"), nullptr, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(EmptyBuffers));
+	Mat->SetPassOverride(InPass);
+	Mat->SetBlendOverride(InBlend);
+	Mat->SetDepthOverride(InDepth);
+	Mat->SetRasterOverride(InRaster);
 	Mat->TransientShader = InShader;
 	return Mat;
 }

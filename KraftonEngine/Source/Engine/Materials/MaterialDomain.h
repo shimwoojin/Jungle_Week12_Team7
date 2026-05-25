@@ -85,9 +85,13 @@ inline FMaterialRenderState ResolveMaterialRenderState(EMaterialDomain Domain, E
 	default:                      S.Blend = EBlendState::Opaque;     break;
 	}
 
-	// 3. DepthStencil — 결과 Pass 기준 (StringToDepthStencilState 규칙과 일치)
+	// 3. DepthStencil — 결과 Pass 기준.
+	//    Translucent 는 depth-write 하지 않는 것이 일반적으로 올바르므로 DepthReadOnly 로 도출한다
+	//    (파티클 .mat 의 명시적 DepthReadOnly 와 일치 → 별도 override 불필요. 단 기존 에디터 반투명은
+	//     Default→DepthReadOnly 로 동작이 바뀐다 — 의도된 교정).
 	switch (S.Pass)
 	{
+	case ERenderPass::Translucent:
 	case ERenderPass::Decal:
 	case ERenderPass::AdditiveDecal: S.DepthStencil = EDepthStencilState::DepthReadOnly; break;
 	case ERenderPass::PostProcess:   S.DepthStencil = EDepthStencilState::NoDepth;       break;
@@ -104,4 +108,41 @@ inline FMaterialRenderState ResolveMaterialRenderState(EMaterialDomain Domain, E
 	}
 
 	return S;
+}
+
+// 전환적 역매핑 — 기존 .mat 의 (RenderPass, BlendState) 문자열에서 Domain/BlendMode 를 추론한다.
+//   Phase 2 에서 .mat 이 아직 Domain/BlendMode 키를 갖지 않을 때 사용. CreateTransient(Gizmo/Decal/
+//   Text 등 내부 셰이더 경로)는 이 함수를 쓰지 않고 override 슬롯으로 저수준 상태를 직접 보존한다.
+inline void DeriveDomainBlend(ERenderPass Pass, EBlendState Blend, EMaterialDomain& OutDomain, EBlendMode& OutBlend)
+{
+	switch (Pass)
+	{
+	case ERenderPass::PostProcess:
+		OutDomain = EMaterialDomain::PostProcess; OutBlend = EBlendMode::Opaque; return;
+	case ERenderPass::UI:
+		OutDomain = EMaterialDomain::UI; OutBlend = EBlendMode::Translucent; return;
+	case ERenderPass::Decal:
+		OutDomain = EMaterialDomain::Decal;
+		OutBlend  = (Blend == EBlendState::Additive)   ? EBlendMode::Additive
+		          : (Blend == EBlendState::Modulate)   ? EBlendMode::Modulate
+		          : (Blend == EBlendState::AlphaBlend) ? EBlendMode::Translucent
+		          : EBlendMode::Opaque;
+		return;
+	case ERenderPass::AdditiveDecal:
+		OutDomain = EMaterialDomain::Decal; OutBlend = EBlendMode::Additive; return;
+	case ERenderPass::Translucent:
+		OutDomain = EMaterialDomain::Surface;
+		OutBlend  = (Blend == EBlendState::Additive) ? EBlendMode::Additive
+		          : (Blend == EBlendState::Modulate) ? EBlendMode::Modulate
+		          : EBlendMode::Translucent;
+		return;
+	case ERenderPass::Opaque:
+	default:
+		OutDomain = EMaterialDomain::Surface;
+		OutBlend  = (Blend == EBlendState::Additive)   ? EBlendMode::Additive
+		          : (Blend == EBlendState::Modulate)   ? EBlendMode::Modulate
+		          : (Blend == EBlendState::AlphaBlend) ? EBlendMode::Translucent
+		          : EBlendMode::Opaque;
+		return;
+	}
 }

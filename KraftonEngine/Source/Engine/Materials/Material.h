@@ -5,6 +5,7 @@
 #include "Math/Matrix.h"
 #include "Render/Types/RenderTypes.h"
 #include "Render/Types/RenderStateTypes.h"
+#include "Materials/MaterialDomain.h"
 #include "Render/Resource/Buffer.h"
 #include "Render/Types/MaterialTextureSlot.h"
 #include "Render/Types/RenderConstants.h"
@@ -83,11 +84,19 @@ protected:
 	uint32 MaterialInstanceID; // 고유 ID
 	FMaterialTemplate* Template; // 공유
 
-	// 렌더링 상태 정보 (인스턴스별)
-	ERenderPass RenderPass = ERenderPass::Opaque;
-	EBlendState BlendState = EBlendState::Opaque;
-	EDepthStencilState DepthStencilState = EDepthStencilState::Default;
-	ERasterizerState RasterizerState = ERasterizerState::SolidBackCull;
+	// 고수준 의도 (단일 소스) — 저수준 렌더상태는 ResolveMaterialRenderState 로 도출.
+	EMaterialDomain Domain    = EMaterialDomain::Surface;
+	EBlendMode      BlendMode = EBlendMode::Opaque;
+	FMaterialRenderState CachedRenderState;  // = ResolveMaterialRenderState(Domain, BlendMode)
+
+	// 도출로 표현 불가한 특수 케이스 override.
+	//   .mat 일반 경로: raster 만 (스프라이트 NoCull 등). CreateTransient(Gizmo/Decal/Text): 4개 모두.
+	bool bHasPassOverride   = false; ERenderPass        PassOverride   = ERenderPass::Opaque;
+	bool bHasBlendOverride  = false; EBlendState        BlendOverride  = EBlendState::Opaque;
+	bool bHasDepthOverride  = false; EDepthStencilState DepthOverride  = EDepthStencilState::Default;
+	bool bHasRasterOverride = false; ERasterizerState   RasterOverride = ERasterizerState::SolidBackCull;
+
+	void RecomputeRenderState() { CachedRenderState = ResolveMaterialRenderState(Domain, BlendMode); }
 
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> ConstantBufferMap; // 인스턴스 고유
 	TMap<FString, UTexture2D*> TextureParameters;  //텍스처는 슬롯 이름으로 관리
@@ -107,10 +116,8 @@ public:
 	~UMaterial() override;
 
 	void Create(const FString& InPathFileName, FMaterialTemplate* InTemplate,
-		ERenderPass InRenderPass,
-		EBlendState InBlend,
-		EDepthStencilState InDepth,
-		ERasterizerState InRaster,
+		EMaterialDomain InDomain,
+		EBlendMode InBlendMode,
 		TMap<FString, std::unique_ptr<FMaterialConstantBuffer>>&& InBuffers);
 
 	const uint8* GetRawPtr(const FString& BufferName, uint32 Offset) const;
@@ -134,10 +141,22 @@ public:
 	void Bind(ID3D11DeviceContext* Context);
 
 	virtual FShader* GetShader() const { return Template ? Template->GetShader() : TransientShader; }
-	virtual ERenderPass GetRenderPass() const { return RenderPass; }
-	virtual EBlendState GetBlendState() const { return BlendState; }
-	virtual EDepthStencilState GetDepthStencilState() const { return DepthStencilState; }
-	virtual ERasterizerState GetRasterizerState() const { return RasterizerState; }
+	virtual ERenderPass GetRenderPass() const { return bHasPassOverride ? PassOverride : CachedRenderState.Pass; }
+	virtual EBlendState GetBlendState() const { return bHasBlendOverride ? BlendOverride : CachedRenderState.Blend; }
+	virtual EDepthStencilState GetDepthStencilState() const { return bHasDepthOverride ? DepthOverride : CachedRenderState.DepthStencil; }
+	virtual ERasterizerState GetRasterizerState() const { return bHasRasterOverride ? RasterOverride : CachedRenderState.Rasterizer; }
+
+	// 고수준 의도 접근/설정
+	EMaterialDomain GetDomain() const { return Domain; }
+	EBlendMode GetBlendMode() const { return BlendMode; }
+	void SetDomainBlend(EMaterialDomain InDomain, EBlendMode InBlend) { Domain = InDomain; BlendMode = InBlend; RecomputeRenderState(); }
+
+	// 저수준 override (도출 불가 케이스): CreateTransient / .mat raster 보존용.
+	void SetPassOverride(ERenderPass InPass)      { bHasPassOverride   = true; PassOverride   = InPass; }
+	void SetBlendOverride(EBlendState InBlend)    { bHasBlendOverride  = true; BlendOverride  = InBlend; }
+	void SetDepthOverride(EDepthStencilState InD) { bHasDepthOverride  = true; DepthOverride  = InD; }
+	void SetRasterOverride(ERasterizerState InR)  { bHasRasterOverride = true; RasterOverride = InR; }
+	void ClearRenderStateOverrides() { bHasPassOverride = bHasBlendOverride = bHasDepthOverride = bHasRasterOverride = false; }
 
 	// Per-shader CB 오버라이드 — transient Material에서 Gizmo/SubUV/Decal 등이 사용
 	template<typename T>

@@ -20,11 +20,13 @@ public:
 	// Parent로부터 Template/렌더상태/CB/Texture를 통째로 복제. InPathFileName은 자산 식별자.
 	void InitializeFromParent(UMaterial* InParent, const FString& InPathFileName);
 
-	// 렌더 상태 명시적 오버라이드 — Parent 기본값 위에 덮어씌움.
-	void OverrideRenderPass(ERenderPass InPass)                { RenderPass = InPass; }
-	void OverrideBlendState(EBlendState InBlend)               { BlendState = InBlend; }
-	void OverrideDepthStencilState(EDepthStencilState InDepth) { DepthStencilState = InDepth; }
-	void OverrideRasterizerState(ERasterizerState InRaster)    { RasterizerState = InRaster; }
+	// 렌더 상태 명시적 오버라이드 — Parent 도출값 위에 저수준 override 슬롯으로 덮어씌움.
+	void OverrideRenderPass(ERenderPass InPass)                { SetPassOverride(InPass); }
+	void OverrideBlendState(EBlendState InBlend)               { SetBlendOverride(InBlend); }
+	void OverrideDepthStencilState(EDepthStencilState InDepth) { SetDepthOverride(InDepth); }
+	void OverrideRasterizerState(ERasterizerState InRaster)    { SetRasterOverride(InRaster); }
+	// 고수준 의도 오버라이드 (권장)
+	void OverrideDomainBlend(EMaterialDomain InDomain, EBlendMode InBlend) { SetDomainBlend(InDomain, InBlend); }
 
 	UMaterial* GetParent() const { return Parent; }
 

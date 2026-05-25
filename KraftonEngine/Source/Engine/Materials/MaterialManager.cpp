@@ -58,7 +58,7 @@ UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 		UMaterial* DefaultMaterial = UObjectManager::Get().CreateObject<UMaterial>();
 		FMaterialTemplate* Template = GetOrCreateTemplate(DefaultShaderPath);
 		TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> Buffers = CreateConstantBuffers(Template);
-		DefaultMaterial->Create(GenericPath, Template, ERenderPass::Opaque, EBlendState::Opaque, EDepthStencilState::Default, ERasterizerState::SolidBackCull, std::move(Buffers));
+		DefaultMaterial->Create(GenericPath, Template, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(Buffers));
 		// 폴백: 핑크색으로 미지정 머티리얼임을 표시
 		DefaultMaterial->SetVector4Parameter("SectionColor", FVector4(1.0f, 0.0f, 1.0f, 1.0f));
 		MaterialCache.emplace(GenericPath, DefaultMaterial);
@@ -107,14 +107,17 @@ UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 	FString RenderPassStr = JsonData[MatKeys::RenderPass].ToString().c_str();
 	ERenderPass RenderPass = StringToRenderPass(RenderPassStr);
 
-	// 새로운 렌더 상태 추출 (JSON에 없으면 패스 기반 기본값)
+	// 기존 .mat 의 저수준 문자열 → Domain/BlendMode 로 역매핑 (전환). DepthStencil 은 더 이상
+	// 권위가 아니며 Domain/BlendMode 에서 도출한다(carve out). Rasterizer 만 도출과 다르면 보존.
 	FString BlendStr = JsonData.hasKey(MatKeys::BlendState) ? JsonData[MatKeys::BlendState].ToString().c_str() : "";
 	FString DepthStr = JsonData.hasKey(MatKeys::DepthStencilState) ? JsonData[MatKeys::DepthStencilState].ToString().c_str() : "";
 	FString RasterStr = JsonData.hasKey(MatKeys::RasterizerState) ? JsonData[MatKeys::RasterizerState].ToString().c_str() : "";
 
 	EBlendState BlendState = StringToBlendState(BlendStr, RenderPass);
-	EDepthStencilState DepthState = StringToDepthStencilState(DepthStr, RenderPass);
 	ERasterizerState RasterState = StringToRasterizerState(RasterStr, RenderPass);
+
+	EMaterialDomain Domain; EBlendMode BlendMode;
+	DeriveDomainBlend(RenderPass, BlendState, Domain, BlendMode);
 
 	// 4. 템플릿 확보 (없으면 리플렉션을 통해 생성됨)
 	FMaterialTemplate* Template = GetOrCreateTemplate(ShaderPath);
@@ -125,7 +128,10 @@ UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 
 	// 6. UMaterial 인스턴스 생성 및 초기화 (RenderPass는 인스턴스별)
 	UMaterial* Material = UObjectManager::Get().CreateObject<UMaterial>();
-	Material->Create(PathFileName, Template, RenderPass, BlendState, DepthState, RasterState, std::move(InjectedBuffers));
+	Material->Create(PathFileName, Template, Domain, BlendMode, std::move(InjectedBuffers));
+	// 도출 Raster 와 다르면(스프라이트 NoCull 등) override 보존. Depth 는 도출에 위임(carve out).
+	if (RasterState != Material->GetRasterizerState())
+		Material->SetRasterOverride(RasterState);
 	MaterialCache.emplace(GenericPath, Material);
 
 	//템플릿을 통해 material에 넣기
