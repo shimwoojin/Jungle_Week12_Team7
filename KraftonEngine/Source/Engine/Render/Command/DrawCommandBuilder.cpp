@@ -249,7 +249,14 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 				ApplyMaterialRenderState(Cmd.RenderState, Mat, BaseRenderState);
 		}
 
-		Cmd.BuildSortKey(0, DistSq);
+		// 섹션이 자체 sort 위치를 제공하면(입자 emitter) 섹션별 depth, 아니면 proxy 거리(기본).
+		float SectionDistSq = DistSq;
+		if (Section.bHasSortPos)
+		{
+			const FVector ToCamSec = CollectCameraPosition - Section.SortWorldPos;
+			SectionDistSq = ToCamSec.Dot(ToCamSec);
+		}
+		Cmd.BuildSortKey(0, SectionDistSq);
 	}
 }
 

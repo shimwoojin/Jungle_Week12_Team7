@@ -157,6 +157,11 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	}
 	if (!InOutVB.Update(Context, Instances.data(), N)) return false;
 
+	// 섹션 depth 정렬용 대표 위치 = 입자 월드 위치 평균.
+	FVector SortSum{ 0, 0, 0 };
+	for (uint32 k = 0; k < N; ++k) SortSum += GetWorldPos(k);
+	OutDraw.SortWorldPos = SortSum * (1.0f / static_cast<float>(N));
+
 	// slot 0 = unit quad(정적), slot 1 = per-instance(InOutVB). DrawIndexedInstanced(6, N).
 	OutDraw.StaticVB       = QuadVB.GetBuffer();
 	OutDraw.StaticVBStride = QuadVB.GetStride();
@@ -292,6 +297,11 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	}
 	if (!InOutVB.Update(Context, Instances.data(), N)) return false;
 
+	// 섹션 depth 정렬용 대표 위치 = 입자 월드 위치 평균.
+	FVector SortSum{ 0, 0, 0 };
+	for (uint32 k = 0; k < N; ++k) SortSum += GetWorldPos(k);
+	OutDraw.SortWorldPos = SortSum * (1.0f / static_cast<float>(N));
+
 	OutDraw.StaticVB = MB->GetVertexBuffer().GetBuffer();
 	OutDraw.StaticVBStride = MB->GetVertexBuffer().GetStride();
 	OutDraw.StaticIB = MB->GetIndexBuffer().GetBuffer();
@@ -401,6 +411,9 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	IB.EnsureCapacity(Device, IndexCount);
 	IB.Update(Context, Indices.data(), IndexCount);
 
+	// 섹션 depth 정렬용 대표 위치 = source~target 중점.
+	OutDraw.SortWorldPos = (Source + Target) * 0.5f;
+
 	// 비인스턴싱 strip: VB는 InOutVB(SceneProxy가 바인딩), IB는 factory 동적 IB.
 	OutDraw.StaticIB     = IB.GetBuffer();
 	OutDraw.VertexCount  = VertCount;
@@ -507,6 +520,11 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 
 	IB.EnsureCapacity(Device, IndexCount);
 	IB.Update(Context, Indices.data(), IndexCount);
+
+	// 섹션 depth 정렬용 대표 위치 = 입자 월드 위치 평균.
+	FVector SortSum{ 0, 0, 0 };
+	for (uint32 k = 0; k < N; ++k) SortSum += GetWorldPos(k);
+	OutDraw.SortWorldPos = SortSum * (1.0f / static_cast<float>(N));
 
 	OutDraw.StaticIB     = IB.GetBuffer();
 	OutDraw.VertexCount  = VertCount;

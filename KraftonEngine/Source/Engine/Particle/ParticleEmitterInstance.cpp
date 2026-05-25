@@ -216,6 +216,93 @@ UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
 	return Emitter->GetCurrentLODLevel(CurrentLODIndex);
 }
 
+bool FParticleEmitterInstance::UsesLocalSpace() const
+{
+	const UParticleModuleRequired* Required = GetRequiredModule();
+	return Required ? Required->bUseLocalSpace : false;
+}
+
+FVector FParticleEmitterInstance::ConvertVectorToSimulation(
+	const FVector& V,
+	EParticleValueSpace SourceSpace) const
+{
+	switch (SourceSpace)
+	{
+	case EParticleValueSpace::Simulation:
+		return V;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldMatrix().TransformVector(V);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformVector(V);
+	default:
+		return V;
+	}
+}
+
+FVector FParticleEmitterInstance::ConvertVectorFromSimulation(
+	const FVector& V,
+	EParticleValueSpace TargetSpace) const
+{
+	switch (TargetSpace)
+	{
+	case EParticleValueSpace::Simulation:
+		return V;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformVector(V);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return V;
+		}
+
+		return Component->GetWorldMatrix().TransformVector(V);
+	default:
+		return V;
+	}
+}
+
+FVector FParticleEmitterInstance::ConvertPositionToSimulation(
+	const FVector& P,
+	EParticleValueSpace SourceSpace) const
+{
+	switch (SourceSpace)
+	{
+	case EParticleValueSpace::Simulation:
+		return P;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return P;
+		}
+
+		return Component->GetWorldMatrix().TransformPositionWithW(P);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return P;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformPositionWithW(P);
+	default:
+		return P;
+	}
+}
+
 void FParticleEmitterInstance::SetCurrentLODIndex(int32 InLODIndex)
 {
 	CurrentLODIndex = std::max(0, InLODIndex);

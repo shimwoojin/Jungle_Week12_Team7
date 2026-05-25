@@ -12,6 +12,13 @@ class UParticleSystemComponent;
 struct FBaseParticle;
 struct FDynamicEmitterDataBase;
 
+enum class EParticleValueSpace : uint8
+{
+	Simulation,
+	Local,
+	World,
+};
+
 // =============================================================================
 // FParticleEmitterInstance
 //   런타임 emitter 인스턴스. 한 PSC 의 emitter 1개당 하나.
@@ -133,6 +140,12 @@ public:
 	UParticleEmitter*           GetEmitter()       const { return Emitter; }
 	UParticleSystemComponent*   GetComponent()     const { return Component; }
 	UParticleLODLevel*          GetCurrentLOD()    const;
+	bool                        UsesLocalSpace()   const;
+	// simulation space는 Required.bUseLocalSpace에 따라 local/world 중 하나로 고정된다.
+	// 모듈은 입력 값이 어느 공간에서 왔는지만 선언하고, 실제 해석은 이 API가 맡는다.
+	FVector                     ConvertVectorToSimulation(const FVector& V, EParticleValueSpace SourceSpace) const;
+	FVector                     ConvertVectorFromSimulation(const FVector& V, EParticleValueSpace TargetSpace) const;
+	FVector                     ConvertPositionToSimulation(const FVector& P, EParticleValueSpace SourceSpace) const;
 
 	// World ↔ Local 헬퍼 (Required.bUseLocalSpace 따라 분기).
 	FTransform GetComponentToWorld() const;

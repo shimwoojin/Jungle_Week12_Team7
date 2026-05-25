@@ -276,6 +276,9 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		Section.FirstIndex = 0;
 		Section.IndexCount = Spec.IndexCount;
 		Section.Material   = SectionMat;
+		// 입자 섹션은 자체 대표 위치로 translucent depth 정렬 (proxy 단위 정렬의 부정확 보완).
+		Section.bHasSortPos  = true;
+		Section.SortWorldPos = Spec.SortWorldPos;
 
 		if (Spec.InstanceCount > 0)
 		{
