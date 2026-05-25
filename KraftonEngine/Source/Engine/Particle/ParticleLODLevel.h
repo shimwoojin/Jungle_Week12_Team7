@@ -52,9 +52,9 @@ public:
 	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Modules", Type=Array, AllowedClass=UParticleModule)
 	TArray<UParticleModule*> Modules;
 
-	// Phase 4 introduces lightweight module-level sync metadata as a bridge toward
+	// Phase 4/5 keeps lightweight module-level sync metadata as a bridge toward
 	// a future Base + Override LOD model. Full property-level overrides and
-	// reduction/scaling policy are intentionally deferred.
+	// deeper reduction/scaling policy are still intentionally deferred.
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Required Module From LOD0")
 	bool bSyncRequiredModuleFromLOD0 = true;
 

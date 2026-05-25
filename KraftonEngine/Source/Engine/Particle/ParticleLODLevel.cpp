@@ -1,9 +1,14 @@
 ﻿#include "ParticleLODLevel.h"
 
 #include "Particle/ParticleModule.h"
+#include "Particle/Distributions/DistributionFloatConstant.h"
+#include "Particle/Modules/ParticleModuleCollision.h"
+#include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
+#include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
+#include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
 #include "Serialization/Archive.h"
 
 namespace
@@ -164,11 +169,132 @@ namespace
 		}
 	}
 
-	void ApplyDeferredLODReductionPolicy(UParticleLODLevel* /*TargetLOD*/)
+	float GetLODReductionScale(const UParticleLODLevel* TargetLOD)
 	{
-		// Future LOD reduction/scaling policy should live here instead of being
-		// mixed into structural sync. Likely candidates include spawn rate, beam
-		// noise, ribbon tessellation, and collision/event disabling.
+		if (!TargetLOD || TargetLOD->Level <= 0)
+		{
+			return 1.0f;
+		}
+
+		return (TargetLOD->Level == 1) ? 0.5f : 0.25f;
+	}
+
+	float ClampNonNegativeFloat(float Value)
+	{
+		return (Value < 0.0f) ? 0.0f : Value;
+	}
+
+	int32 ClampPositiveInt(int32 Value, int32 MinValue)
+	{
+		return (Value < MinValue) ? MinValue : Value;
+	}
+
+	void ApplySpawnLODReduction(UParticleLODLevel* TargetLOD, float ReductionScale)
+	{
+		if (!TargetLOD || !TargetLOD->SpawnModule || !TargetLOD->bSyncSpawnModuleFromLOD0)
+		{
+			return;
+		}
+
+		// Keep burst authoring intact for now and reduce only the continuous rate.
+		// Arbitrary curves/uniforms can gain dedicated scaling support later.
+		if (UDistributionFloatConstant* RateScale = Cast<UDistributionFloatConstant>(TargetLOD->SpawnModule->RateScaleDistribution))
+		{
+			RateScale->Constant = ClampNonNegativeFloat(RateScale->Constant * ReductionScale);
+			return;
+		}
+
+		if (UDistributionFloatConstant* Rate = Cast<UDistributionFloatConstant>(TargetLOD->SpawnModule->RateDistribution))
+		{
+			Rate->Constant = ClampNonNegativeFloat(Rate->Constant * ReductionScale);
+		}
+	}
+
+	void ApplyRibbonLODReduction(UParticleLODLevel* TargetLOD, float ReductionScale)
+	{
+		if (!TargetLOD || !TargetLOD->bSyncTypeDataModuleFromLOD0)
+		{
+			return;
+		}
+
+		UParticleModuleTypeDataRibbon* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(TargetLOD->TypeDataModule);
+		if (!RibbonTypeData)
+		{
+			return;
+		}
+
+		RibbonTypeData->MaxTessellation = ClampPositiveInt(
+			static_cast<int32>(RibbonTypeData->MaxTessellation * ReductionScale),
+			1);
+	}
+
+	void ApplyBeamLODReduction(UParticleLODLevel* TargetLOD, float ReductionScale)
+	{
+		if (!TargetLOD || !TargetLOD->bSyncTypeDataModuleFromLOD0)
+		{
+			return;
+		}
+
+		UParticleModuleTypeDataBeam* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(TargetLOD->TypeDataModule);
+		if (!BeamTypeData)
+		{
+			return;
+		}
+
+		BeamTypeData->NoiseAmount = ClampNonNegativeFloat(BeamTypeData->NoiseAmount * ReductionScale);
+		BeamTypeData->NoiseFrequency = ClampNonNegativeFloat(BeamTypeData->NoiseFrequency * ReductionScale);
+	}
+
+	void ApplyOptionalFeatureLODReductionBoundary(UParticleLODLevel* TargetLOD)
+	{
+		if (!TargetLOD)
+		{
+			return;
+		}
+
+		for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(TargetLOD->Modules.size()); ++ModuleIndex)
+		{
+			if (TargetLOD->GetRegularModuleSyncMode(ModuleIndex) != ELODModuleSyncMode::InheritFromLOD0)
+			{
+				continue;
+			}
+
+			if (Cast<UParticleModuleCollision>(TargetLOD->Modules[ModuleIndex]))
+			{
+				// Collision can affect gameplay/event semantics, so this first pass
+				// keeps it intact and leaves any disable policy explicit and opt-in.
+				continue;
+			}
+
+			if (Cast<UParticleModuleEventGenerator>(TargetLOD->Modules[ModuleIndex]))
+			{
+				// Event emission can also be gameplay-visible. Leave it enabled until
+				// we introduce an explicit policy for visual-only emitters.
+				continue;
+			}
+		}
+	}
+
+	void ApplyDeferredLODReductionPolicy(UParticleLODLevel* TargetLOD)
+	{
+		if (!TargetLOD)
+		{
+			return;
+		}
+
+		// Structural sync still happens first. Reduction policy is now a distinct
+		// phase that turns inherited lower LODs into cheaper runtime variants
+		// without collapsing future explicit override boundaries.
+		const float ReductionScale = GetLODReductionScale(TargetLOD);
+		if (ReductionScale >= 1.0f)
+		{
+			return;
+		}
+
+		ApplySpawnLODReduction(TargetLOD, ReductionScale);
+		ApplyRibbonLODReduction(TargetLOD, ReductionScale);
+		ApplyBeamLODReduction(TargetLOD, ReductionScale);
+		ApplyOptionalFeatureLODReductionBoundary(TargetLOD);
 	}
 }
 
@@ -218,9 +344,9 @@ void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 		return;
 	}
 
-	// Phase 4 starts separating structural sync from future reduction policy.
-	// Full-copy remains the migration fallback, but module-level override
-	// metadata can already keep selected derived modules/slots independent.
+	// Structural sync still runs first. Full-copy remains the migration fallback,
+	// while module-level metadata preserves override-oriented slots/modules and
+	// deferred reduction policy turns inherited lower LODs into cheaper variants.
 	bEnabled = LOD0->bEnabled;
 
 	SyncCoreModuleSlotFromLOD0(RequiredModule, LOD0->RequiredModule, this, bSyncRequiredModuleFromLOD0);
