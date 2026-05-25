@@ -118,6 +118,11 @@ void FEditorMaterialInspector::RenderRenderStateSection()
 		ImGui::EndCombo();
 	}
 
+	// 양면 렌더 토글 (Raster NoCull override). 인스턴스도 렌더상태 override 가능하므로 활성.
+	bool bTwoSided = CachedMaterial->IsTwoSided();
+	if (ImGui::Checkbox("Two Sided", &bTwoSided))
+		CachedMaterial->SetTwoSided(bTwoSided);
+
 	// 셰이더 선택 (= 레이아웃 소스 & custom 강제 대상) — 변경 시 템플릿/CB 재구성.
 	const bool bIsInstance = CachedMaterial->IsMaterialInstance();
 	ImGui::BeginDisabled(bIsInstance);

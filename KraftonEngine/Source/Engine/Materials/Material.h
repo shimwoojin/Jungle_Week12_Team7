@@ -175,6 +175,15 @@ public:
 	EBlendMode GetBlendMode() const { return BlendMode; }
 	void SetDomainBlend(EMaterialDomain InDomain, EBlendMode InBlend) { Domain = InDomain; BlendMode = InBlend; RecomputeRenderState(); }
 
+	// 양면 렌더(Two Sided) — Raster override(NoCull) 슬롯 재사용(별도 직렬화 필드 불필요).
+	// off면 override 해제 → 도출 Rasterizer(Surface=BackCull, Decal=NoCull 등)로 복귀.
+	void SetTwoSided(bool bEnable)
+	{
+		if (bEnable) { bHasRasterOverride = true; RasterOverride = ERasterizerState::SolidNoCull; }
+		else         { bHasRasterOverride = false; }
+	}
+	bool IsTwoSided() const { return bHasRasterOverride && RasterOverride == ERasterizerState::SolidNoCull; }
+
 	// 저수준 override (도출 불가 케이스): CreateTransient / .mat raster 보존용.
 	void SetPassOverride(ERenderPass InPass)      { bHasPassOverride   = true; PassOverride   = InPass; }
 	void SetBlendOverride(EBlendState InBlend)    { bHasBlendOverride  = true; BlendOverride  = InBlend; }
