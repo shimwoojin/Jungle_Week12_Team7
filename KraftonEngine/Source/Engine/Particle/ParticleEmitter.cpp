@@ -207,6 +207,25 @@ void UParticleEmitter::EnsureLOD0CoreModules()
 	EnsureLODCoreModules();
 }
 
+void UParticleEmitter::SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedLOD)
+{
+	if (!DerivedLOD || DerivedLOD->Level <= 0)
+	{
+		return;
+	}
+
+	if (UParticleLODLevel* LOD0 = GetLODLevel(0))
+	{
+		if (LOD0 != DerivedLOD)
+		{
+			// Full-copy remains the current migration bridge. Phase 4 begins adding
+			// module-level override metadata, but runtime still expects a materialized
+			// per-LOD module graph until a future effective-LOD build path exists.
+			DerivedLOD->UpdateFromLOD0(LOD0);
+		}
+	}
+}
+
 UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)     
 { 
 	if (InLevel < 0) InLevel = 0;
@@ -241,12 +260,7 @@ UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)
 
 	if (bIsDerivedLOD)
 	{
-		if (UParticleLODLevel* LOD0 = GetLODLevel(0))
-		{
-			// Phase 1 keeps lower LOD creation simple: start from a full LOD0 copy
-			// and defer any reduction/interpolation policy to later passes.
-			NewLOD->UpdateFromLOD0(LOD0);
-		}
+		SynchronizeDerivedLODFromLOD0(NewLOD);
 	}
 
 	return NewLOD;

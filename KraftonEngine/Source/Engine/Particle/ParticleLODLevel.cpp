@@ -8,6 +8,8 @@
 
 namespace
 {
+	using ELODModuleSyncMode = UParticleLODLevel::ELODModuleSyncMode;
+
 	template<typename T>
 	T* DuplicateModuleForLOD(T* SourceModule, UParticleLODLevel* TargetLOD)
 	{
@@ -35,6 +37,138 @@ namespace
 
 		UObjectManager::Get().DestroyObject(Module);
 		Module = nullptr;
+	}
+
+	uint8 EncodeSyncMode(ELODModuleSyncMode InMode)
+	{
+		return static_cast<uint8>(InMode);
+	}
+
+	ELODModuleSyncMode DecodeSyncMode(uint8 RawMode)
+	{
+		return (RawMode == EncodeSyncMode(ELODModuleSyncMode::Override))
+			? ELODModuleSyncMode::Override
+			: ELODModuleSyncMode::InheritFromLOD0;
+	}
+
+	template<typename T>
+	void SyncCoreModuleSlotFromLOD0(
+		T*& TargetModule,
+		T* SourceModule,
+		UParticleLODLevel* TargetLOD,
+		bool bShouldSyncFromLOD0)
+	{
+		if (!bShouldSyncFromLOD0)
+		{
+			return;
+		}
+
+		DestroyLODModule(TargetModule);
+		TargetModule = DuplicateModuleForLOD(SourceModule, TargetLOD);
+	}
+
+	void FullCopyRegularModulesFromLOD0(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
+	{
+		for (UParticleModule*& Module : TargetLOD->Modules)
+		{
+			DestroyLODModule(Module);
+		}
+		TargetLOD->Modules.clear();
+
+		for (UParticleModule* SourceModule : LOD0->Modules)
+		{
+			UParticleModule* DuplicatedModule = DuplicateModuleForLOD(SourceModule, TargetLOD);
+			if (!DuplicatedModule)
+			{
+				continue;
+			}
+
+			TargetLOD->Modules.push_back(DuplicatedModule);
+		}
+
+		TargetLOD->ResetRegularModuleSyncModes(ELODModuleSyncMode::InheritFromLOD0);
+	}
+
+	void SyncRegularModulesFromLOD0(UParticleLODLevel* TargetLOD, UParticleLODLevel* LOD0)
+	{
+		if (!TargetLOD->HasRegularModuleOverrides() ||
+			TargetLOD->RegularModuleSyncModes.size() != TargetLOD->Modules.size())
+		{
+			// Full-copy remains the compatibility bridge while we introduce
+			// module-level override metadata incrementally.
+			FullCopyRegularModulesFromLOD0(TargetLOD, LOD0);
+			return;
+		}
+
+		TArray<UParticleModule*> PreviousModules = TargetLOD->Modules;
+		TArray<uint8> PreviousSyncModes = TargetLOD->RegularModuleSyncModes;
+		TargetLOD->Modules.clear();
+		TargetLOD->RegularModuleSyncModes.clear();
+
+		for (int32 SourceIndex = 0; SourceIndex < static_cast<int32>(LOD0->Modules.size()); ++SourceIndex)
+		{
+			const bool bKeepOverrideModule =
+				SourceIndex < static_cast<int32>(PreviousModules.size()) &&
+				SourceIndex < static_cast<int32>(PreviousSyncModes.size()) &&
+				DecodeSyncMode(PreviousSyncModes[SourceIndex]) == ELODModuleSyncMode::Override &&
+				PreviousModules[SourceIndex] != nullptr;
+
+			if (bKeepOverrideModule)
+			{
+				PreviousModules[SourceIndex]->SetOuter(TargetLOD);
+				TargetLOD->Modules.push_back(PreviousModules[SourceIndex]);
+				TargetLOD->SetRegularModuleSyncMode(
+					static_cast<int32>(TargetLOD->Modules.size()) - 1,
+					ELODModuleSyncMode::Override);
+				PreviousModules[SourceIndex] = nullptr;
+				continue;
+			}
+
+			UParticleModule* DuplicatedModule = DuplicateModuleForLOD(LOD0->Modules[SourceIndex], TargetLOD);
+			if (!DuplicatedModule)
+			{
+				continue;
+			}
+
+			TargetLOD->Modules.push_back(DuplicatedModule);
+			TargetLOD->SetRegularModuleSyncMode(
+				static_cast<int32>(TargetLOD->Modules.size()) - 1,
+				ELODModuleSyncMode::InheritFromLOD0);
+		}
+
+		for (int32 PreviousIndex = static_cast<int32>(LOD0->Modules.size());
+		     PreviousIndex < static_cast<int32>(PreviousModules.size());
+		     ++PreviousIndex)
+		{
+			const bool bKeepExtraOverrideModule =
+				PreviousIndex < static_cast<int32>(PreviousSyncModes.size()) &&
+				DecodeSyncMode(PreviousSyncModes[PreviousIndex]) == ELODModuleSyncMode::Override &&
+				PreviousModules[PreviousIndex] != nullptr;
+
+			if (!bKeepExtraOverrideModule)
+			{
+				continue;
+			}
+
+			PreviousModules[PreviousIndex]->SetOuter(TargetLOD);
+			TargetLOD->Modules.push_back(PreviousModules[PreviousIndex]);
+			TargetLOD->SetRegularModuleSyncMode(
+				static_cast<int32>(TargetLOD->Modules.size()) - 1,
+				ELODModuleSyncMode::Override);
+			PreviousModules[PreviousIndex] = nullptr;
+		}
+
+		for (UParticleModule*& PreviousModule : PreviousModules)
+		{
+			DestroyLODModule(PreviousModule);
+		}
+	}
+
+	void ApplyDeferredLODReductionPolicy(UParticleLODLevel* /*TargetLOD*/)
+	{
+		// Future LOD reduction/scaling policy should live here instead of being
+		// mixed into structural sync. Likely candidates include spawn rate, beam
+		// noise, ribbon tessellation, and collision/event disabling.
 	}
 }
 
@@ -70,6 +204,11 @@ void UParticleLODLevel::PostDuplicate()
 		Module->SetOuter(this);
 		Module->PostDuplicate();
 	}
+
+	if (RegularModuleSyncModes.size() != Modules.size())
+	{
+		ResetRegularModuleSyncModes();
+	}
 }
 
 void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
@@ -79,33 +218,63 @@ void UParticleLODLevel::UpdateFromLOD0(UParticleLODLevel* LOD0)
 		return;
 	}
 
-	// Phase 1 uses a full-copy policy only. Lower-LOD reduction/interpolation
-	// rules are deferred so derived LODs first become valid, non-empty copies.
-	DestroyLODModule(RequiredModule);
-	DestroyLODModule(SpawnModule);
-	DestroyLODModule(TypeDataModule);
-
-	for (UParticleModule*& Module : Modules)
-	{
-		DestroyLODModule(Module);
-	}
-	Modules.clear();
-
+	// Phase 4 starts separating structural sync from future reduction policy.
+	// Full-copy remains the migration fallback, but module-level override
+	// metadata can already keep selected derived modules/slots independent.
 	bEnabled = LOD0->bEnabled;
 
-	RequiredModule = DuplicateModuleForLOD(LOD0->RequiredModule, this);
-	SpawnModule = DuplicateModuleForLOD(LOD0->SpawnModule, this);
-	TypeDataModule = DuplicateModuleForLOD(LOD0->TypeDataModule, this);
+	SyncCoreModuleSlotFromLOD0(RequiredModule, LOD0->RequiredModule, this, bSyncRequiredModuleFromLOD0);
+	SyncCoreModuleSlotFromLOD0(SpawnModule, LOD0->SpawnModule, this, bSyncSpawnModuleFromLOD0);
+	SyncCoreModuleSlotFromLOD0(TypeDataModule, LOD0->TypeDataModule, this, bSyncTypeDataModuleFromLOD0);
+	SyncRegularModulesFromLOD0(this, LOD0);
+	ApplyDeferredLODReductionPolicy(this);
+}
 
-	for (UParticleModule* SourceModule : LOD0->Modules)
+UParticleLODLevel::ELODModuleSyncMode UParticleLODLevel::GetRegularModuleSyncMode(int32 ModuleIndex) const
+{
+	if (ModuleIndex < 0 || ModuleIndex >= static_cast<int32>(RegularModuleSyncModes.size()))
 	{
-		UParticleModule* DuplicatedModule = DuplicateModuleForLOD(SourceModule, this);
-		if (!DuplicatedModule)
-		{
-			continue;
-		}
+		return ELODModuleSyncMode::InheritFromLOD0;
+	}
 
-		Modules.push_back(DuplicatedModule);
+	return DecodeSyncMode(RegularModuleSyncModes[ModuleIndex]);
+}
+
+void UParticleLODLevel::SetRegularModuleSyncMode(int32 ModuleIndex, ELODModuleSyncMode InMode)
+{
+	if (ModuleIndex < 0)
+	{
+		return;
+	}
+
+	while (static_cast<int32>(RegularModuleSyncModes.size()) <= ModuleIndex)
+	{
+		RegularModuleSyncModes.push_back(EncodeSyncMode(ELODModuleSyncMode::InheritFromLOD0));
+	}
+
+	RegularModuleSyncModes[ModuleIndex] = EncodeSyncMode(InMode);
+}
+
+bool UParticleLODLevel::HasRegularModuleOverrides() const
+{
+	for (uint8 RawMode : RegularModuleSyncModes)
+	{
+		if (DecodeSyncMode(RawMode) == ELODModuleSyncMode::Override)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void UParticleLODLevel::ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode)
+{
+	RegularModuleSyncModes.clear();
+
+	for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(Modules.size()); ++ModuleIndex)
+	{
+		RegularModuleSyncModes.push_back(EncodeSyncMode(DefaultMode));
 	}
 }
 
@@ -158,6 +327,7 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 		RequiredModule = Required;
 		RequiredModule->SetOuter(this);
+		bSyncRequiredModuleFromLOD0 = false;
 		return true;
 	}
 	case UParticleModule::EModuleCategory::Spawn:
@@ -168,6 +338,7 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 		SpawnModule = Spawn;
 		SpawnModule->SetOuter(this);
+		bSyncSpawnModuleFromLOD0 = false;
 		return true;
 	}
 	case UParticleModule::EModuleCategory::TypeData:
@@ -178,6 +349,7 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 		TypeDataModule = TypeData;
 		TypeDataModule->SetOuter(this);
+		bSyncTypeDataModuleFromLOD0 = false;
 		return true;
 	}
 		
@@ -192,6 +364,7 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 
 	InModule->SetOuter(this);
 	Modules.push_back(InModule);
+	SetRegularModuleSyncMode(static_cast<int32>(Modules.size()) - 1, ELODModuleSyncMode::Override);
 	return true;
 }
 
@@ -212,6 +385,7 @@ bool UParticleLODLevel::RemoveModule(UParticleModule* InModule)
 	if (TypeDataModule == InModule)
 	{
 		TypeDataModule = nullptr;
+		bSyncTypeDataModuleFromLOD0 = false;
 		return true;
 	}
 
@@ -220,6 +394,10 @@ bool UParticleLODLevel::RemoveModule(UParticleModule* InModule)
 		if (Modules[i] == InModule)
 		{
 			Modules.erase(Modules.begin() + i);
+			if (i < static_cast<int32>(RegularModuleSyncModes.size()))
+			{
+				RegularModuleSyncModes.erase(RegularModuleSyncModes.begin() + i);
+			}
 			return true;
 		}
 	}

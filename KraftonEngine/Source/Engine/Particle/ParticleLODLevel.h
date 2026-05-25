@@ -20,6 +20,12 @@ UCLASS()
 class UParticleLODLevel : public UObject
 {
 public:
+	enum class ELODModuleSyncMode : uint8
+	{
+		InheritFromLOD0 = 0,
+		Override = 1,
+	};
+
 	GENERATED_BODY()
 	UParticleLODLevel() = default;
 	~UParticleLODLevel() override = default;
@@ -46,11 +52,30 @@ public:
 	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Modules", Type=Array, AllowedClass=UParticleModule)
 	TArray<UParticleModule*> Modules;
 
+	// Phase 4 introduces lightweight module-level sync metadata as a bridge toward
+	// a future Base + Override LOD model. Full property-level overrides and
+	// reduction/scaling policy are intentionally deferred.
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Required Module From LOD0")
+	bool bSyncRequiredModuleFromLOD0 = true;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Spawn Module From LOD0")
+	bool bSyncSpawnModuleFromLOD0 = true;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Type Data From LOD0")
+	bool bSyncTypeDataModuleFromLOD0 = true;
+
+	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Sync Modes", Type=Array)
+	TArray<uint8> RegularModuleSyncModes;
+
 	void PostDuplicate() override;
 
 	// --- API ---
 	// LOD 변경 시 LOD 0 으로부터 본인 값을 재추출.
 	void UpdateFromLOD0(UParticleLODLevel* LOD0);
+	ELODModuleSyncMode GetRegularModuleSyncMode(int32 ModuleIndex) const;
+	void SetRegularModuleSyncMode(int32 ModuleIndex, ELODModuleSyncMode InMode);
+	bool HasRegularModuleOverrides() const;
+	void ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode = ELODModuleSyncMode::InheritFromLOD0);
 
 	// 동일 카테고리 중복/required 충돌 등을 검증. true 면 정상.
 	bool ValidateModules() const;

@@ -31,6 +31,9 @@ public:
 	UPROPERTY(Edit, Save, Category="Emitter", DisplayName="Enabled")
 	bool bEnabled = true;
 
+	// Asset-side stored LOD graph. Runtime still consumes fully materialized LOD
+	// objects today, but phase 4 starts preparing for a future LOD0 + override
+	// model that can later build effective runtime LOD data on demand.
 	UPROPERTY(Save, Instanced, Category="LOD", DisplayName="LOD Levels", Type=Array, AllowedClass=UParticleLODLevel)
 	TArray<UParticleLODLevel*> LODLevels;
 
@@ -48,6 +51,7 @@ public:
 	// 새 LOD level 을 생성. 현재는 Required + Spawn 기본 모듈만 생성.
 	// LOD0 모듈 복사/보간은 UpdateFromLOD0() 구현 시 처리.
 	UParticleLODLevel* CreateLODLevel(int32 InLevel);
+	void               SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedLOD);
 	void               RemoveLODLevel(int32 InLevel);
 	UParticleLODLevel* GetLODLevel(int32 InLevel) const;
 	UParticleLODLevel* GetCurrentLODLevel(int32 InCurrentLODIdx) const; // 안전 clamp
