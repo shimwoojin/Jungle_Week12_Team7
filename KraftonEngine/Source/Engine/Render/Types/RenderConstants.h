@@ -1,5 +1,6 @@
 #pragma once
 #include "Render/Types/RenderTypes.h"
+#include "Render/Types/VertexFactoryType.h"
 #include "Render/Resource/Buffer.h"
 #include "Render/Device/D3DDevice.h"
 #include "Render/Command/DrawCommand.h"
@@ -341,6 +342,9 @@ struct FMeshSectionDraw
 	uint32 FirstIndex = 0;
 	uint32 IndexCount = 0;
 	FDrawCommandBuffer BufferOverride; // optional — default 빈 buffer
+
+	// 드로우 시점 정점 팩토리 종류 (셰이더 도출 축). 메시는 Auto(로컬 계산), 파티클만 명시.
+	EVertexFactoryType VertexFactory = EVertexFactoryType::Auto;
 
 	// Translucent 섹션별 depth 정렬용. true면 SortWorldPos로 카메라 거리를 계산하고,
 	// false면(기본) BuildCommandForProxy가 proxy 위치로 fallback — 비입자 proxy는 동작 변화 없음.

@@ -101,7 +101,8 @@ protected:
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> ConstantBufferMap; // 인스턴스 고유
 	TMap<FString, UTexture2D*> TextureParameters;  //텍스처는 슬롯 이름으로 관리
 
-	FShader* TransientShader = nullptr; // CreateTransient에서 직접 지정된 셰이더 (Template 없는 경우)
+	FShader* TransientShader = nullptr; // CreateTransient / custom override 로 지정된 셰이더 (Template 없는 경우)
+	bool     bUseCustomShader = false;  // true면 ResolveSectionShader 가 TransientShader 를 강제 (도출 우회)
 
 	// Per-shader CB 오버라이드 — transient Material에서 프록시가 관리하는 외부 CB
 	FConstantBufferBinding PerShaderOverride;
@@ -141,6 +142,12 @@ public:
 	void Bind(ID3D11DeviceContext* Context);
 
 	virtual FShader* GetShader() const { return Template ? Template->GetShader() : TransientShader; }
+
+	// custom shader override — 머티리얼이 셰이더를 강제할 때(CreateTransient: Gizmo/Decal/Text,
+	// 또는 비표준 셰이더 .mat). 없으면 엔진이 (Domain × VertexFactory × Pass × ViewMode)로 도출.
+	bool     HasCustomShader() const { return bUseCustomShader && TransientShader != nullptr; }
+	FShader* GetCustomShader() const { return TransientShader; }
+	void     SetCustomShader(FShader* InShader) { TransientShader = InShader; bUseCustomShader = (InShader != nullptr); }
 	virtual ERenderPass GetRenderPass() const { return bHasPassOverride ? PassOverride : CachedRenderState.Pass; }
 	virtual EBlendState GetBlendState() const { return bHasBlendOverride ? BlendOverride : CachedRenderState.Blend; }
 	virtual EDepthStencilState GetDepthStencilState() const { return bHasDepthOverride ? DepthOverride : CachedRenderState.DepthStencil; }

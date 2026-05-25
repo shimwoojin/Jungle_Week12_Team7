@@ -132,6 +132,18 @@ UMaterial* FMaterialManager::GetOrCreateMaterial(const FString& MatFilePath)
 	// 도출 Raster 와 다르면(스프라이트 NoCull 등) override 보존. Depth 는 도출에 위임(carve out).
 	if (RasterState != Material->GetRasterizerState())
 		Material->SetRasterOverride(RasterState);
+
+	// shader-agnostic: Surface(UberLit)는 ResolveSectionShader 가 도출, 파티클은 VertexFactory 로 도출(3b).
+	// 그 외 특수 셰이더(Decal/Font/PostProcess 등)는 custom override 로 현행 셰이더를 강제해 동작 보존.
+	{
+		const bool bUber     = (ShaderPath == DefaultShaderPath);
+		const bool bParticle = (ShaderPath == FString(EShaderPath::ParticleSprite)
+			|| ShaderPath == FString(EShaderPath::ParticleMesh)
+			|| ShaderPath == FString(EShaderPath::ParticleBeamTrail));
+		if (!bUber && !bParticle && Template)
+			Material->SetCustomShader(Template->GetShader());
+	}
+
 	MaterialCache.emplace(GenericPath, Material);
 
 	//템플릿을 통해 material에 넣기

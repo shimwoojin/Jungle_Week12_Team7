@@ -358,6 +358,6 @@ UMaterial* UMaterial::CreateTransient(ERenderPass InPass, EBlendState InBlend,
 	Mat->SetBlendOverride(InBlend);
 	Mat->SetDepthOverride(InDepth);
 	Mat->SetRasterOverride(InRaster);
-	Mat->TransientShader = InShader;
+	Mat->SetCustomShader(InShader);  // InShader!=null 이면 custom override 강제 (Gizmo/Decal/Text/SubUV)
 	return Mat;
 }

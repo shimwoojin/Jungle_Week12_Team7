@@ -131,6 +131,47 @@ FShader* FDrawCommandBuilder::SelectEffectiveShader(FShader* ProxyShader, EViewM
 }
 
 // ============================================================
+// ResolveSectionShader — shader-agnostic 셰이더 도출
+//   custom override 우선 → 파티클 VF 전용 셰이더 → Surface 메시 UberLit 퍼뮤테이션.
+//   머티리얼은 셰이더를 모르고, 엔진이 (Domain × VertexFactory × Pass × ViewMode)로 고른다.
+// ============================================================
+FShader* FDrawCommandBuilder::ResolveSectionShader(UMaterial* Mat, EVertexFactoryType VFType, EViewMode ViewMode, bool bGPUSkinning, bool bWeightBoneHeatMap)
+{
+	// 1. custom override 강제 (CreateTransient: Gizmo/Decal/Text/SubUV, 비표준 셰이더 .mat)
+	if (Mat && Mat->HasCustomShader())
+		return Mat->GetCustomShader();
+
+	// 2. 파티클 정점 팩토리 → 전용 셰이더 (FParticleVertexFactory 가 만들던 것과 동일 키)
+	switch (VFType)
+	{
+	case EVertexFactoryType::ParticleSprite: return FShaderManager::Get().GetOrCreate(EShaderPath::ParticleSprite);
+	case EVertexFactoryType::ParticleMesh:   return FShaderManager::Get().GetOrCreate(EShaderPath::ParticleMesh);
+	case EVertexFactoryType::ParticleBeam:
+	case EVertexFactoryType::ParticleRibbon: return FShaderManager::Get().GetOrCreate(EShaderPath::ParticleBeamTrail);
+	default: break;
+	}
+
+	// 3. Surface 메시 → UberLit 퍼뮤테이션. 셰이더 정점 팩토리는 bGPUSkinning 으로 결정
+	//    (CPU 스키닝은 static-layout VS) — 기존 SelectEffectiveShader 와 동일.
+	const EUberLitDefines::EVertexFactory UVF = bGPUSkinning
+		? EUberLitDefines::EVertexFactory::SkeletalMesh
+		: EUberLitDefines::EVertexFactory::StaticMesh;
+
+	switch (ViewMode)
+	{
+	case EViewMode::Unlit:        return FShaderManager::Get().GetOrCreateUberLitPermutation(EUberLitDefines::ELightingModel::Unlit,   UVF, EShaderErrorMode::Notification, bWeightBoneHeatMap);
+	case EViewMode::Lit_Gouraud:  return FShaderManager::Get().GetOrCreateUberLitPermutation(EUberLitDefines::ELightingModel::Gouraud, UVF, EShaderErrorMode::Notification, bWeightBoneHeatMap);
+	case EViewMode::Lit_Lambert:  return FShaderManager::Get().GetOrCreateUberLitPermutation(EUberLitDefines::ELightingModel::Lambert, UVF, EShaderErrorMode::Notification, bWeightBoneHeatMap);
+	case EViewMode::Lit_Phong:
+	case EViewMode::LightCulling: return FShaderManager::Get().GetOrCreateUberLitPermutation(EUberLitDefines::ELightingModel::Phong,   UVF, EShaderErrorMode::Notification, bWeightBoneHeatMap);
+	default:
+		return bGPUSkinning
+			? FShaderManager::Get().GetOrCreateUberLitPermutation(EUberLitDefines::ELightingModel::Default, UVF, EShaderErrorMode::Notification, bWeightBoneHeatMap)
+			: FShaderManager::Get().GetOrCreate(EShaderPath::UberLit);  // base UberLit (기존 ProxyShader 통과와 동일)
+	}
+}
+
+// ============================================================
 // ApplyMaterialRenderState — Material 렌더 상태 오버라이드 (Wireframe 우선)
 // ============================================================
 void FDrawCommandBuilder::ApplyMaterialRenderState(FDrawCommandRenderState& OutState, const UMaterial* Mat, const FDrawCommandRenderState& BaseState)
@@ -208,11 +249,20 @@ void FDrawCommandBuilder::BuildCommandForProxy(FScene& Scene, const FPrimitiveSc
 			: ProxyBuffer;
 		if (!EffBuffer.IB) continue;
 
-		// Section Material이 셰이더를 가지면 사용, 없으면 Proxy 폴백
-		FShader* SectionShader = (Section.Material && Section.Material->GetShader())
-			? Section.Material->GetShader()
-			: Proxy.GetShader();
-		FShader* EffectiveShader = SelectEffectiveShader(SectionShader, CollectViewMode, bGPUSkinning, bWeightBoneHeatMap);
+		// 셰이더 도출: custom override 우선, 아니면 (Domain × VertexFactory × Pass × ViewMode).
+		FShader* EffectiveShader;
+		if (Section.Material)
+		{
+			const EVertexFactoryType VFType =
+				(Section.VertexFactory != EVertexFactoryType::Auto) ? Section.VertexFactory
+				: (bSkeletal ? EVertexFactoryType::SkeletalMesh : EVertexFactoryType::StaticMesh);
+			EffectiveShader = ResolveSectionShader(Section.Material, VFType, CollectViewMode, bGPUSkinning, bWeightBoneHeatMap);
+		}
+		else
+		{
+			// 머티리얼 없는 섹션(예외) — 기존 Proxy 셰이더 경로 보존.
+			EffectiveShader = SelectEffectiveShader(Proxy.GetShader(), CollectViewMode, bGPUSkinning, bWeightBoneHeatMap);
+		}
 
 		FDrawCommand& Cmd = DrawCommandList.AddCommand();
 		Cmd.Pass = Pass;
