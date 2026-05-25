@@ -62,6 +62,10 @@ private:
 
 	json::JSON ReadJsonFile(const FString& FilePath) const;
 
+	// 바이너리(.uasset) 직렬화 — exemplar = ParticleSystemManager. JSON 은 과도기 변환 브리지로만 유지.
+	bool       SaveMaterial(UMaterial* Material, const FString& UassetPath);
+	UMaterial* LoadMaterialBinary(const FString& UassetPath);
+
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> CreateConstantBuffers(FMaterialTemplate* Template);
 
 	void ApplyParameters(UMaterial* Material, json::JSON& JsonData);

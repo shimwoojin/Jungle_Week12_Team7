@@ -256,7 +256,36 @@ void UMaterial::RebuildCachedSRVs()
 
 void UMaterial::Serialize(FArchive& Ar)
 {
-	Ar << PathFileName;
+	// [Phase 4] 고수준 의도 + custom-shader 플래그 + 저수준 override.
+	// PathFileName/ShaderPath 는 Manager 가 헤더 영역에서 처리한다
+	// (로드 순서 의존성: ShaderPath→Template→CB 생성 후에야 아래 CPUData 를 기록 가능).
+	uint8 DomainRaw = static_cast<uint8>(Domain);
+	uint8 BlendRaw  = static_cast<uint8>(BlendMode);
+	Ar << DomainRaw;
+	Ar << BlendRaw;
+	if (Ar.IsLoading())
+		SetDomainBlend(static_cast<EMaterialDomain>(DomainRaw), static_cast<EBlendMode>(BlendRaw));
+
+	Ar << bUseCustomShader; // 의도 플래그 (런타임 FShader* 는 Manager 가 Template 에서 재바인딩)
+
+	// 저수준 override 슬롯 (스프라이트 NoCull, CreateTransient 등 도출 불가 케이스)
+	{
+		uint32 PassV   = static_cast<uint32>(PassOverride);
+		uint8  BlendV  = static_cast<uint8>(BlendOverride);
+		uint8  DepthV  = static_cast<uint8>(DepthOverride);
+		uint8  RasterV = static_cast<uint8>(RasterOverride);
+		Ar << bHasPassOverride;   Ar << PassV;
+		Ar << bHasBlendOverride;  Ar << BlendV;
+		Ar << bHasDepthOverride;  Ar << DepthV;
+		Ar << bHasRasterOverride; Ar << RasterV;
+		if (Ar.IsLoading())
+		{
+			PassOverride   = static_cast<ERenderPass>(PassV);
+			BlendOverride  = static_cast<EBlendState>(BlendV);
+			DepthOverride  = static_cast<EDepthStencilState>(DepthV);
+			RasterOverride = static_cast<ERasterizerState>(RasterV);
+		}
+	}
 
 	uint32 BufferCount = static_cast<uint32>(ConstantBufferMap.size());
 	Ar << BufferCount;

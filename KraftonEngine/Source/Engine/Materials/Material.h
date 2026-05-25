@@ -83,6 +83,7 @@ protected:
 	FString PathFileName;// 어떤 Material인지 판별하는 고유 이름
 	uint32 MaterialInstanceID; // 고유 ID
 	FMaterialTemplate* Template; // 공유
+	FString ShaderPathForSerialize; // 파라미터 레이아웃 소스 셰이더 경로 (바이너리 직렬화/Template 재구성용)
 
 	// 고수준 의도 (단일 소스) — 저수준 렌더상태는 ResolveMaterialRenderState 로 도출.
 	EMaterialDomain Domain    = EMaterialDomain::Surface;
@@ -148,6 +149,12 @@ public:
 	bool     HasCustomShader() const { return bUseCustomShader && TransientShader != nullptr; }
 	FShader* GetCustomShader() const { return TransientShader; }
 	void     SetCustomShader(FShader* InShader) { TransientShader = InShader; bUseCustomShader = (InShader != nullptr); }
+	// 직렬화에서 custom-shader '의도' 판정 (로드 직후 TransientShader 가 아직 null 이므로 플래그만 본다)
+	bool     WasCustomShaderRequested() const { return bUseCustomShader; }
+
+	// 바이너리 직렬화용 셰이더 경로(레이아웃 소스) — Manager 가 Create 후 주입.
+	void           SetShaderPathForSerialize(const FString& InPath) { ShaderPathForSerialize = InPath; }
+	const FString& GetShaderPathForSerialize() const { return ShaderPathForSerialize; }
 	virtual ERenderPass GetRenderPass() const { return bHasPassOverride ? PassOverride : CachedRenderState.Pass; }
 	virtual EBlendState GetBlendState() const { return bHasBlendOverride ? BlendOverride : CachedRenderState.Blend; }
 	virtual EDepthStencilState GetDepthStencilState() const { return bHasDepthOverride ? DepthOverride : CachedRenderState.DepthStencil; }
