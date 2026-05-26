@@ -392,6 +392,27 @@ void FOverlayStatSystem::BuildParticleLines(TArray<FString>& OutLines) const
 	// --- 드로우콜: PrepareDrawBuffer에서 제출된 파티클 섹션 수 (emitter당 1 draw) ---
 	snprintf(Buffer, sizeof(Buffer), "Draw Calls : %u (submitted)", FParticleStats::DrawCalls);
 	OutLines.push_back(FString(Buffer));
+	if (FParticleStats::RibbonTrailBuilds > 0)
+	{
+		snprintf(
+			Buffer,
+			sizeof(Buffer),
+			"Ribbon Trails : %u  Capped : %u  Max Effective Tess : %u",
+			FParticleStats::RibbonTrailBuilds,
+			FParticleStats::RibbonRuntimeCappedBuilds,
+			FParticleStats::RibbonMaxEffectiveTessellation);
+		OutLines.push_back(FString(Buffer));
+
+		snprintf(
+			Buffer,
+			sizeof(Buffer),
+			"Ribbon Segments : %u  Samples : %u  Vertices : %u  Indices : %u",
+			FParticleStats::RibbonControlSegments,
+			FParticleStats::RibbonSamplePoints,
+			FParticleStats::RibbonVertices,
+			FParticleStats::RibbonIndices);
+		OutLines.push_back(FString(Buffer));
+	}
 #else
 	OutLines.push_back(FString("Particle stats unavailable (STATS=0)"));
 #endif

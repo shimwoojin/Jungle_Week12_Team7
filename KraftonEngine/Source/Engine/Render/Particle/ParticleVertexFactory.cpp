@@ -6,6 +6,7 @@
 #include "Mesh/Static/StaticMesh.h"
 #include "Mesh/MeshManager.h"
 #include "Materials/Material.h"
+#include "Profiling/Stats/ParticleStats.h"
 
 #include <d3d11.h>
 #include <vector>
@@ -41,6 +42,8 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
 
 namespace
 {
+	constexpr uint32 RibbonRuntimeSamplePointBudget = 16384;
+
 	struct FRibbonControlPoint
 	{
 		FVector Position;
@@ -251,6 +254,34 @@ namespace
 			IndexDst[4] = BaseVertex + 3;
 			IndexDst[5] = BaseVertex + 2;
 		}
+	}
+
+	uint32 ResolveRibbonEffectiveTessellation(
+		uint32 RequestedTessellation,
+		uint32 ControlSegmentCount,
+		bool& bOutRuntimeCapped)
+	{
+		bOutRuntimeCapped = false;
+		if (RequestedTessellation <= 1 || ControlSegmentCount == 0)
+		{
+			return std::max(1u, RequestedTessellation);
+		}
+
+		// This guard intentionally caps tessellation-driven amplification, not the
+		// base control-point chain itself. Very large active-particle chains can
+		// still be expensive, but authoring tessellation will not multiply them
+		// without bound on the RT path.
+		const uint32 RequestedSamplePoints = 1u + ControlSegmentCount * RequestedTessellation;
+		if (RequestedSamplePoints <= RibbonRuntimeSamplePointBudget)
+		{
+			return RequestedTessellation;
+		}
+
+		const uint32 BudgetDrivenTessellation =
+			std::max(1u, (RibbonRuntimeSamplePointBudget - 1u) / ControlSegmentCount);
+		const uint32 EffectiveTessellation = std::min(RequestedTessellation, BudgetDrivenTessellation);
+		bOutRuntimeCapped = EffectiveTessellation < RequestedTessellation;
+		return std::max(1u, EffectiveTessellation);
 	}
 }
 
@@ -759,7 +790,16 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	ComputeRibbonTangents(ControlPoints, TangentTension);
 
 	// Stage 3: control points/tangents -> sampled curve points
-	const uint32 TessellationPerSegment = static_cast<uint32>(MaxTessellation);
+	const uint32 ControlSegmentCount = static_cast<uint32>(ControlPoints.size()) - 1u;
+	bool bRuntimeCapped = false;
+	// Authoring tessellation is a shaping hint, not an unbounded RT promise.
+	// The current guard keeps tessellation from multiplying trail cost past a
+	// modest sample-point budget while preserving the same Hermite-based shaping
+	// model and single-trail semantics.
+	const uint32 TessellationPerSegment = ResolveRibbonEffectiveTessellation(
+		static_cast<uint32>(MaxTessellation),
+		ControlSegmentCount,
+		bRuntimeCapped);
 	std::vector<FRibbonSamplePoint> Samples;
 	SampleRibbonCurve(ControlPoints, TessellationPerSegment, Samples);
 
@@ -774,6 +814,14 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 
 	std::vector<uint32> Indices(IndexCount);
 	BuildRibbonIndices(NumSegments, Indices);
+
+	PARTICLE_STATS_ADD_RIBBON_GEOMETRY(
+		TessellationPerSegment,
+		ControlSegmentCount,
+		NumPoints,
+		VertCount,
+		IndexCount,
+		bRuntimeCapped);
 
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));

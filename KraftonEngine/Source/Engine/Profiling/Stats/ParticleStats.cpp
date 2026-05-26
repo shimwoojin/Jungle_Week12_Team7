@@ -13,4 +13,11 @@ uint32 FParticleStats::DrawCalls = 0;
 uint64 FParticleStats::GTMemoryBytes = 0;
 uint64 FParticleStats::ActiveDataBytes = 0;
 uint64 FParticleStats::ReservedDataBytes = 0;
+uint32 FParticleStats::RibbonTrailBuilds = 0;
+uint32 FParticleStats::RibbonRuntimeCappedBuilds = 0;
+uint32 FParticleStats::RibbonMaxEffectiveTessellation = 0;
+uint32 FParticleStats::RibbonControlSegments = 0;
+uint32 FParticleStats::RibbonSamplePoints = 0;
+uint32 FParticleStats::RibbonVertices = 0;
+uint32 FParticleStats::RibbonIndices = 0;
 #endif

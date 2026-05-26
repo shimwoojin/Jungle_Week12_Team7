@@ -37,6 +37,15 @@ struct FParticleStats
 	static uint64 ActiveDataBytes;     // 실사용 입자 데이터 (ActiveParticles * stride 합)
 	static uint64 ReservedDataBytes;   // 예약 입자 데이터 (MaxActiveParticles * stride 합)
 
+	// --- Ribbon RT geometry (per-frame aggregate) ---
+	static uint32 RibbonTrailBuilds;
+	static uint32 RibbonRuntimeCappedBuilds;
+	static uint32 RibbonMaxEffectiveTessellation;
+	static uint32 RibbonControlSegments;
+	static uint32 RibbonSamplePoints;
+	static uint32 RibbonVertices;
+	static uint32 RibbonIndices;
+
 	static void AddTotal(uint32 Count)
 	{
 		TotalParticles += Count;
@@ -54,6 +63,28 @@ struct FParticleStats
 		ActiveDataBytes   += Active;
 		ReservedDataBytes += Reserved;
 	}
+	static void AddRibbonGeometry(
+		uint32 EffectiveTessellation,
+		uint32 ControlSegmentCount,
+		uint32 SamplePointCount,
+		uint32 VertexCount,
+		uint32 IndexCount,
+		bool bRuntimeCapped)
+	{
+		++RibbonTrailBuilds;
+		if (bRuntimeCapped)
+		{
+			++RibbonRuntimeCappedBuilds;
+		}
+		if (EffectiveTessellation > RibbonMaxEffectiveTessellation)
+		{
+			RibbonMaxEffectiveTessellation = EffectiveTessellation;
+		}
+		RibbonControlSegments += ControlSegmentCount;
+		RibbonSamplePoints += SamplePointCount;
+		RibbonVertices += VertexCount;
+		RibbonIndices += IndexCount;
+	}
 
 	static void Reset()
 	{
@@ -69,6 +100,13 @@ struct FParticleStats
 		GTMemoryBytes = 0;
 		ActiveDataBytes = 0;
 		ReservedDataBytes = 0;
+		RibbonTrailBuilds = 0;
+		RibbonRuntimeCappedBuilds = 0;
+		RibbonMaxEffectiveTessellation = 0;
+		RibbonControlSegments = 0;
+		RibbonSamplePoints = 0;
+		RibbonVertices = 0;
+		RibbonIndices = 0;
 	}
 };
 
@@ -83,6 +121,8 @@ struct FParticleStats
 #define PARTICLE_STATS_ADD_MEMORY(Total, Active, Reserved)  FParticleStats::AddMemory((Total), (Active), (Reserved))
 #define PARTICLE_STATS_ADD_DRAW_CALL()                      (FParticleStats::DrawCalls++)
 #define PARTICLE_STATS_ADD_DRAW_CALLS(Count)                (FParticleStats::DrawCalls += (Count))
+#define PARTICLE_STATS_ADD_RIBBON_GEOMETRY(EffectiveTessellation, ControlSegmentCount, SamplePointCount, VertexCount, IndexCount, bRuntimeCapped) \
+	FParticleStats::AddRibbonGeometry((EffectiveTessellation), (ControlSegmentCount), (SamplePointCount), (VertexCount), (IndexCount), (bRuntimeCapped))
 #else
 #define PARTICLE_STATS_RESET()                              ((void)0)
 #define PARTICLE_STATS_ADD_SPRITE(Count)                    ((void)0)
@@ -95,4 +135,5 @@ struct FParticleStats
 #define PARTICLE_STATS_ADD_MEMORY(Total, Active, Reserved)  ((void)0)
 #define PARTICLE_STATS_ADD_DRAW_CALL()                      ((void)0)
 #define PARTICLE_STATS_ADD_DRAW_CALLS(Count)                ((void)0)
+#define PARTICLE_STATS_ADD_RIBBON_GEOMETRY(EffectiveTessellation, ControlSegmentCount, SamplePointCount, VertexCount, IndexCount, bRuntimeCapped) ((void)0)
 #endif
