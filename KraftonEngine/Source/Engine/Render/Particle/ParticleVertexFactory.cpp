@@ -82,8 +82,15 @@ namespace
 		return WorldPosition;
 	}
 
-	std::vector<uint32> BuildRibbonParticleOrder(const uint8* RawBase, uint32 Stride, uint32 ParticleCount)
+	std::vector<uint32> BuildRibbonTrailOrderFromRelativeTime(
+		const uint8* RawBase,
+		uint32 Stride,
+		uint32 ParticleCount)
 	{
+		// Current Ribbon single-trail rule:
+		// one emitter snapshot becomes one ordered chain, so the RT path rebuilds
+		// trail continuity from RelativeTime rather than from generic replay sort
+		// metadata or implicit particle grouping.
 		std::vector<uint32> Order(ParticleCount);
 		for (uint32 i = 0; i < ParticleCount; ++i)
 		{
@@ -806,7 +813,7 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	// - one replay snapshot == one emitter-level ribbon trail for this frame
 	// - the active-particle snapshot is interpreted as a single ordered chain
 	// - generic particle translucent SortMode does not define ribbon topology
-	//   ordering; trail continuity does
+	//   ordering or split the trail into multiple chains; trail continuity does
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N < 2 || View.ParticleStride == 0 || !View.ParticleData) return false; // trail은 최소 2점
@@ -817,10 +824,12 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const FMatrix& L2W = Replay.LocalToWorld;
 
 	// Ribbon은 일반 translucent particle처럼 "그리기용 depth sort"를 우선하지 않고,
-	// trail topology를 복원하기 위한 order를 우선한다. 현재 구현은 emitter의 active
-	// particle snapshot 전체를 하나의 trail로 보고, 오래된 입자부터 이어 붙인다.
+	// trail topology를 복원하기 위한 order를 우선한다. 따라서 shared replay SortMode가
+	// 존재하더라도, current Ribbon RT는 그것을 chain topology나 multi-trail grouping
+	// 규칙으로 해석하지 않는다. 현재 구현은 emitter의 active particle snapshot 전체를
+	// 하나의 trail로 보고, RelativeTime이 큰(더 오래된) 입자부터 이어 붙인다.
 	const std::vector<uint32> OrderedParticleIndices =
-		BuildRibbonParticleOrder(RawBase, Stride, N);
+		BuildRibbonTrailOrderFromRelativeTime(RawBase, Stride, N);
 
 	// Stage 1: ordered particle chain -> control points
 	std::vector<FRibbonControlPoint> ControlPoints;

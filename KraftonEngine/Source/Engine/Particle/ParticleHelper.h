@@ -480,6 +480,11 @@ struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 	// one replay snapshot represents one emitter's active-particle trail for this
 	// frame, not multiple independent ribbon chains.
 	//
+	// Shared replay base still carries generic SortMode metadata, but current
+	// Ribbon RT does not treat that as "how many ribbon chains exist" or "how the
+	// chain is topologically connected." Ribbon chain order is reconstructed from
+	// trail continuity rules in the RT path.
+	//
 	// The fields below are authoring/type-data derived shaping inputs consumed by
 	// the RT ribbon geometry builder. They describe how the single trail should be
 	// curved/tessellated/UV-tiled from the current render replay LOD view; they are
