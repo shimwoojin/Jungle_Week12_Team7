@@ -4,6 +4,7 @@
 #include "Engine/Profiling/Time/Timer.h"
 #include "Engine/Profiling/Stats/MemoryStats.h"
 #include "Engine/Profiling/Stats/ShadowStats.h"
+#include "Engine/Profiling/Stats/ParticleStats.h"
 #include "Engine/Profiling/Stats/Stats.h"
 #include "Engine/Profiling/GPUProfiler.h"
 #include "Slate/SWindow.h"
@@ -298,6 +299,104 @@ void FOverlayStatSystem::BuildSkinningLines(TArray<FString>& OutLines) const
 #endif
 }
 
+void FOverlayStatSystem::BuildParticleLines(TArray<FString>& OutLines) const
+{
+#if STATS
+	char Buffer[160] = {};
+
+	// --- 개수 ---
+	snprintf(Buffer, sizeof(Buffer), "Components : %u   Emitters : %u",
+		FParticleStats::ComponentCount, FParticleStats::EmitterCount);
+	OutLines.push_back(FString(Buffer));
+
+	snprintf(Buffer, sizeof(Buffer), "Particles : %u  (Sprite %u  Mesh %u)",
+		FParticleStats::TotalParticles, FParticleStats::SpriteParticles, FParticleStats::MeshParticles);
+	OutLines.push_back(FString(Buffer));
+
+	snprintf(Buffer, sizeof(Buffer), "Peak Particles : %u", FParticleStats::PeakTotalParticles);
+	OutLines.push_back(FString(Buffer));
+
+	// --- 이번 프레임 spawn/kill ---
+	snprintf(Buffer, sizeof(Buffer), "Spawned : %u   Killed : %u",
+		FParticleStats::ParticlesSpawned, FParticleStats::ParticlesKilled);
+	OutLines.push_back(FString(Buffer));
+
+	// --- 메모리 ---
+	FormatBytes(Buffer, sizeof(Buffer), "GT Particle Mem", FParticleStats::GTMemoryBytes);
+	OutLines.push_back(FString(Buffer));
+
+	// 예약(Max) 대비 실사용(Active) — Precache·Address Align 튜닝 지표
+	{
+		const uint64 ActiveB = FParticleStats::ActiveDataBytes;
+		const uint64 ReservedB = FParticleStats::ReservedDataBytes;
+		const double UsedPct = ReservedB > 0 ? (100.0 * static_cast<double>(ActiveB) / static_cast<double>(ReservedB)) : 0.0;
+		char ActiveStr[48] = {};
+		char ReservedStr[48] = {};
+		FormatBytes(ActiveStr, sizeof(ActiveStr), "Active", ActiveB);
+		FormatBytes(ReservedStr, sizeof(ReservedStr), "Reserved", ReservedB);
+		snprintf(Buffer, sizeof(Buffer), "%s / %s (%.1f%% used)", ActiveStr, ReservedStr, UsedPct);
+		OutLines.push_back(FString(Buffer));
+	}
+
+	// --- CPU 시간 (FStatManager 스냅샷, category "Particles") ---
+	double TickMs = 0.0;
+	double PrepareMs = 0.0;
+	uint32 TickCalls = 0;
+	uint32 PrepareCalls = 0;
+	const TArray<FStatEntry>& CPUSnapshot = FStatManager::Get().GetSnapshot();
+	for (const FStatEntry& Entry : CPUSnapshot)
+	{
+		if (!Entry.Category || strcmp(Entry.Category, "Particles") != 0) continue;
+		if (!Entry.Name) continue;
+		if (strcmp(Entry.Name, "ParticleTick") == 0)
+		{
+			TickMs = Entry.LastTime * 1000.0;
+			TickCalls = Entry.CallCount;
+		}
+		else if (strcmp(Entry.Name, "ParticlePrepareDraw") == 0)
+		{
+			PrepareMs = Entry.LastTime * 1000.0;
+			PrepareCalls = Entry.CallCount;
+		}
+	}
+	snprintf(Buffer, sizeof(Buffer), "CPU Tick : %.3f ms (x%u)   PrepareDraw : %.3f ms (x%u)",
+		TickMs, TickCalls, PrepareMs, PrepareCalls);
+	OutLines.push_back(FString(Buffer));
+
+	// --- GPU 시간 (GPUProfiler 스냅샷, name "ParticleRender") ---
+	// 실제 GPU draw는 per-section 라우팅(DrawCommandBuilder)에서 발생한다. draw dispatch
+	// 지점이 정해지면 그 자리에 GPU_SCOPE_STAT_CAT("ParticleRender","Particles")만 추가하면
+	// 아래 라인이 자동으로 값을 표시한다 (드로우콜 카운터와 동일 지점).
+	double GpuMs = 0.0;
+	bool bGpuFound = false;
+	const TArray<FStatEntry>& GPUSnapshot = FGPUProfiler::Get().GetGPUSnapshot();
+	for (const FStatEntry& Entry : GPUSnapshot)
+	{
+		if (Entry.Name && strcmp(Entry.Name, "ParticleRender") == 0)
+		{
+			GpuMs = Entry.LastTime * 1000.0;
+			bGpuFound = true;
+			break;
+		}
+	}
+	if (bGpuFound)
+	{
+		snprintf(Buffer, sizeof(Buffer), "GPU Render : %.3f ms", GpuMs);
+	}
+	else
+	{
+		snprintf(Buffer, sizeof(Buffer), "GPU Render : (awaiting draw-site)");
+	}
+	OutLines.push_back(FString(Buffer));
+
+	// --- 드로우콜: PrepareDrawBuffer에서 제출된 파티클 섹션 수 (emitter당 1 draw) ---
+	snprintf(Buffer, sizeof(Buffer), "Draw Calls : %u (submitted)", FParticleStats::DrawCalls);
+	OutLines.push_back(FString(Buffer));
+#else
+	OutLines.push_back(FString("Particle stats unavailable (STATS=0)"));
+#endif
+}
+
 void FOverlayStatSystem::BuildLines(const UEditorEngine& Editor, TArray<FOverlayStatLine>& OutLines) const
 {
 	OutLines.clear();
@@ -322,6 +421,10 @@ void FOverlayStatSystem::BuildLines(const UEditorEngine& Editor, TArray<FOverlay
 	if (bShowSkinning)
 	{
 		EstimatedLineCount += 4;
+	}
+	if (bShowParticles)
+	{
+		EstimatedLineCount += 9;
 	}
 	OutLines.reserve(EstimatedLineCount);
 
@@ -365,6 +468,13 @@ void FOverlayStatSystem::BuildLines(const UEditorEngine& Editor, TArray<FOverlay
 	{
 		Lines.clear();
 		BuildSkinningLines(Lines);
+		AppendGroup(Lines);
+	}
+
+	if (bShowParticles)
+	{
+		Lines.clear();
+		BuildParticleLines(Lines);
 		AppendGroup(Lines);
 	}
 }
@@ -472,5 +582,12 @@ void FOverlayStatSystem::RenderImGui(const UEditorEngine& Editor, const FRect& V
 		Lines.clear();
 		BuildSkinningLines(Lines);
 		RenderWindow("##StatSkinningOverlay", "Stat Skinning", ImVec4(0.05f, 0.10f, 0.08f, 0.62f), Lines);
+	}
+
+	if (bShowParticles)
+	{
+		Lines.clear();
+		BuildParticleLines(Lines);
+		RenderWindow("##StatParticlesOverlay", "Stat Particles", ImVec4(0.04f, 0.08f, 0.10f, 0.62f), Lines);
 	}
 }

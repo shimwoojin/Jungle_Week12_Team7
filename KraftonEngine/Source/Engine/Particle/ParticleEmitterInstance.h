@@ -129,6 +129,9 @@ public:
 
 	uint32 GetActiveParticleCount() const { return ActiveParticles; }
 	uint32 GetMaxParticleCount()    const { return MaxActiveParticles; }
+	uint32 GetParticleStride()      const { return ParticleStride; }
+	// GT가 들고 있는 이 emitter 입자 버퍼의 총 할당 바이트 (data + indices + instance).
+	uint64 GetAllocatedBytes()      const { return static_cast<uint64>(RuntimeStorage.MemBlock.size()); }
 	// finite loop emitter가 더 이상 spawn하지 않는 상태인지 / 실제로 완전히 끝났는지.
 	bool   IsSpawningComplete()     const;
 	bool   IsFinished()             const;

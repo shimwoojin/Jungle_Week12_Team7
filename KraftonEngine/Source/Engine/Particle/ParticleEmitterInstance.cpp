@@ -18,6 +18,7 @@
 #include "Debug/DrawDebugHelpers.h"
 #include "GameFramework/World.h"
 #include "Math/Transform.h"
+#include "Profiling/Stats/ParticleStats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -889,6 +890,7 @@ int32 FParticleEmitterInstance::SpawnInternal(int32 Count, float StartTime, floa
 		}
 	}
 
+	PARTICLE_STATS_ADD_SPAWN(SpawnedCount);
 	return SpawnedCount;
 }
 
@@ -942,6 +944,10 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 
 	ResolveParticleCollisions(DeltaTime, ActiveParticleBuckets);
 
+#if STATS
+	// collision 처리 후 캡처 → kill 카운트에 collision 사망 입자까지 포함.
+	const uint32 PreUpdateActiveParticles = ActiveParticles;
+#endif
 	uint32 WriteIndex = 0;
 
 	for (uint32 ReadIndex = 0; ReadIndex < ActiveParticles; ++ReadIndex)
@@ -977,6 +983,11 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 	}
 
 	ActiveParticles = WriteIndex;
+
+#if STATS
+	// 이번 Update에서 사라진 입자 = 압축 전 활성 수 - 생존 수.
+	PARTICLE_STATS_ADD_KILL(PreUpdateActiveParticles - WriteIndex);
+#endif
 }
 
 void FParticleEmitterInstance::ResolveParticleCollisions(

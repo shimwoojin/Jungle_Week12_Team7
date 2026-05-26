@@ -13,6 +13,8 @@
 #include "Render/Shader/ShaderManager.h"
 #include "Render/Types/FrameContext.h"
 #include "Render/Command/DrawCommand.h"
+#include "Profiling/Stats/Stats.h"
+#include "Profiling/Stats/ParticleStats.h"
 
 #include <vector>
 #include <cmath>
@@ -223,6 +225,9 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	}
 	if (Replays.empty()) return false;
 
+	// 빌보드 corner expansion + VB/IB 업로드 CPU 비용 (입자 있는 프레임만 측정).
+	SCOPE_STAT_CAT("ParticlePrepareDraw", "Particles");
+
 	// ---- 모든 emitter 디스패치 — emitter당 1 SectionDraw + 자체 BufferOverride ----
 	auto& MutableSections = const_cast<TArray<FMeshSectionDraw>&>(GetSectionDraws());
 	MutableSections.clear();
@@ -314,6 +319,11 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	}
 
 	LastIndexCount = TotalIndexCount;
+
+	// 제출된 파티클 섹션 수 = DrawIndexedInstanced 호출 수 (emitter당 1섹션). 멀티뷰포트면
+	// 뷰당 PrepareDrawBuffer가 호출되어 자연스럽게 뷰 합산이 된다.
+	PARTICLE_STATS_ADD_DRAW_CALLS(static_cast<uint32>(MutableSections.size()));
+
 	// section-level BufferOverride 사용 — OutBuffer는 빈 채로 두고 section이 자체 buffer 가짐.
 	// BuildCommandForProxy가 ProxyBuffer 비어도 section 처리 가능하도록 수정됨.
 	return !MutableSections.empty();

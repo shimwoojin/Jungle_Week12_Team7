@@ -9,6 +9,7 @@
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
 #include "Serialization/Archive.h"
 #include "Core/Logging/Log.h"
+#include "Profiling/Stats/ParticleStats.h"
 
 #include <algorithm>
 
@@ -157,6 +158,9 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	if (!bActive) return;
 	if (!Template) return;
 
+	// PSC tick 전체(LOD 선택 + 시뮬 + 이벤트 디스패치 + dynamic data push) CPU 비용.
+	SCOPE_STAT_CAT("ParticleTick", "Particles");
+
 	if (EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
@@ -177,6 +181,30 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	// PSC가 현재 선택한 LOD를 source of truth로 들고 있고, instance는 매 tick 그 값을 따른다.
 	ApplyCurrentLODToEmitterInstances();
+
+#if STATS
+	// 파티클 개수/메모리 게이지 누적. TickInterval skip 프레임에도 반영되도록 시뮬레이션
+	// 게이트(아래 AccumulatedTime 체크) 이전에 집계한다. 값은 직전 tick 기준 — 오버레이 표시 1프레임 lag.
+	PARTICLE_STATS_ADD_COMPONENT();
+	for (const FParticleEmitterInstance* Inst : EmitterInstances)
+	{
+		if (!Inst) continue;
+		PARTICLE_STATS_ADD_EMITTER();
+
+		const uint32 Active = Inst->GetActiveParticleCount();
+		switch (Inst->GetType())
+		{
+		case EDynamicEmitterType::Sprite: PARTICLE_STATS_ADD_SPRITE(Active); break;
+		case EDynamicEmitterType::Mesh:   PARTICLE_STATS_ADD_MESH(Active);   break;
+		default:                          PARTICLE_STATS_ADD_OTHER(Active);  break;
+		}
+
+		const uint64 Stride        = Inst->GetParticleStride();
+		const uint64 ActiveBytes   = static_cast<uint64>(Active) * Stride;
+		const uint64 ReservedBytes = static_cast<uint64>(Inst->GetMaxParticleCount()) * Stride;
+		PARTICLE_STATS_ADD_MEMORY(Inst->GetAllocatedBytes(), ActiveBytes, ReservedBytes);
+	}
+#endif
 
 	// 매 프레임 Tick이 아닌, 일정 간격마다 몰아서 Tick
 	// 실제로 시뮬레이션에 넘길 DeltaTime
