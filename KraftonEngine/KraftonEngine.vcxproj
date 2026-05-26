@@ -477,6 +477,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyEvent.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.cpp" />
+    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotify_LogMessage.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotify_PlaySound.cpp" />
@@ -641,8 +642,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColor.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.cpp" />
@@ -653,6 +652,8 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSize.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.cpp" />
     <ClCompile Include="Source\Engine\Particle\TypeData\ParticleModuleTypeDataBase.cpp" />
     <ClCompile Include="Source\Engine\Particle\TypeData\ParticleModuleTypeDataBeam.cpp" />
@@ -698,9 +699,9 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\DecalPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\EditorIconPass.cpp" />
-    <ClCompile Include="Source\Engine\Render\RenderPass\FogPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\EditorLinesPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\FXAAPass.cpp" />
+    <ClCompile Include="Source\Engine\Render\RenderPass\FogPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\GammaCorrectionPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\GizmoInnerPass.cpp" />
     <ClCompile Include="Source\Engine\Render\RenderPass\GizmoOuterPass.cpp" />
@@ -862,6 +863,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyEvent.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.h" />
+    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotify_LogMessage.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotify_PlaySound.h" />
@@ -1060,17 +1062,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEmitter.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEmitterInstance.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEventManager.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEvents.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleHelper.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleLODLevel.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleModule.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleSystem.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleSystemManager.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleCollision.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColor.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.h" />
@@ -1082,6 +1073,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.h" />
     <ClInclude Include="Source\Engine\Particle\TypeData\ParticleModuleTypeDataBase.h" />
     <ClInclude Include="Source\Engine\Particle\TypeData\ParticleModuleTypeDataBeam.h" />
@@ -1134,9 +1126,9 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Render\RenderPass\AdditiveDecalPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\DecalPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\EditorIconPass.h" />
-    <ClInclude Include="Source\Engine\Render\RenderPass\FogPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\EditorLinesPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\FXAAPass.h" />
+    <ClInclude Include="Source\Engine\Render\RenderPass\FogPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\GammaCorrectionPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\GizmoInnerPass.h" />
     <ClInclude Include="Source\Engine\Render\RenderPass\GizmoOuterPass.h" />
@@ -1778,6 +1770,13 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Common\ConstantBuffers.hlsli">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Game|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ObjViewDebug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Demo|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Shaders\Common\Fog.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Game|x64'">true</ExcludedFromBuild>

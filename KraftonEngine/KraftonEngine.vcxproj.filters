@@ -507,6 +507,9 @@
     <FxCompile Include="Shaders\Common\ConstantBuffers.hlsli">
       <Filter>Shaders\Common</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Common\Fog.hlsli">
+      <Filter>Shaders\Common</Filter>
+    </FxCompile>
     <FxCompile Include="Shaders\Common\ForwardLightData.hlsli">
       <Filter>Shaders\Common</Filter>
     </FxCompile>
@@ -852,6 +855,9 @@
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.cpp">
+      <Filter>Source\Engine\Animation\Notify</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.cpp">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.cpp">
@@ -1379,6 +1385,9 @@
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
@@ -1514,13 +1523,13 @@
     <ClCompile Include="Source\Engine\Render\RenderPass\EditorIconPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Render\RenderPass\FogPass.cpp">
-      <Filter>Source\Engine\Render\RenderPass</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\EditorLinesPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\FXAAPass.cpp">
+      <Filter>Source\Engine\Render\RenderPass</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Render\RenderPass\FogPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\GammaCorrectionPass.cpp">
@@ -1725,7 +1734,6 @@
     <ClCompile Include="Intermediate\Generated\Reflection.generated.cpp">
       <Filter>Intermediate\Generated</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Editor\EditorEngine.h">
@@ -1999,6 +2007,9 @@
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.h">
+      <Filter>Source\Engine\Animation\Notify</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.h">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.h">
@@ -2628,6 +2639,9 @@
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
@@ -2784,13 +2798,13 @@
     <ClInclude Include="Source\Engine\Render\RenderPass\EditorIconPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Render\RenderPass\FogPass.h">
-      <Filter>Source\Engine\Render\RenderPass</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Engine\Render\RenderPass\EditorLinesPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\RenderPass\FXAAPass.h">
+      <Filter>Source\Engine\Render\RenderPass</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Render\RenderPass\FogPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\RenderPass\GammaCorrectionPass.h">
@@ -4707,20 +4721,6 @@
     <ClInclude Include="ThirdParty\sol2\include\sol\utility\to_string.hpp">
       <Filter>ThirdParty\sol2\include\sol\utility</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\Distribution.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloat.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniformCurve.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVector.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h" />
-    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="KraftonEngine.rc" />
