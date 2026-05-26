@@ -15,7 +15,7 @@ cbuffer ParticleBeamTrailParams : register(b2)
     float4 BaseColor;    // 추가 tint
     float  Opacity;      // [0,1]
     float  UseTexture;   // 0=텍스처 무시(base color만), 1=텍스처 사용
-    float  ScrollSpeed;  // beam 길이방향(v) UV 스크롤 속도 (에너지 흐름, 0 = 정지)
+    float  ScrollSpeed;  // beam 길이방향(u) UV 스크롤 속도 (에너지 흐름, 0 = 정지)
     float  _pad;
 }
 
@@ -44,9 +44,9 @@ PS_Input_BeamTrail VS(VS_Input_BeamTrail input)
 
 float4 PS(PS_Input_BeamTrail input) : SV_TARGET
 {
-    // beam 길이방향(v)으로 UV를 흘려 에너지가 흐르는 느낌. Time은 b0 FrameBuffer.
+    // beam 길이방향(u)으로 UV를 흘려 에너지가 흐르는 느낌. Time은 b0 FrameBuffer.
     // frac으로 0~1 wrap → Clamp 샘플러여도 끊김 없이 반복.
-    float2 uv = float2(input.texcoord.x, frac(input.texcoord.y - Time * ScrollSpeed));
+    float2 uv = float2(frac(input.texcoord.x - Time * ScrollSpeed), input.texcoord.y);
     float4 sampled = DiffuseTexture.Sample(LinearClampSampler, uv);
     float3 texRgb = lerp(float3(1,1,1), sampled.rgb, UseTexture);
     float  texA   = lerp(1.0,            sampled.a,   UseTexture);

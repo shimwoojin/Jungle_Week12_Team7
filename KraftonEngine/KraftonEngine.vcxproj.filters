@@ -1346,6 +1346,15 @@
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamNoise.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamSource.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamTarget.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
@@ -2590,6 +2599,15 @@
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamNoise.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamSource.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamTarget.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleCollision.h">

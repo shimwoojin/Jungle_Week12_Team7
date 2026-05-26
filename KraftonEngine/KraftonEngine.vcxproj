@@ -641,6 +641,9 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamNoise.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamSource.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamTarget.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp" />
@@ -1070,6 +1073,9 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Particle\ParticleModule.h" />
     <ClInclude Include="Source\Engine\Particle\ParticleSystem.h" />
     <ClInclude Include="Source\Engine\Particle\ParticleSystemManager.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamNoise.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamSource.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamTarget.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleCollision.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColor.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.h" />

@@ -261,12 +261,19 @@ class FParticleBeamEmitterInstance : public FParticleEmitterInstance
 {
 public:
 	FDynamicEmitterDataBase* GetDynamicData() override;
+	void Reset() override;
 	EDynamicEmitterType GetType() const override { return EDynamicEmitterType::Beam; }
 	// Beam 은 source/target 두 endpoint 가 필요. EventGenerator/외부에서 지정.
 	void SetEndpoints(const FVector& InSource, const FVector& InTarget);
+	void ResetEndpointLocks();
 protected:
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };
+	FVector LockedSourcePoint = { 0, 0, 0 };
+	FVector LockedTargetPoint = { 0, 0, 0 };
+	bool bHasLockedSourcePoint = false;
+	bool bHasLockedTargetPoint = false;
+	bool bHasExplicitEndpoints = false;
 };
 
 class FParticleRibbonEmitterInstance : public FParticleEmitterInstance

@@ -6,6 +6,7 @@
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
+#include "Particle/Modules/ParticleModuleBeamNoise.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBase.h"
 #include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
@@ -351,8 +352,22 @@ namespace
 			return;
 		}
 
-		BeamTypeData->NoiseAmount = ClampNonNegativeFloat(BeamTypeData->NoiseAmount * ReductionScale);
-		BeamTypeData->NoiseFrequency = ClampNonNegativeFloat(BeamTypeData->NoiseFrequency * ReductionScale);
+		BeamTypeData->InterpolationPoints = ClampPositiveInt(
+			static_cast<int32>(BeamTypeData->InterpolationPoints * ReductionScale),
+			1);
+
+		for (UParticleModule* Module : TargetLOD->Modules)
+		{
+			UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module);
+			if (!BeamNoise)
+			{
+				continue;
+			}
+
+			BeamNoise->NoiseTessellation = ClampPositiveInt(
+				static_cast<int32>(BeamNoise->NoiseTessellation * ReductionScale),
+				0);
+		}
 	}
 
 	void ApplyOptionalFeatureLODReductionBoundary(UParticleLODLevel* TargetLOD)
@@ -713,6 +728,13 @@ bool UParticleLODLevel::AddModule(UParticleModule* InModule)
 	for (UParticleModule* Existing : Modules)
 	{
 		if (Existing == InModule) return false;
+
+		// Regular module 중에서도 Beam Source/Target/Noise처럼 단일 슬롯 성격인
+		// 모듈은 같은 클래스가 중복 추가되지 않게 막는다.
+		if (Existing && InModule->IsUnique() && Existing->GetClass() == InModule->GetClass())
+		{
+			return false;
+		}
 	}
 
 	InModule->SetOuter(this);

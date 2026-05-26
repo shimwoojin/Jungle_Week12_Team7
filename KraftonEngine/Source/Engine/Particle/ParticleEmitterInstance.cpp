@@ -6,6 +6,9 @@
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
+#include "Particle/Modules/ParticleModuleBeamSource.h"
+#include "Particle/Modules/ParticleModuleBeamTarget.h"
+#include "Particle/Modules/ParticleModuleBeamNoise.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
@@ -977,29 +980,145 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Beam;
 
-	Data->Source.SourcePoint = SourcePoint;
-	Data->Source.TargetPoint = TargetPoint;
+	FVector ResolvedSource = SourcePoint;
+	FVector ResolvedTarget = TargetPoint;
 
 	if (UParticleLODLevel* LOD = GetCurrentLOD())
 	{
-		if (auto* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule))
+		const float EvalTime = GetCurrentLoopTimeSeconds();
+		UParticleModuleTypeDataBeam* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule);
+		float BeamDistance = (ResolvedTarget - ResolvedSource).Length();
+
+		if (BeamTypeData)
 		{
+			if (!bHasExplicitEndpoints)
+			{
+				ResolvedSource = ConvertPositionToSimulation(BeamTypeData->DefaultSource, EParticleValueSpace::Local);
+				ResolvedTarget = ConvertPositionToSimulation(BeamTypeData->DefaultTarget, EParticleValueSpace::Local);
+			}
+
+			BeamDistance = BeamTypeData->EvaluateDistance(EvalTime, Component);
 			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
-			Data->Source.Width = BeamTypeData->Width;
-			Data->Source.NoiseAmount = BeamTypeData->NoiseAmount;
-			Data->Source.NoiseFrequency = BeamTypeData->NoiseFrequency;
-			Data->Source.NoiseSpeed = BeamTypeData->NoiseSpeed;
+			Data->Source.Width = BeamTypeData->EvaluateWidth(EvalTime, Component);
 			Data->Source.bTileUV = BeamTypeData->bTileUV;
+			Data->Source.bRenderGeometry = BeamTypeData->bRenderGeometry;
+			Data->Source.TaperFactor = BeamTypeData->TaperFactor;
+			Data->Source.bTaperFull = BeamTypeData->TaperMethod == UParticleModuleTypeDataBeam::EBeamTaperMethod::Full;
+
+			if (BeamTypeData->BeamMethod == UParticleModuleTypeDataBeam::EBeam2Method::Distance)
+			{
+				const FVector LocalXDistance(BeamDistance, 0.0f, 0.0f);
+				ResolvedTarget = ResolvedSource + ConvertVectorToSimulation(LocalXDistance, EParticleValueSpace::Local);
+			}
 		}
+
+		if (UParticleModuleBeamSource* SourceModule = LOD->FindModuleByClass<UParticleModuleBeamSource>())
+		{
+			if (SourceModule->IsEnabled())
+			{
+				FVector ModuleSource = SourceModule->ResolveSource(this, EvalTime, ResolvedSource);
+				if (SourceModule->bLockSource)
+				{
+					if (!bHasLockedSourcePoint)
+					{
+						LockedSourcePoint = ModuleSource;
+						bHasLockedSourcePoint = true;
+					}
+					ModuleSource = LockedSourcePoint;
+				}
+				else
+				{
+					bHasLockedSourcePoint = false;
+				}
+				ResolvedSource = ModuleSource;
+			}
+		}
+		else
+		{
+			bHasLockedSourcePoint = false;
+		}
+
+		// Source가 모듈에 의해 바뀐 뒤 Distance Beam target을 다시 계산한다.
+		if (BeamTypeData && BeamTypeData->BeamMethod == UParticleModuleTypeDataBeam::EBeam2Method::Distance)
+		{
+			const FVector LocalXDistance(BeamDistance, 0.0f, 0.0f);
+			ResolvedTarget = ResolvedSource + ConvertVectorToSimulation(LocalXDistance, EParticleValueSpace::Local);
+		}
+
+		if (UParticleModuleBeamTarget* TargetModule = LOD->FindModuleByClass<UParticleModuleBeamTarget>())
+		{
+			if (TargetModule->IsEnabled())
+			{
+				FVector ModuleTarget = TargetModule->ResolveTarget(this, EvalTime, ResolvedSource, ResolvedTarget, BeamDistance);
+				if (TargetModule->bLockTarget)
+				{
+					if (!bHasLockedTargetPoint)
+					{
+						LockedTargetPoint = ModuleTarget;
+						bHasLockedTargetPoint = true;
+					}
+					ModuleTarget = LockedTargetPoint;
+				}
+				else
+				{
+					bHasLockedTargetPoint = false;
+				}
+				ResolvedTarget = ModuleTarget;
+			}
+		}
+		else
+		{
+			bHasLockedTargetPoint = false;
+		}
+
+		if (BeamTypeData && BeamTypeData->Speed > 0.0f)
+		{
+			const FVector FullAxis = ResolvedTarget - ResolvedSource;
+			const float FullLength = FullAxis.Length();
+			const float VisibleLength = BeamTypeData->Speed * EvalTime;
+			if (FullLength > 1e-4f && VisibleLength < FullLength)
+			{
+				ResolvedTarget = ResolvedSource + FullAxis * (VisibleLength / FullLength);
+			}
+		}
+
+		if (UParticleModuleBeamNoise* NoiseModule = LOD->FindModuleByClass<UParticleModuleBeamNoise>())
+		{
+			if (NoiseModule->IsEnabled())
+			{
+				Data->Source.NoiseAmount = NoiseModule->EvaluateNoiseRange(EvalTime, Component);
+				Data->Source.NoiseFrequency = NoiseModule->EvaluateNoiseFrequency(EvalTime, Component);
+				Data->Source.NoiseSpeed = NoiseModule->EvaluateNoiseSpeed(EvalTime, Component);
+				Data->Source.NoiseTessellation = NoiseModule->NoiseTessellation;
+				Data->Source.bSmoothNoise = NoiseModule->bSmooth;
+			}
+		}
+
 		Data->Source.EmitterTime = EmitterTimeSeconds;
 	}
 
+	Data->Source.SourcePoint = ResolvedSource;
+	Data->Source.TargetPoint = ResolvedTarget;
 	return Data;
 }
+void FParticleBeamEmitterInstance::Reset()
+{
+	FParticleEmitterInstance::Reset();
+	ResetEndpointLocks();
+}
+
 void FParticleBeamEmitterInstance::SetEndpoints(const FVector& InSource, const FVector& InTarget)
 {
 	SourcePoint = InSource;
 	TargetPoint = InTarget;
+	bHasExplicitEndpoints = true;
+	ResetEndpointLocks();
+}
+
+void FParticleBeamEmitterInstance::ResetEndpointLocks()
+{
+	bHasLockedSourcePoint = false;
+	bHasLockedTargetPoint = false;
 }
 
 // -- Ribbon ----
