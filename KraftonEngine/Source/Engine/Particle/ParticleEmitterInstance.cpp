@@ -26,7 +26,8 @@ namespace
 	constexpr float ParticleCollisionSameSurfaceNormalDotThreshold = 0.95f;
 	constexpr float ParticleCollisionSurfaceOffset = 1.0e-2f;
 	constexpr int32 ParticleCollisionBudgetLOD0 = 512;
-	constexpr int32 ParticleCollisionBudgetLowerLOD = 128;
+	constexpr int32 ParticleCollisionBudgetLOD1 = 128;
+	constexpr int32 ParticleCollisionBudgetLOD2OrLower = 0;
 
 	FVector ReflectVelocityAboutNormal(const FVector& Velocity, const FVector& Normal)
 	{
@@ -878,6 +879,11 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 		return;
 	}
 
+	if (!ShouldProcessCollisionsForCurrentLOD())
+	{
+		return;
+	}
+
 	if (!ModuleOffsetMap)
 	{
 		return;
@@ -891,7 +897,7 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 
 	const uint32 CollisionModuleOffset = OffsetIt->second;
 
-	const int32 CollisionBudget = GetCollisionCheckBudget();
+	const int32 CollisionBudget = GetCollisionCheckBudgetForCurrentLOD();
 	if (CollisionBudget <= 0)
 	{
 		return;
@@ -1058,11 +1064,12 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 
 	++Payload->NumCollisions;
 
-	if (CollisionModule.bGenerateCollisionEvents)
+	if (CollisionModule.bGenerateCollisionEvents && ShouldEmitCollisionEventsForCurrentLOD())
 	{
 		// Base collision events are emitted after we recognize the hit and update
 		// collision count, but before final kill/freeze/disable consequences are
-		// applied. This keeps event timing consistent across response modes.
+		// applied. This keeps event timing consistent across response modes, while
+		// still allowing lower LODs to reduce event fidelity separately from queries.
 		FParticleEventCollideData CollisionEvent;
 		CollisionEvent.Type = EParticleEventType::Collision;
 		CollisionEvent.TimeSeconds = CollisionTimeSeconds;
@@ -1147,12 +1154,42 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 	}
 }
 
-int32 FParticleEmitterInstance::GetCollisionCheckBudget() const
+bool FParticleEmitterInstance::ShouldProcessCollisionsForCurrentLOD() const
 {
-	// Lower automatic LODs are expected to become more collision-conservative over time.
-	// First pass keeps collision enabled everywhere, but narrows the per-frame budget once
-	// the emitter is no longer rendering at LOD0.
-	return (CurrentLODIndex <= 0) ? ParticleCollisionBudgetLOD0 : ParticleCollisionBudgetLowerLOD;
+	return !IsCollisionFullyDisabledForCurrentLOD();
+}
+
+bool FParticleEmitterInstance::IsCollisionFullyDisabledForCurrentLOD() const
+{
+	// Full collision disable is the strongest LOD reduction axis. It is kept
+	// separate from reduced budgets or event gating so those policies can evolve
+	// independently.
+	return CurrentLODIndex >= 2;
+}
+
+bool FParticleEmitterInstance::ShouldEmitCollisionEventsForCurrentLOD() const
+{
+	// Collision queries and collision-event fidelity are distinct reduction axes.
+	// Lower LODs may keep some collision behavior while choosing not to preserve
+	// gameplay/event-facing collision reporting.
+	return CurrentLODIndex <= 0;
+}
+
+int32 FParticleEmitterInstance::GetCollisionCheckBudgetForCurrentLOD() const
+{
+	// Collision is now a lower-LOD runtime cost target. Budget scaling is one
+	// reduction axis; full disable and event gating are handled separately.
+	if (CurrentLODIndex <= 0)
+	{
+		return ParticleCollisionBudgetLOD0;
+	}
+
+	if (CurrentLODIndex == 1)
+	{
+		return ParticleCollisionBudgetLOD1;
+	}
+
+	return ParticleCollisionBudgetLOD2OrLower;
 }
 
 void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)

@@ -202,7 +202,10 @@ private:
 		const UParticleModuleCollision& CollisionModule,
 		const FHitResult& Hit,
 		const FVector& ImpactVelocity) const;
-	int32 GetCollisionCheckBudget() const;
+	bool ShouldProcessCollisionsForCurrentLOD() const;
+	bool IsCollisionFullyDisabledForCurrentLOD() const;
+	bool ShouldEmitCollisionEventsForCurrentLOD() const;
+	int32 GetCollisionCheckBudgetForCurrentLOD() const;
 	bool IsSpawningAllowed() const;
 	void AdvanceLoopState(float DeltaTime);
 
