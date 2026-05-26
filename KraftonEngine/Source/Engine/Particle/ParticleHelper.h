@@ -447,6 +447,13 @@ struct FDynamicBeamEmitterData : FDynamicEmitterDataBase
 // -- Ribbon ----
 struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Current Ribbon render contract is emitter-level and single-trail:
+	// one replay snapshot represents one emitter's active-particle trail for this
+	// frame, not multiple independent ribbon chains.
+	//
+	// The fields below are authoring/type-data derived shaping inputs consumed by
+	// the RT ribbon geometry builder. They describe how the single trail should be
+	// curved/tessellated/UV-tiled; they are not per-particle payload values.
 	int32 MaxTessellation = 8;
 	float TangentTension = 0.5f;    // ribbon tangent 보간 강도 (0 = 느슨함, 1 = 강함)
 	float TilesPerTrail = 1.0f;     // trail 전체 UV 반복 수

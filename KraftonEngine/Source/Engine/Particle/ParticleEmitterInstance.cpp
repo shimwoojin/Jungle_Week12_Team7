@@ -2632,8 +2632,15 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 	{
 		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
 		{
-			// TypeData Ribbon 설정을 RenderThread용 ReplayData로 넘긴다.
-			// UI/로드/직접 코드 수정으로 범위를 벗어난 값이 들어와도 렌더 쪽에서는 안전한 값만 사용하게 한다.
+			// Ribbon replay metadata is currently an emitter-level render contract.
+			// Even though live particle simulation can preserve spawn-time
+			// SimulationLODIndex, the current Ribbon RT path still builds one trail
+			// snapshot per emitter per frame, so its shaping inputs intentionally come
+			// from the current emitter LOD rather than per-particle simulation LOD.
+			//
+			// TypeData values are sanitized here before crossing the GT->RT boundary so
+			// the replay struct stays a practical, render-ready contract rather than a
+			// raw bag of authoring values.
 			Data->Source.MaxTessellation = std::clamp(RibbonTypeData->MaxTessellation, 1, 64);
 			Data->Source.TangentTension = std::clamp(RibbonTypeData->TangentTension, 0.0f, 1.0f);
 			Data->Source.TilesPerTrail = std::max(0.0f, RibbonTypeData->TilesPerTrail);

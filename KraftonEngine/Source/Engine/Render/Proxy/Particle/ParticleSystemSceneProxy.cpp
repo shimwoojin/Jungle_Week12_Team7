@@ -251,7 +251,11 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		}
 
 		// Material 먼저 결정 — sort 조건 산출 위해 BuildDraw 호출 전에 BlendState 확인.
-		// RequiredModule.Material 우선 (Template 있을 때). 없으면 type별 fallback.
+		// Most particle paths still lean on the proxy's cached emitter material when
+		// available. Ribbon is called out explicitly below because its current GT->RT
+		// contract now carries real shaping data and should prefer the replay-supplied
+		// material first so readers can answer "what material does this ribbon draw
+		// with?" without reverse-engineering the broader shared fallback path.
 		UMaterial* RequiredMat = (EmitterIdx < EmitterMaterials.size())
 			? EmitterMaterials[EmitterIdx] : nullptr;
 		UMaterial* FallbackMat = SpriteMaterial;
@@ -262,7 +266,23 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		case EDynamicEmitterType::Ribbon: FallbackMat = BeamTrailMaterial; break;
 		default: break;
 		}
-		UMaterial* SectionMat  = RequiredMat ? RequiredMat : FallbackMat;
+
+		UMaterial* SectionMat = nullptr;
+		if (Replay->EmitterType == EDynamicEmitterType::Ribbon)
+		{
+			// Current Ribbon material authority:
+			//   1) Replay.Material      : GT-resolved material that traveled with this
+			//                              emitter's ribbon snapshot
+			//   2) RequiredMat cache    : shared scene-proxy emitter cache fallback
+			//   3) BeamTrailMaterial    : type fallback when neither source is present
+			SectionMat = Replay->Material
+				? Replay->Material
+				: (RequiredMat ? RequiredMat : FallbackMat);
+		}
+		else
+		{
+			SectionMat = RequiredMat ? RequiredMat : FallbackMat;
+		}
 
 		// 정렬 필요 여부는 이제 material blend가 아니라 replay 계약의 SortMode가 결정한다.
 		const bool bRequiresSort = Replay->SortMode != EParticleReplaySortMode::None;

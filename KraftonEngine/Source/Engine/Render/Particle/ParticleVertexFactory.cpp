@@ -514,6 +514,11 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const float TangentTension = std::clamp(RibbonReplay.TangentTension, 0.0f, 1.0f);
 	const float TilesPerTrail = std::max(0.0f, RibbonReplay.TilesPerTrail);
 
+	// Current Ribbon consumption contract:
+	// - one replay snapshot == one emitter-level ribbon trail for this frame
+	// - the active-particle snapshot is interpreted as a single ordered chain
+	// - generic particle translucent SortMode does not define ribbon topology
+	//   ordering; trail continuity does
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N < 2 || View.ParticleStride == 0 || !View.ParticleData) return false; // trail은 최소 2점
@@ -531,7 +536,9 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		return W;
 	};
 
-	// age(RelativeTime)순 정렬 — 오래된 입자부터 이어 trail 연속성 확보.
+	// Ribbon은 일반 translucent particle처럼 "그리기용 depth sort"를 우선하지 않고,
+	// trail topology를 복원하기 위한 order를 우선한다. 현재 구현은 emitter의 active
+	// particle snapshot 전체를 하나의 trail로 보고, 오래된 입자부터 이어 붙인다.
 	std::vector<uint32> Order(N);
 	for (uint32 i = 0; i < N; ++i) Order[i] = i;
 	std::sort(Order.begin(), Order.end(), [RawBase, Stride](uint32 a, uint32 b)
@@ -587,6 +594,8 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	}
 
 	// 각 control point의 tangent를 계산한다. TangentTension은 곡선 보간 강도다.
+	// 이것은 particle simulation payload가 아니라 emitter-level ribbon shaping
+	// rule이며, GT replay가 넘긴 authoring/type-data 계약을 RT가 소비하는 지점이다.
 	for (uint32 i = 0; i < N; ++i)
 	{
 		const FVector Prev = (i > 0) ? ControlPoints[i - 1].Position : ControlPoints[i].Position;
