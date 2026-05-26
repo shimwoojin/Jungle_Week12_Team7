@@ -25,6 +25,12 @@
 #include <cstring>
 #include <string>
 
+static EParticleReplaySortMode ToReplaySortMode(UParticleModuleRequired::ESortMode InSortMode);
+static EParticleMeshReplayAlignment ToReplayMeshAlignment(
+	UParticleModuleTypeDataMesh::EMeshAlignment InAlignment);
+static EParticleSpriteReplayAlignment ToReplaySpriteAlignment(
+	UParticleModuleRequired::EScreenAlignment InAlignment);
+
 namespace
 {
 	constexpr float ParticleCollisionMinTravelDistance = 1.0e-3f;
@@ -169,6 +175,266 @@ namespace
 		Shaping.TangentTension = std::clamp(RibbonTypeData.TangentTension, 0.0f, 1.0f);
 		Shaping.TilesPerTrail = std::max(0.0f, RibbonTypeData.TilesPerTrail);
 		return Shaping;
+	}
+
+	void CopyParticleSnapshotToReplay(
+		const FParticleEmitterInstance& EmitterInstance,
+		FDynamicEmitterReplayDataBase& OutData)
+	{
+		const uint32 ActiveParticleCount = EmitterInstance.GetActiveParticleCount();
+		const uint32 ParticleStride = EmitterInstance.GetParticleStride();
+
+		OutData.ActiveParticleCount = ActiveParticleCount;
+		OutData.ParticleStride = ParticleStride;
+		OutData.SnapshotStorage.Allocate(ActiveParticleCount * ParticleStride, ActiveParticleCount, 0);
+
+		for (uint32 i = 0; i < ActiveParticleCount; ++i)
+		{
+			const FBaseParticle* Particle = EmitterInstance.GetParticleAt(i);
+			if (!Particle)
+			{
+				continue;
+			}
+
+			std::memcpy(
+				OutData.SnapshotStorage.ParticleData + i * ParticleStride,
+				Particle,
+				ParticleStride);
+
+			OutData.SnapshotStorage.ParticleIndices[i] = static_cast<uint16>(i);
+		}
+	}
+
+	void FillBaseReplayMetadataFromRequiredModule(
+		const FParticleEmitterInstance& EmitterInstance,
+		UParticleLODLevel& RenderReplayLOD,
+		FDynamicEmitterReplayDataBase& OutData)
+	{
+		UParticleModuleRequired* Required = RenderReplayLOD.RequiredModule;
+		if (!Required)
+		{
+			return;
+		}
+
+		OutData.Material = Required->ResolveMaterial();
+		// Replay.Material은 SceneProxy가 section material을 고를 때 우선 사용하는 primary source다.
+		// cached emitter material은 이 값이 비었을 때만 fallback으로 사용된다.
+		// SortMode는 material blend와 별개로 "어떤 기준으로 particle를 재배치할지"를 RT에 알려준다.
+		OutData.SortMode = ToReplaySortMode(Required->SortMode);
+		// NOTE: Replay에 BlendState 필드 없음 — Material.GetBlendState()가 single source of truth.
+		// RequiredModule.BlendState로 Material을 override하고 싶으면 SceneProxy의
+		// Material 캐싱 단계에서 SetBlendState 같은 API 추가 필요 (현재 RequiredModule.SubImagesH/V와 동일 패턴).
+		OutData.bUseLocalSpace = Required->bUseLocalSpace;
+		// Base replay metadata는 current render replay LOD의 RequiredModule view에서 채워진다.
+		// 이미 살아 있는 particle의 SimulationLODIndex continuity와는 다른 계층의 계약이다.
+		// 또한 GT는 여기서 fallback/default를 resolve한 render-ready snapshot을 만드는 쪽이
+		// authoritative하다. RT는 draw 직전 일부 값만 defensive safety net으로 재검증한다.
+
+		if (const UParticleSystemComponent* Component = EmitterInstance.GetComponent())
+		{
+			OutData.LocalToWorld = Component->GetWorldMatrix();
+		}
+	}
+
+	void FillSpriteReplayShapingFromRenderLOD(
+		UParticleLODLevel& RenderReplayLOD,
+		FDynamicSpriteEmitterReplayData& OutData)
+	{
+		if (!RenderReplayLOD.RequiredModule)
+		{
+			return;
+		}
+
+		// Sprite replay shaping은 current render replay LOD의 RequiredModule 기준이다.
+		OutData.SubImagesHorizontal = RenderReplayLOD.RequiredModule->SubImagesHorizontal;
+		OutData.SubImagesVertical = RenderReplayLOD.RequiredModule->SubImagesVertical;
+		OutData.Alignment = ToReplaySpriteAlignment(RenderReplayLOD.RequiredModule->ScreenAlignment);
+	}
+
+	void FillMeshReplayShapingFromRenderLOD(
+		UParticleLODLevel& RenderReplayLOD,
+		FDynamicMeshEmitterReplayData& OutData)
+	{
+		// Mesh replay shaping은 current render replay LOD의 TypeDataModule view를 사용한다.
+		if (auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(RenderReplayLOD.TypeDataModule))
+		{
+			OutData.Mesh = MeshTypeData->ResolveMesh();
+			// Alignment / bOverrideMaterial are still forwarded so the replay snapshot
+			// preserves authoring intent, but the current RT Mesh path does not yet
+			// interpret them as active orientation/material-behavior switches.
+			OutData.Alignment = ToReplayMeshAlignment(MeshTypeData->Alignment);
+			OutData.bOverrideMaterial = MeshTypeData->bOverrideMaterial;
+		}
+	}
+
+	void FillBeamReplayShapingFromRenderLOD(
+		FParticleBeamEmitterInstance& EmitterInstance,
+		UParticleLODLevel& RenderReplayLOD,
+		FDynamicBeamEmitterReplayData& OutData,
+		FVector& InOutResolvedSource,
+		FVector& InOutResolvedTarget,
+		FVector& InOutLockedSourcePoint,
+		FVector& InOutLockedTargetPoint,
+		bool& bInOutHasLockedSourcePoint,
+		bool& bInOutHasLockedTargetPoint,
+		bool bHasExplicitEndpoints)
+	{
+		const float EvalTime = EmitterInstance.GetCurrentLoopTimeSeconds();
+		UParticleModuleTypeDataBeam* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(RenderReplayLOD.TypeDataModule);
+		float BeamDistance = (InOutResolvedTarget - InOutResolvedSource).Length();
+
+		// Beam replay inputs도 emitter-level current render replay LOD에서 해석한다.
+		// Source/Target/Noise shaping은 현재 RT beam path가 소비할 단일 replay snapshot을 만들기 위한 값이다.
+		// 즉 ActiveParticleCount와 별개로, GT는 여기서 "active particle마다 서로 다른 beam endpoint"
+		// 배열을 만들지 않는다. Beam RT는 이 emitter-level shape contract를 받아 strip을 만든다.
+		if (BeamTypeData)
+		{
+			if (!bHasExplicitEndpoints)
+			{
+				InOutResolvedSource =
+					EmitterInstance.ConvertPositionToSimulation(BeamTypeData->DefaultSource, EParticleValueSpace::Local);
+				InOutResolvedTarget =
+					EmitterInstance.ConvertPositionToSimulation(BeamTypeData->DefaultTarget, EParticleValueSpace::Local);
+			}
+
+			BeamDistance = BeamTypeData->EvaluateDistance(EvalTime, EmitterInstance.GetComponent());
+			OutData.InterpolationPoints = BeamTypeData->InterpolationPoints;
+			OutData.Width = BeamTypeData->EvaluateWidth(EvalTime, EmitterInstance.GetComponent());
+			OutData.bTileUV = BeamTypeData->bTileUV;
+			OutData.bRenderGeometry = BeamTypeData->bRenderGeometry;
+			OutData.TaperFactor = BeamTypeData->TaperFactor;
+			OutData.bTaperFull =
+				BeamTypeData->TaperMethod == UParticleModuleTypeDataBeam::EBeamTaperMethod::Full;
+
+			if (BeamTypeData->BeamMethod == UParticleModuleTypeDataBeam::EBeam2Method::Distance)
+			{
+				const FVector LocalXDistance(BeamDistance, 0.0f, 0.0f);
+				InOutResolvedTarget = InOutResolvedSource +
+					EmitterInstance.ConvertVectorToSimulation(LocalXDistance, EParticleValueSpace::Local);
+			}
+		}
+
+		if (UParticleModuleBeamSource* SourceModule = RenderReplayLOD.FindModuleByClass<UParticleModuleBeamSource>())
+		{
+			if (SourceModule->IsEnabled())
+			{
+				FVector ModuleSource = SourceModule->ResolveSource(&EmitterInstance, EvalTime, InOutResolvedSource);
+				if (SourceModule->bLockSource)
+				{
+					if (!bInOutHasLockedSourcePoint)
+					{
+						InOutLockedSourcePoint = ModuleSource;
+						bInOutHasLockedSourcePoint = true;
+					}
+					ModuleSource = InOutLockedSourcePoint;
+				}
+				else
+				{
+					bInOutHasLockedSourcePoint = false;
+				}
+				InOutResolvedSource = ModuleSource;
+				OutData.SourceTangent = SourceModule->ResolveSourceTangent(&EmitterInstance, EvalTime);
+			}
+		}
+		else
+		{
+			bInOutHasLockedSourcePoint = false;
+		}
+
+		// Source가 모듈에 의해 바뀐 뒤 Distance Beam target을 다시 계산한다.
+		if (BeamTypeData && BeamTypeData->BeamMethod == UParticleModuleTypeDataBeam::EBeam2Method::Distance)
+		{
+			const FVector LocalXDistance(BeamDistance, 0.0f, 0.0f);
+			InOutResolvedTarget = InOutResolvedSource +
+				EmitterInstance.ConvertVectorToSimulation(LocalXDistance, EParticleValueSpace::Local);
+		}
+
+		if (UParticleModuleBeamTarget* TargetModule = RenderReplayLOD.FindModuleByClass<UParticleModuleBeamTarget>())
+		{
+			if (TargetModule->IsEnabled())
+			{
+				FVector ModuleTarget = TargetModule->ResolveTarget(
+					&EmitterInstance,
+					EvalTime,
+					InOutResolvedSource,
+					InOutResolvedTarget,
+					BeamDistance);
+				if (TargetModule->bLockTarget)
+				{
+					if (!bInOutHasLockedTargetPoint)
+					{
+						InOutLockedTargetPoint = ModuleTarget;
+						bInOutHasLockedTargetPoint = true;
+					}
+					ModuleTarget = InOutLockedTargetPoint;
+				}
+				else
+				{
+					bInOutHasLockedTargetPoint = false;
+				}
+				InOutResolvedTarget = ModuleTarget;
+				OutData.TargetTangent = TargetModule->ResolveTargetTangent(&EmitterInstance, EvalTime);
+			}
+		}
+		else
+		{
+			bInOutHasLockedTargetPoint = false;
+		}
+
+		if (BeamTypeData && BeamTypeData->Speed > 0.0f)
+		{
+			const FVector FullAxis = InOutResolvedTarget - InOutResolvedSource;
+			const float FullLength = FullAxis.Length();
+			const float VisibleLength = BeamTypeData->Speed * EvalTime;
+			if (FullLength > 1e-4f && VisibleLength < FullLength)
+			{
+				const float VisibleRatio = VisibleLength / FullLength;
+				InOutResolvedTarget = InOutResolvedSource + FullAxis * VisibleRatio;
+				OutData.SourceTangent = OutData.SourceTangent * VisibleRatio;
+				OutData.TargetTangent = OutData.TargetTangent * VisibleRatio;
+			}
+		}
+
+		if (UParticleModuleBeamNoise* NoiseModule = RenderReplayLOD.FindModuleByClass<UParticleModuleBeamNoise>())
+		{
+			if (NoiseModule->IsEnabled())
+			{
+				OutData.NoiseAmount = NoiseModule->EvaluateNoiseRange(EvalTime, EmitterInstance.GetComponent());
+				OutData.NoiseDirection = NoiseModule->ResolveNoiseDirection(&EmitterInstance, EvalTime);
+				OutData.NoiseFrequency = NoiseModule->EvaluateNoiseFrequency(EvalTime, EmitterInstance.GetComponent());
+				OutData.NoiseSpeed = NoiseModule->EvaluateNoiseSpeed(EvalTime, EmitterInstance.GetComponent());
+				OutData.NoiseTessellation = NoiseModule->NoiseTessellation;
+				OutData.bSmoothNoise = NoiseModule->bSmooth;
+			}
+		}
+
+		OutData.EmitterTime = EmitterInstance.GetEmitterTimeSeconds();
+	}
+
+	void FillRibbonReplayShapingFromRenderLOD(
+		UParticleLODLevel& RenderReplayLOD,
+		FDynamicRibbonEmitterReplayData& OutData)
+	{
+		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(RenderReplayLOD.TypeDataModule))
+		{
+			// Ribbon replay metadata is currently an emitter-level render contract.
+			// Even though live particle simulation can preserve spawn-time
+			// SimulationLODIndex, the current Ribbon RT path still builds one trail
+			// snapshot per emitter per frame, so its shaping inputs intentionally come
+			// from the current emitter LOD rather than per-particle simulation LOD.
+			//
+			// TypeData values are sanitized here before crossing the GT->RT boundary so
+			// the replay struct stays a practical, render-ready contract rather than a
+			// raw bag of authoring values.
+			// RT still revalidates these fields defensively before geometry emission,
+			// but that second clamp is a safety net, not the authoritative source of
+			// truth for normal authoring-domain sanitize.
+			const FSanitizedRibbonReplayShaping Shaping =
+				BuildSanitizedRibbonReplayShapingOnGT(*RibbonTypeData);
+			OutData.MaxTessellation = Shaping.MaxTessellation;
+			OutData.TangentTension = Shaping.TangentTension;
+			OutData.TilesPerTrail = Shaping.TilesPerTrail;
+		}
 	}
 }
 
@@ -2363,50 +2629,19 @@ void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)
 
 void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& OutData) const
 {
-	OutData.ActiveParticleCount = ActiveParticles;
-	OutData.ParticleStride = ParticleStride;
+	// Shared replay build flow:
+	//   1) copy active particle snapshot
+	//   2) resolve current render replay LOD
+	//   3) fill RequiredModule-based base render contract
+	CopyParticleSnapshotToReplay(*this, OutData);
 
-	OutData.SnapshotStorage.Allocate(ActiveParticles * ParticleStride, ActiveParticles, 0);
-
-	for (uint32 i = 0; i < ActiveParticles; ++i)
-	{
-		const FBaseParticle* Particle = GetParticleAt(i);
-		if (!Particle) continue;
-
-		std::memcpy(
-			OutData.SnapshotStorage.ParticleData + i * ParticleStride,
-			Particle,
-			ParticleStride);
-
-		OutData.SnapshotStorage.ParticleIndices[i] = static_cast<uint16>(i);
-	}
-
-	UParticleLODLevel* LOD = GetRenderReplayLODLevel();
-	if (!LOD || !LOD->RequiredModule)
+	UParticleLODLevel* RenderReplayLOD = GetRenderReplayLODLevel();
+	if (!RenderReplayLOD || !RenderReplayLOD->RequiredModule)
 	{
 		return;
 	}
 
-	UParticleModuleRequired* Required = LOD->RequiredModule;
-
-	OutData.Material = Required->ResolveMaterial();
-	// Replay.Material은 SceneProxy가 section material을 고를 때 우선 사용하는 primary source다.
-	// cached emitter material은 이 값이 비었을 때만 fallback으로 사용된다.
-	// SortMode는 material blend와 별개로 "어떤 기준으로 particle를 재배치할지"를 RT에 알려준다.
-	OutData.SortMode = ToReplaySortMode(Required->SortMode);
-	// NOTE: Replay에 BlendState 필드 없음 — Material.GetBlendState()가 single source of truth.
-	// RequiredModule.BlendState로 Material을 override하고 싶으면 SceneProxy의
-	// Material 캐싱 단계에서 SetBlendState 같은 API 추가 필요 (현재 RequiredModule.SubImagesH/V와 동일 패턴).
-	OutData.bUseLocalSpace = Required->bUseLocalSpace;
-	// Base replay metadata는 current render replay LOD의 RequiredModule view에서 채워진다.
-	// 이미 살아 있는 particle의 SimulationLODIndex continuity와는 다른 계층의 계약이다.
-	// 또한 GT는 여기서 fallback/default를 resolve한 render-ready snapshot을 만드는 쪽이
-	// authoritative하다. RT는 draw 직전 일부 값만 defensive safety net으로 재검증한다.
-
-	if (Component)
-	{
-		OutData.LocalToWorld = Component->GetWorldMatrix();
-	}
+	FillBaseReplayMetadataFromRequiredModule(*this, *RenderReplayLOD, OutData);
 }
 
 uint32 FParticleEmitterInstance::GetInitialParticleCapacity() const
@@ -2506,13 +2741,9 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Sprite;
 
-	// Sprite replay shaping은 current render replay LOD의 RequiredModule 기준이다.
-	UParticleLODLevel* LOD = GetRenderReplayLODLevel();
-	if (LOD && LOD->RequiredModule)
+	if (UParticleLODLevel* RenderReplayLOD = GetRenderReplayLODLevel())
 	{
-		Data->Source.SubImagesHorizontal = LOD->RequiredModule->SubImagesHorizontal;
-		Data->Source.SubImagesVertical = LOD->RequiredModule->SubImagesVertical;
-		Data->Source.Alignment = ToReplaySpriteAlignment(LOD->RequiredModule->ScreenAlignment);
+		FillSpriteReplayShapingFromRenderLOD(*RenderReplayLOD, Data->Source);
 	}
 
 	return Data;
@@ -2525,19 +2756,9 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
 
-	// Mesh replay shaping은 current render replay LOD의 TypeDataModule view를 사용한다.
-	UParticleLODLevel* LOD = GetRenderReplayLODLevel();
-	if (LOD)
+	if (UParticleLODLevel* RenderReplayLOD = GetRenderReplayLODLevel())
 	{
-		if (auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
-		{
-			Data->Source.Mesh = MeshTypeData->ResolveMesh();
-			// Alignment / bOverrideMaterial are still forwarded so the replay snapshot
-			// preserves authoring intent, but the current RT Mesh path does not yet
-			// interpret them as active orientation/material-behavior switches.
-			Data->Source.Alignment = ToReplayMeshAlignment(MeshTypeData->Alignment);
-			Data->Source.bOverrideMaterial = MeshTypeData->bOverrideMaterial;
-		}
+		FillMeshReplayShapingFromRenderLOD(*RenderReplayLOD, Data->Source);
 	}
 
 	// Mesh resolve가 실패해도 emitter type 자체는 Mesh로 유지한다.
@@ -2556,128 +2777,19 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 	FVector ResolvedSource = SourcePoint;
 	FVector ResolvedTarget = TargetPoint;
 
-	// Beam replay inputs도 emitter-level current render replay LOD에서 해석한다.
-	// Source/Target/Noise shaping은 현재 RT beam path가 소비할 단일 replay snapshot을 만들기 위한 값이다.
-	// 즉 ActiveParticleCount와 별개로, GT는 여기서 "active particle마다 서로 다른 beam endpoint"
-	// 배열을 만들지 않는다. Beam RT는 이 emitter-level shape contract를 받아 strip을 만든다.
-	if (UParticleLODLevel* LOD = GetRenderReplayLODLevel())
+	if (UParticleLODLevel* RenderReplayLOD = GetRenderReplayLODLevel())
 	{
-		const float EvalTime = GetCurrentLoopTimeSeconds();
-		UParticleModuleTypeDataBeam* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule);
-		float BeamDistance = (ResolvedTarget - ResolvedSource).Length();
-
-		if (BeamTypeData)
-		{
-			if (!bHasExplicitEndpoints)
-			{
-				ResolvedSource = ConvertPositionToSimulation(BeamTypeData->DefaultSource, EParticleValueSpace::Local);
-				ResolvedTarget = ConvertPositionToSimulation(BeamTypeData->DefaultTarget, EParticleValueSpace::Local);
-			}
-
-			BeamDistance = BeamTypeData->EvaluateDistance(EvalTime, Component);
-			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
-			Data->Source.Width = BeamTypeData->EvaluateWidth(EvalTime, Component);
-			Data->Source.bTileUV = BeamTypeData->bTileUV;
-			Data->Source.bRenderGeometry = BeamTypeData->bRenderGeometry;
-			Data->Source.TaperFactor = BeamTypeData->TaperFactor;
-			Data->Source.bTaperFull = BeamTypeData->TaperMethod == UParticleModuleTypeDataBeam::EBeamTaperMethod::Full;
-
-			if (BeamTypeData->BeamMethod == UParticleModuleTypeDataBeam::EBeam2Method::Distance)
-			{
-				const FVector LocalXDistance(BeamDistance, 0.0f, 0.0f);
-				ResolvedTarget = ResolvedSource + ConvertVectorToSimulation(LocalXDistance, EParticleValueSpace::Local);
-			}
-		}
-
-		if (UParticleModuleBeamSource* SourceModule = LOD->FindModuleByClass<UParticleModuleBeamSource>())
-		{
-			if (SourceModule->IsEnabled())
-			{
-				FVector ModuleSource = SourceModule->ResolveSource(this, EvalTime, ResolvedSource);
-				if (SourceModule->bLockSource)
-				{
-					if (!bHasLockedSourcePoint)
-					{
-						LockedSourcePoint = ModuleSource;
-						bHasLockedSourcePoint = true;
-					}
-					ModuleSource = LockedSourcePoint;
-				}
-				else
-				{
-					bHasLockedSourcePoint = false;
-				}
-				ResolvedSource = ModuleSource;
-				Data->Source.SourceTangent = SourceModule->ResolveSourceTangent(this, EvalTime);
-			}
-		}
-		else
-		{
-			bHasLockedSourcePoint = false;
-		}
-
-		// Source가 모듈에 의해 바뀐 뒤 Distance Beam target을 다시 계산한다.
-		if (BeamTypeData && BeamTypeData->BeamMethod == UParticleModuleTypeDataBeam::EBeam2Method::Distance)
-		{
-			const FVector LocalXDistance(BeamDistance, 0.0f, 0.0f);
-			ResolvedTarget = ResolvedSource + ConvertVectorToSimulation(LocalXDistance, EParticleValueSpace::Local);
-		}
-
-		if (UParticleModuleBeamTarget* TargetModule = LOD->FindModuleByClass<UParticleModuleBeamTarget>())
-		{
-			if (TargetModule->IsEnabled())
-			{
-				FVector ModuleTarget = TargetModule->ResolveTarget(this, EvalTime, ResolvedSource, ResolvedTarget, BeamDistance);
-				if (TargetModule->bLockTarget)
-				{
-					if (!bHasLockedTargetPoint)
-					{
-						LockedTargetPoint = ModuleTarget;
-						bHasLockedTargetPoint = true;
-					}
-					ModuleTarget = LockedTargetPoint;
-				}
-				else
-				{
-					bHasLockedTargetPoint = false;
-				}
-				ResolvedTarget = ModuleTarget;
-				Data->Source.TargetTangent = TargetModule->ResolveTargetTangent(this, EvalTime);
-			}
-		}
-		else
-		{
-			bHasLockedTargetPoint = false;
-		}
-
-		if (BeamTypeData && BeamTypeData->Speed > 0.0f)
-		{
-			const FVector FullAxis = ResolvedTarget - ResolvedSource;
-			const float FullLength = FullAxis.Length();
-			const float VisibleLength = BeamTypeData->Speed * EvalTime;
-			if (FullLength > 1e-4f && VisibleLength < FullLength)
-			{
-				const float VisibleRatio = VisibleLength / FullLength;
-				ResolvedTarget = ResolvedSource + FullAxis * VisibleRatio;
-				Data->Source.SourceTangent = Data->Source.SourceTangent * VisibleRatio;
-				Data->Source.TargetTangent = Data->Source.TargetTangent * VisibleRatio;
-			}
-		}
-
-		if (UParticleModuleBeamNoise* NoiseModule = LOD->FindModuleByClass<UParticleModuleBeamNoise>())
-		{
-			if (NoiseModule->IsEnabled())
-			{
-				Data->Source.NoiseAmount = NoiseModule->EvaluateNoiseRange(EvalTime, Component);
-				Data->Source.NoiseDirection = NoiseModule->ResolveNoiseDirection(this, EvalTime);
-				Data->Source.NoiseFrequency = NoiseModule->EvaluateNoiseFrequency(EvalTime, Component);
-				Data->Source.NoiseSpeed = NoiseModule->EvaluateNoiseSpeed(EvalTime, Component);
-				Data->Source.NoiseTessellation = NoiseModule->NoiseTessellation;
-				Data->Source.bSmoothNoise = NoiseModule->bSmooth;
-			}
-		}
-
-		Data->Source.EmitterTime = EmitterTimeSeconds;
+		FillBeamReplayShapingFromRenderLOD(
+			*this,
+			*RenderReplayLOD,
+			Data->Source,
+			ResolvedSource,
+			ResolvedTarget,
+			LockedSourcePoint,
+			LockedTargetPoint,
+			bHasLockedSourcePoint,
+			bHasLockedTargetPoint,
+			bHasExplicitEndpoints);
 	}
 
 	Data->Source.SourcePoint = ResolvedSource;
@@ -2711,28 +2823,9 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;
 
-	if (UParticleLODLevel* LOD = GetRenderReplayLODLevel())
+	if (UParticleLODLevel* RenderReplayLOD = GetRenderReplayLODLevel())
 	{
-		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
-		{
-			// Ribbon replay metadata is currently an emitter-level render contract.
-			// Even though live particle simulation can preserve spawn-time
-			// SimulationLODIndex, the current Ribbon RT path still builds one trail
-			// snapshot per emitter per frame, so its shaping inputs intentionally come
-			// from the current emitter LOD rather than per-particle simulation LOD.
-			//
-			// TypeData values are sanitized here before crossing the GT->RT boundary so
-			// the replay struct stays a practical, render-ready contract rather than a
-			// raw bag of authoring values.
-			// RT still revalidates these fields defensively before geometry emission,
-			// but that second clamp is a safety net, not the authoritative source of
-			// truth for normal authoring-domain sanitize.
-			const FSanitizedRibbonReplayShaping Shaping =
-				BuildSanitizedRibbonReplayShapingOnGT(*RibbonTypeData);
-			Data->Source.MaxTessellation = Shaping.MaxTessellation;
-			Data->Source.TangentTension = Shaping.TangentTension;
-			Data->Source.TilesPerTrail = Shaping.TilesPerTrail;
-		}
+		FillRibbonReplayShapingFromRenderLOD(*RenderReplayLOD, Data->Source);
 	}
 
 	return Data;

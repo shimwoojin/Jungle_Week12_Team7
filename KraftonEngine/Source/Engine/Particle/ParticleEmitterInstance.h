@@ -212,6 +212,11 @@ protected:
 	// LOD basis를 simulation continuity와 구분해 드러내기 위한 경계다.
 	UParticleLODLevel* GetRenderReplayLODLevel() const;
 
+	// shared GT replay build entry point.
+	//   - particle snapshot copy
+	//   - current render replay LOD resolve
+	//   - RequiredModule 기반 base render contract fill
+	// type-specific shaping metadata는 각 subclass GetDynamicData()에서 이어서 채운다.
 	void FillReplayData(FDynamicEmitterReplayDataBase& OutData) const;
 
 private:
