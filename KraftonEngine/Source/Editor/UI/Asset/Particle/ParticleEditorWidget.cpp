@@ -28,10 +28,12 @@
 #include "Particle/Distributions/DistributionFloatConstant.h"
 #include "Particle/Distributions/DistributionFloatCurve.h"
 #include "Particle/Distributions/DistributionFloatUniform.h"
+#include "Particle/Distributions/DistributionFloatUniformCurve.h"
 #include "Particle/Distributions/DistributionVector.h"
 #include "Particle/Distributions/DistributionVectorConstant.h"
 #include "Particle/Distributions/DistributionVectorCurve.h"
 #include "Particle/Distributions/DistributionVectorUniform.h"
+#include "Particle/Distributions/DistributionVectorUniformCurve.h"
 #include "Particle/Modules/ParticleModuleAcceleration.h"
 
 #include "Particle/Modules/ParticleModuleCollision.h"
@@ -438,6 +440,7 @@ namespace
 	{
 		if (Cast<UDistributionFloatUniform>(Distribution)) return 1;
 		if (Cast<UDistributionFloatCurve>(Distribution)) return 2;
+		if (Cast<UDistributionFloatUniformCurve>(Distribution)) return 3;
 		return 0;
 	}
 
@@ -445,7 +448,18 @@ namespace
 	{
 		if (Cast<UDistributionVectorUniform>(Distribution)) return 1;
 		if (Cast<UDistributionVectorCurve>(Distribution)) return 2;
+		if (Cast<UDistributionVectorUniformCurve>(Distribution)) return 3;
 		return 0;
+	}
+
+	bool IsFloatCurveDistribution(UDistributionFloat* Distribution)
+	{
+		return Cast<UDistributionFloatCurve>(Distribution) || Cast<UDistributionFloatUniformCurve>(Distribution);
+	}
+
+	bool IsVectorCurveDistribution(UDistributionVector* Distribution)
+	{
+		return Cast<UDistributionVectorCurve>(Distribution) || Cast<UDistributionVectorUniformCurve>(Distribution);
 	}
 
 	UDistributionFloat* EnsureFloatDistribution(UDistributionFloat*& Distribution, UObject* Outer)
@@ -495,10 +509,22 @@ namespace
 		CurveDistribution->SetConstant(Value);
 	}
 
+	void InitializeFloatUniformCurveFromRange(UDistributionFloatUniformCurve* CurveDistribution, float PrevMin, float PrevMax)
+	{
+		if (!CurveDistribution) return;
+		CurveDistribution->SetConstant(PrevMin, PrevMax);
+	}
+
 	void InitializeVectorCurveFromRange(UDistributionVectorCurve* CurveDistribution, const FVector& PrevMin, const FVector& PrevMax)
 	{
 		if (!CurveDistribution) return;
 		CurveDistribution->SetConstant((PrevMin + PrevMax) * 0.5f);
+	}
+
+	void InitializeVectorUniformCurveFromRange(UDistributionVectorUniformCurve* CurveDistribution, const FVector& PrevMin, const FVector& PrevMax)
+	{
+		if (!CurveDistribution) return;
+		CurveDistribution->SetConstant(PrevMin, PrevMax);
 	}
 
 
@@ -838,6 +864,51 @@ namespace
 		return bChanged;
 	}
 
+
+	bool DrawFloatUniformCurveKeyArrayEditor(UDistributionFloatUniformCurve* CurveDistribution, float ValueSpeed)
+	{
+		if (!CurveDistribution) return false;
+
+		bool bChanged = false;
+		ImGui::PushID("DistributionFloatUniformCurve");
+		if (ImGui::TreeNodeEx("Distribution Float Uniform Curve", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			bChanged |= DrawFloatCurveKeyArrayEditor("Min", CurveDistribution->GetMinCurve(), ValueSpeed);
+			bChanged |= DrawFloatCurveKeyArrayEditor("Max", CurveDistribution->GetMaxCurve(), ValueSpeed);
+			ImGui::TreePop();
+		}
+		ImGui::PopID();
+		return bChanged;
+	}
+
+	bool DrawVectorUniformCurveKeyArrayEditor(UDistributionVectorUniformCurve* CurveDistribution, float ValueSpeed)
+	{
+		if (!CurveDistribution) return false;
+
+		bool bChanged = false;
+		ImGui::PushID("DistributionVectorUniformCurve");
+		if (ImGui::TreeNodeEx("Distribution Vector Uniform Curve", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (ImGui::TreeNodeEx("Min", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				bChanged |= DrawFloatCurveKeyArrayEditor("X", CurveDistribution->GetMinXCurve(), ValueSpeed);
+				bChanged |= DrawFloatCurveKeyArrayEditor("Y", CurveDistribution->GetMinYCurve(), ValueSpeed);
+				bChanged |= DrawFloatCurveKeyArrayEditor("Z", CurveDistribution->GetMinZCurve(), ValueSpeed);
+				ImGui::TreePop();
+			}
+			if (ImGui::TreeNodeEx("Max", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				bChanged |= DrawFloatCurveKeyArrayEditor("X", CurveDistribution->GetMaxXCurve(), ValueSpeed);
+				bChanged |= DrawFloatCurveKeyArrayEditor("Y", CurveDistribution->GetMaxYCurve(), ValueSpeed);
+				bChanged |= DrawFloatCurveKeyArrayEditor("Z", CurveDistribution->GetMaxZCurve(), ValueSpeed);
+				ImGui::TreePop();
+			}
+			ImGui::TreePop();
+		}
+		ImGui::PopID();
+		return bChanged;
+	}
+
 	bool DrawFloatDistributionEditor(const char* Label, UDistributionFloat*& Distribution, UObject* Outer,
 	                                 float Speed = 0.05f, float Min = 0.0f, float Max = 0.0f,
 	                                 const char* TimeBasisText = nullptr)
@@ -851,11 +922,12 @@ namespace
 		static const char* TypeNames[] = {
 			"Distribution Float Constant",
 			"Distribution Float Uniform",
-			"Distribution Float Constant Curve"
+			"Distribution Float Constant Curve",
+			"Distribution Float Uniform Curve"
 		};
 		int32 Type = FloatDistributionType(Distribution);
 		ImGui::Text("Current: %s", GetDistributionDisplayName(Distribution));
-		if (ComboInt("Distribution Type", Type, TypeNames, 3))
+		if (ComboInt("Distribution Type", Type, TypeNames, 4))
 		{
 			float PrevMin = 0.0f;
 			float PrevMax = 0.0f;
@@ -879,10 +951,16 @@ namespace
 				NewDistribution->Max = PrevMax;
 				Distribution = NewDistribution;
 			}
-			else
+			else if (Type == 2)
 			{
 				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatCurve>(Outer);
 				InitializeFloatCurveFromRange(NewDistribution, PrevMin, PrevMax);
+				Distribution = NewDistribution;
+			}
+			else
+			{
+				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatUniformCurve>(Outer);
+				InitializeFloatUniformCurveFromRange(NewDistribution, PrevMin, PrevMax);
 				Distribution = NewDistribution;
 			}
 			bChanged = true;
@@ -916,6 +994,10 @@ namespace
 		{
 			bChanged |= DrawFloatCurveKeyArrayEditor("Distribution Float Constant Curve", Curve->GetCurve(), Speed);
 		}
+		else if (auto* UniformCurve = Cast<UDistributionFloatUniformCurve>(Distribution))
+		{
+			bChanged |= DrawFloatUniformCurveKeyArrayEditor(UniformCurve, Speed);
+		}
 
 		ImGui::PopID();
 		return bChanged;
@@ -934,11 +1016,12 @@ namespace
 		static const char* TypeNames[] = {
 			"Distribution Vector Constant",
 			"Distribution Vector Uniform",
-			"Distribution Vector Constant Curve"
+			"Distribution Vector Constant Curve",
+			"Distribution Vector Uniform Curve"
 		};
 		int32 Type = VectorDistributionType(Distribution);
 		ImGui::Text("Current: %s", GetDistributionDisplayName(Distribution));
-		if (ComboInt("Distribution Type", Type, TypeNames, 3))
+		if (ComboInt("Distribution Type", Type, TypeNames, 4))
 		{
 			FVector PrevMin(0.0f, 0.0f, 0.0f);
 			FVector PrevMax(0.0f, 0.0f, 0.0f);
@@ -962,10 +1045,16 @@ namespace
 				NewDistribution->Max = PrevMax;
 				Distribution = NewDistribution;
 			}
-			else
+			else if (Type == 2)
 			{
 				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorCurve>(Outer);
 				InitializeVectorCurveFromRange(NewDistribution, PrevMin, PrevMax);
+				Distribution = NewDistribution;
+			}
+			else
+			{
+				auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorUniformCurve>(Outer);
+				InitializeVectorUniformCurveFromRange(NewDistribution, PrevMin, PrevMax);
 				Distribution = NewDistribution;
 			}
 			bChanged = true;
@@ -983,6 +1072,10 @@ namespace
 		else if (auto* Curve = Cast<UDistributionVectorCurve>(Distribution))
 		{
 			bChanged |= DrawVectorCurveKeyArrayEditor(Curve, Speed);
+		}
+		else if (auto* UniformCurve = Cast<UDistributionVectorUniformCurve>(Distribution))
+		{
+			bChanged |= DrawVectorUniformCurveKeyArrayEditor(UniformCurve, Speed);
 		}
 
 		ImGui::PopID();
@@ -1113,8 +1206,8 @@ namespace
 
 	void FitCurveView(FCurveGraphViewState& View, FFloatCurve* const* Curves, int32 CurveCount, bool bFitTime, bool bFitValue)
 	{
-		const FFloatCurve* ConstCurves[4] = { nullptr, nullptr, nullptr, nullptr };
-		const int32 SafeCurveCount = (std::min)(CurveCount, 4);
+		const FFloatCurve* ConstCurves[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+		const int32 SafeCurveCount = (std::min)(CurveCount, 6);
 		for (int32 i = 0; i < SafeCurveCount; ++i)
 		{
 			ConstCurves[i] = Curves[i];
@@ -1228,7 +1321,7 @@ namespace
 		bool bChanged = false;
 		ImGui::PushID(Label);
 
-		const int32 SafeCurveCount = (std::min)(CurveCount, 4);
+		const int32 SafeCurveCount = (std::min)(CurveCount, 6);
 		FCurveGraphViewState& View = GetCurveGraphViewState(CurveSource);
 		if (!View.bValid)
 		{
@@ -1641,20 +1734,32 @@ namespace
 	                                    int32& SelectedCurveSource, int32& SelectedCurveChannel,
 	                                    int32& SelectedCurveKeyIndex, bool& bDraggingCurveKey)
 	{
-		auto* CurveDistribution = Cast<UDistributionFloatCurve>(Distribution);
-		if (!CurveDistribution) return false;
-
 		bool bChanged = false;
 		ImGui::PushID(Label);
 		if (ImGui::CollapsingHeader(Label, ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			FFloatCurve& Curve = CurveDistribution->GetCurve();
-			FFloatCurve* Curves[] = { &Curve };
-			const char* Channels[] = { "Value" };
-			const ImU32 Colors[] = { IM_COL32(255, 210, 80, 255) };
-			const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 28.0f);
-			bChanged |= DrawCurveGraph("FloatCurveGraph", Curves, Channels, Colors, 1, CurveSource,
-				SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+			if (auto* UniformCurve = Cast<UDistributionFloatUniformCurve>(Distribution))
+			{
+				FFloatCurve* Curves[] = { &UniformCurve->GetMinCurve(), &UniformCurve->GetMaxCurve() };
+				const char* Channels[] = { "Min", "Max" };
+				const ImU32 Colors[] = {
+					IM_COL32(90, 170, 255, 255),
+					IM_COL32(255, 210, 80, 255)
+				};
+				const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 28.0f);
+				bChanged |= DrawCurveGraph("FloatUniformCurveGraph", Curves, Channels, Colors, 2, CurveSource,
+					SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+			}
+			else if (auto* CurveDistribution = Cast<UDistributionFloatCurve>(Distribution))
+			{
+				FFloatCurve& Curve = CurveDistribution->GetCurve();
+				FFloatCurve* Curves[] = { &Curve };
+				const char* Channels[] = { "Value" };
+				const ImU32 Colors[] = { IM_COL32(255, 210, 80, 255) };
+				const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 28.0f);
+				bChanged |= DrawCurveGraph("FloatCurveGraph", Curves, Channels, Colors, 1, CurveSource,
+					SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+			}
 		}
 		ImGui::PopID();
 		return bChanged;
@@ -1664,27 +1769,50 @@ namespace
 	                                     int32& SelectedCurveSource, int32& SelectedCurveChannel,
 	                                     int32& SelectedCurveKeyIndex, bool& bDraggingCurveKey)
 	{
-		auto* CurveDistribution = Cast<UDistributionVectorCurve>(Distribution);
-		if (!CurveDistribution) return false;
-
 		bool bChanged = false;
 		ImGui::PushID(Label);
 		if (ImGui::CollapsingHeader(Label, ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			FFloatCurve* Curves[] = {
-				&CurveDistribution->GetXCurve(),
-				&CurveDistribution->GetYCurve(),
-				&CurveDistribution->GetZCurve()
-			};
-			const char* Channels[] = { "X / R", "Y / G", "Z / B" };
-			const ImU32 Colors[] = {
-				IM_COL32(240, 90, 90, 255),
-				IM_COL32(90, 220, 90, 255),
-				IM_COL32(90, 140, 255, 255)
-			};
-			const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 28.0f);
-			bChanged |= DrawCurveGraph("VectorCurveGraph", Curves, Channels, Colors, 3, CurveSource,
-				SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+			if (auto* UniformCurve = Cast<UDistributionVectorUniformCurve>(Distribution))
+			{
+				FFloatCurve* Curves[] = {
+					&UniformCurve->GetMinXCurve(),
+					&UniformCurve->GetMinYCurve(),
+					&UniformCurve->GetMinZCurve(),
+					&UniformCurve->GetMaxXCurve(),
+					&UniformCurve->GetMaxYCurve(),
+					&UniformCurve->GetMaxZCurve()
+				};
+				const char* Channels[] = { "Min.X", "Min.Y", "Min.Z", "Max.X", "Max.Y", "Max.Z" };
+				const ImU32 Colors[] = {
+					IM_COL32(160, 70, 70, 255),
+					IM_COL32(70, 150, 70, 255),
+					IM_COL32(70, 90, 190, 255),
+					IM_COL32(255, 90, 90, 255),
+					IM_COL32(90, 230, 90, 255),
+					IM_COL32(90, 150, 255, 255)
+				};
+				const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 28.0f);
+				bChanged |= DrawCurveGraph("VectorUniformCurveGraph", Curves, Channels, Colors, 6, CurveSource,
+					SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+			}
+			else if (auto* CurveDistribution = Cast<UDistributionVectorCurve>(Distribution))
+			{
+				FFloatCurve* Curves[] = {
+					&CurveDistribution->GetXCurve(),
+					&CurveDistribution->GetYCurve(),
+					&CurveDistribution->GetZCurve()
+				};
+				const char* Channels[] = { "X / R", "Y / G", "Z / B" };
+				const ImU32 Colors[] = {
+					IM_COL32(240, 90, 90, 255),
+					IM_COL32(90, 220, 90, 255),
+					IM_COL32(90, 140, 255, 255)
+				};
+				const float GraphHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 28.0f);
+				bChanged |= DrawCurveGraph("VectorCurveGraph", Curves, Channels, Colors, 3, CurveSource,
+					SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey, GraphHeight);
+			}
 		}
 		ImGui::PopID();
 		return bChanged;
@@ -3262,61 +3390,77 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 
 	if (UParticleModuleSpawn* Spawn = Cast<UParticleModuleSpawn>(Module))
 	{
-		bHasCurve = DrawSpawnCurves(Spawn);
+		bHasCurve |= IsFloatCurveDistribution(Spawn->RateDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Spawn Rate", Spawn->RateDistribution, CurveSourceSpawnRate,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsFloatCurveDistribution(Spawn->RateScaleDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Spawn Rate Scale", Spawn->RateScaleDistribution, CurveSourceSpawnRateScale,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleLifetime* Lifetime = Cast<UParticleModuleLifetime>(Module))
 	{
-		bHasCurve |= Cast<UDistributionFloatCurve>(Lifetime->LifetimeDistribution) != nullptr;
+		bHasCurve |= IsFloatCurveDistribution(Lifetime->LifetimeDistribution);
 		bChanged |= DrawFloatCurveDistributionPanel("Lifetime", Lifetime->LifetimeDistribution, CurveSourceLifetime,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleLocation* Location = Cast<UParticleModuleLocation>(Module))
 	{
-		bHasCurve |= Cast<UDistributionVectorCurve>(Location->StartLocationDistribution) != nullptr;
+		bHasCurve |= IsVectorCurveDistribution(Location->StartLocationDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Initial Location", Location->StartLocationDistribution, CurveSourceInitialLocation,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleVelocity* Velocity = Cast<UParticleModuleVelocity>(Module))
 	{
-		bHasCurve |= Cast<UDistributionVectorCurve>(Velocity->StartVelocityDistribution) != nullptr;
+		bHasCurve |= IsVectorCurveDistribution(Velocity->StartVelocityDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Initial Velocity", Velocity->StartVelocityDistribution, CurveSourceInitialVelocity,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleAcceleration* Acceleration = Cast<UParticleModuleAcceleration>(Module))
 	{
-		bHasCurve |= Cast<UDistributionVectorCurve>(Acceleration->AccelerationDistribution) != nullptr;
+		bHasCurve |= IsVectorCurveDistribution(Acceleration->AccelerationDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Acceleration", Acceleration->AccelerationDistribution, CurveSourceAcceleration,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleSize* SizeModule = Cast<UParticleModuleSize>(Module))
 	{
-		bHasCurve |= Cast<UDistributionVectorCurve>(SizeModule->StartSizeDistribution) != nullptr;
+		bHasCurve |= IsVectorCurveDistribution(SizeModule->StartSizeDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Initial Size", SizeModule->StartSizeDistribution, CurveSourceInitialSize,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleSizeByLife* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
 	{
-		bHasCurve |= Cast<UDistributionVectorCurve>(SizeByLife->LifeMultiplierDistribution) != nullptr;
+		bHasCurve |= IsVectorCurveDistribution(SizeByLife->LifeMultiplierDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Size By Life", SizeByLife->LifeMultiplierDistribution, CurveSourceSizeByLife,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
 	{
-		bHasCurve = DrawInitialColorCurves(Color);
+		EnsureInitialColorDistributions(Color);
+		bHasCurve |= IsVectorCurveDistribution(Color->StartColorDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Initial Color", Color->StartColorDistribution, CurveSourceInitialColorRGB,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsFloatCurveDistribution(Color->StartAlphaDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Initial Alpha", Color->StartAlphaDistribution, CurveSourceInitialColorAlpha,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
 	{
-		bHasCurve = DrawColorOverLifeCurves(ColorOverLife);
+		bHasCurve |= IsVectorCurveDistribution(ColorOverLife->ColorOverLifeDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Color Over Life", ColorOverLife->ColorOverLifeDistribution, CurveSourceColorOverLifeRGB,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsFloatCurveDistribution(ColorOverLife->AlphaOverLifeDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Alpha Over Life", ColorOverLife->AlphaOverLifeDistribution, CurveSourceColorOverLifeAlpha,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
 	{
-		bHasCurve |= Cast<UDistributionFloatCurve>(SubUV->SubImageIndexDistribution) != nullptr;
+		bHasCurve |= IsFloatCurveDistribution(SubUV->SubImageIndexDistribution);
 		bChanged |= DrawFloatCurveDistributionPanel("Sub Image Index", SubUV->SubImageIndexDistribution, CurveSourceSubImageIndex,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
 	{
-		bHasCurve |= Cast<UDistributionFloatCurve>(SubUVMovie->FrameRateDistribution) != nullptr;
+		bHasCurve |= IsFloatCurveDistribution(SubUVMovie->FrameRateDistribution);
 		bChanged |= DrawFloatCurveDistributionPanel("SubUV Movie Frame Rate", SubUVMovie->FrameRateDistribution, CurveSourceSubUVMovieFrameRate,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
@@ -3324,7 +3468,7 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 	if (!bHasCurve)
 	{
 		ImGui::TextDisabled("Selected module has no Curve distribution yet.");
-		ImGui::TextWrapped("In the Details panel, change Distribution Type to Distribution Float Constant Curve or Distribution Vector Constant Curve. Initial modules evaluate curves with SpawnTime. Over-Life modules evaluate curves with Particle RelativeTime.");
+		ImGui::TextWrapped("In the Details panel, change Distribution Type to Distribution Float/Vector Constant Curve or Uniform Curve. Initial modules evaluate curves with SpawnTime. Over-Life modules evaluate curves with Particle RelativeTime.");
 	}
 
 	if (bChanged)
@@ -3563,7 +3707,7 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 
 	auto TryFloatCurve = [&](UDistributionFloat* Distribution, int32 Source, int32 Channel) -> bool
 	{
-		if (!Cast<UDistributionFloatCurve>(Distribution)) return false;
+		if (!IsFloatCurveDistribution(Distribution)) return false;
 		SelectedCurveSource = Source;
 		SelectedCurveChannel = Channel;
 		SelectedCurveKeyIndex = -1;
@@ -3572,7 +3716,7 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 
 	auto TryVectorCurve = [&](UDistributionVector* Distribution, int32 Source) -> bool
 	{
-		if (!Cast<UDistributionVectorCurve>(Distribution)) return false;
+		if (!IsVectorCurveDistribution(Distribution)) return false;
 		SelectedCurveSource = Source;
 		SelectedCurveChannel = 0;
 		SelectedCurveKeyIndex = -1;
@@ -3582,7 +3726,7 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 	if (UParticleModuleSpawn* Spawn = Cast<UParticleModuleSpawn>(Module))
 	{
 		return TryFloatCurve(Spawn->RateDistribution, CurveSourceSpawnRate, 0) ||
-			TryFloatCurve(Spawn->RateScaleDistribution, CurveSourceSpawnRate, 1);
+			TryFloatCurve(Spawn->RateScaleDistribution, CurveSourceSpawnRateScale, 0);
 	}
 	if (UParticleModuleLifetime* Lifetime = Cast<UParticleModuleLifetime>(Module))
 	{
@@ -3612,12 +3756,12 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 	{
 		EnsureInitialColorDistributions(Color);
 		return TryVectorCurve(Color->StartColorDistribution, CurveSourceInitialColorRGB) ||
-			TryFloatCurve(Color->StartAlphaDistribution, CurveSourceInitialColorRGB, 3);
+			TryFloatCurve(Color->StartAlphaDistribution, CurveSourceInitialColorAlpha, 0);
 	}
 	if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
 	{
 		return TryVectorCurve(ColorOverLife->ColorOverLifeDistribution, CurveSourceColorOverLifeRGB) ||
-			TryFloatCurve(ColorOverLife->AlphaOverLifeDistribution, CurveSourceColorOverLifeRGB, 3);
+			TryFloatCurve(ColorOverLife->AlphaOverLifeDistribution, CurveSourceColorOverLifeAlpha, 0);
 	}
 	if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
 	{
@@ -3746,6 +3890,35 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 
 	auto SelectVectorChannel = [&](UDistributionVector* Distribution, const FString& Name) -> FFloatCurve*
 	{
+		if (auto* UniformCurveDistribution = Cast<UDistributionVectorUniformCurve>(Distribution))
+		{
+			if (OutCurveName) *OutCurveName = Name;
+			switch (SelectedCurveChannel)
+			{
+			case 0:
+				if (OutChannelName) *OutChannelName = "Min.X";
+				return &UniformCurveDistribution->GetMinXCurve();
+			case 1:
+				if (OutChannelName) *OutChannelName = "Min.Y";
+				return &UniformCurveDistribution->GetMinYCurve();
+			case 2:
+				if (OutChannelName) *OutChannelName = "Min.Z";
+				return &UniformCurveDistribution->GetMinZCurve();
+			case 3:
+				if (OutChannelName) *OutChannelName = "Max.X";
+				return &UniformCurveDistribution->GetMaxXCurve();
+			case 4:
+				if (OutChannelName) *OutChannelName = "Max.Y";
+				return &UniformCurveDistribution->GetMaxYCurve();
+			case 5:
+				if (OutChannelName) *OutChannelName = "Max.Z";
+				return &UniformCurveDistribution->GetMaxZCurve();
+			default:
+				break;
+			}
+			return nullptr;
+		}
+
 		auto* CurveDistribution = Cast<UDistributionVectorCurve>(Distribution);
 		if (!CurveDistribution) return nullptr;
 
@@ -3769,6 +3942,19 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 
 	auto SelectFloatCurveAtChannel = [&](UDistributionFloat* Distribution, const FString& Name, const FString& Channel, int32 ExpectedChannel) -> FFloatCurve*
 	{
+		if (auto* UniformCurveDistribution = Cast<UDistributionFloatUniformCurve>(Distribution))
+		{
+			if (SelectedCurveChannel != ExpectedChannel && SelectedCurveChannel != ExpectedChannel + 1) return nullptr;
+			if (OutCurveName) *OutCurveName = Name;
+			if (SelectedCurveChannel == ExpectedChannel)
+			{
+				if (OutChannelName) *OutChannelName = "Min";
+				return &UniformCurveDistribution->GetMinCurve();
+			}
+			if (OutChannelName) *OutChannelName = "Max";
+			return &UniformCurveDistribution->GetMaxCurve();
+		}
+
 		if (SelectedCurveChannel != ExpectedChannel) return nullptr;
 		auto* CurveDistribution = Cast<UDistributionFloatCurve>(Distribution);
 		if (!CurveDistribution) return nullptr;
@@ -3836,25 +4022,7 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 	case CurveSourceInitialColorRGB:
 		if (UParticleModuleColor* Color = Cast<UParticleModuleColor>(Module))
 		{
-			auto* ColorCurveDistribution = Cast<UDistributionVectorCurve>(Color->StartColorDistribution);
-			if (ColorCurveDistribution && SelectedCurveChannel >= 0 && SelectedCurveChannel <= 2)
-			{
-				if (OutCurveName) *OutCurveName = "Initial Color";
-				switch (SelectedCurveChannel)
-				{
-				case 0:
-					if (OutChannelName) *OutChannelName = "Color.R";
-					return &ColorCurveDistribution->GetXCurve();
-				case 1:
-					if (OutChannelName) *OutChannelName = "Color.G";
-					return &ColorCurveDistribution->GetYCurve();
-				case 2:
-					if (OutChannelName) *OutChannelName = "Color.B";
-					return &ColorCurveDistribution->GetZCurve();
-				default:
-					break;
-				}
-			}
+			if (FFloatCurve* Curve = SelectVectorChannel(Color->StartColorDistribution, "Initial Color")) return Curve;
 			if (FFloatCurve* Curve = SelectFloatCurveAtChannel(Color->StartAlphaDistribution, "Initial Alpha", "Alpha.A", 3)) return Curve;
 		}
 		break;
@@ -3867,25 +4035,7 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 	case CurveSourceColorOverLifeRGB:
 		if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
 		{
-			auto* ColorCurveDistribution = Cast<UDistributionVectorCurve>(ColorOverLife->ColorOverLifeDistribution);
-			if (ColorCurveDistribution && SelectedCurveChannel >= 0 && SelectedCurveChannel <= 2)
-			{
-				if (OutCurveName) *OutCurveName = "Color Over Life";
-				switch (SelectedCurveChannel)
-				{
-				case 0:
-					if (OutChannelName) *OutChannelName = "Color.R";
-					return &ColorCurveDistribution->GetXCurve();
-				case 1:
-					if (OutChannelName) *OutChannelName = "Color.G";
-					return &ColorCurveDistribution->GetYCurve();
-				case 2:
-					if (OutChannelName) *OutChannelName = "Color.B";
-					return &ColorCurveDistribution->GetZCurve();
-				default:
-					break;
-				}
-			}
+			if (FFloatCurve* Curve = SelectVectorChannel(ColorOverLife->ColorOverLifeDistribution, "Color Over Life")) return Curve;
 			if (FFloatCurve* Curve = SelectFloatCurveAtChannel(ColorOverLife->AlphaOverLifeDistribution, "Alpha Over Life", "Alpha.A", 3)) return Curve;
 		}
 		break;

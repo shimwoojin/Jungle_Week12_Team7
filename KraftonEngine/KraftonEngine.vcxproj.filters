@@ -1325,6 +1325,9 @@
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.cpp">
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniformCurve.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVector.cpp">
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClCompile>
@@ -1335,6 +1338,9 @@
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.cpp">
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp">
@@ -2565,6 +2571,9 @@
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.h">
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniformCurve.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVector.h">
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClInclude>
@@ -2575,6 +2584,9 @@
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.h">
       <Filter>Source\Engine\Particle\Distributions</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h">
@@ -4697,10 +4709,12 @@
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniformCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVector.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="KraftonEngine.rc" />

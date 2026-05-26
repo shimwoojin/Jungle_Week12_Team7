@@ -634,10 +634,12 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniformCurve.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVector.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
@@ -1050,10 +1052,12 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniformCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVector.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h" />
