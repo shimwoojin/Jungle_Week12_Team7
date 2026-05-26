@@ -3639,6 +3639,8 @@ void FParticleEditorWidget::RemoveSelectedEmitter()
 	UParticleSystem* System = GetEditedSystem();
 	if (!System || SelectedEmitterIndex < 0) return;
 
+	if (System->Emitters.size() <= 1) return;
+
 	System->RemoveEmitter(SelectedEmitterIndex);
 	if (SelectedEmitterIndex >= static_cast<int32>(System->Emitters.size()))
 	{
