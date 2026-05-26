@@ -51,7 +51,11 @@ void FBillboardSceneProxy::UpdateMesh()
 		// SectionDraws 단일 항목 — Material의 CachedSRVs로 텍스처 바인딩
 		const uint32 IndexCount = MeshBuffer->GetIndexBuffer().GetIndexCount();
 		SectionDraws.clear();
-		SectionDraws.push_back({ Mat, 0, IndexCount });
+		FMeshSectionDraw Section;
+		Section.Material = Mat;
+		Section.IndexCount = IndexCount;
+		Section.PassOverride = ERenderPass::EditorIcon; // 에디터 아이콘 전용 오버레이 패스로 라우팅
+		SectionDraws.push_back(Section);
 	}
 	else
 	{
