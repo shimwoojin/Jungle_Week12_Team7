@@ -21,6 +21,9 @@
 namespace
 {
 	constexpr float ParticleCollisionMinTravelDistance = 1.0e-3f;
+	constexpr float ParticleCollisionMinMeaningfulSpeed = 5.0e-2f;
+	constexpr float ParticleCollisionCooldownSeconds = 2.5e-2f;
+	constexpr float ParticleCollisionSameSurfaceNormalDotThreshold = 0.95f;
 	constexpr float ParticleCollisionSurfaceOffset = 1.0e-2f;
 	constexpr int32 ParticleCollisionBudgetLOD0 = 512;
 	constexpr int32 ParticleCollisionBudgetLowerLOD = 128;
@@ -33,6 +36,16 @@ namespace
 	bool HasCollisionCountLimit(const UParticleModuleCollision& CollisionModule)
 	{
 		return CollisionModule.MaxCollisions > 0;
+	}
+
+	float GetCollisionSpeed(const FVector& Velocity)
+	{
+		return Velocity.Length();
+	}
+
+	bool IsMeaningfulCollisionSpeed(float Speed)
+	{
+		return Speed > ParticleCollisionMinMeaningfulSpeed;
 	}
 
 	UParticleModuleCollision::ECollisionResponseMode ResolveImmediateCollisionResponseMode(
@@ -67,6 +80,38 @@ namespace
 			Particle.OldLocation = Particle.Location;
 			break;
 		}
+	}
+
+	bool ShouldSuppressRepeatedCollisionHit(
+		const UParticleModuleCollision::FCollisionParticlePayload& Payload,
+		const FVector& CollisionNormal,
+		float CollisionTimeSeconds)
+	{
+		if (Payload.LastCollisionTime < 0.0f)
+		{
+			return false;
+		}
+
+		const float TimeSinceLastCollision = CollisionTimeSeconds - Payload.LastCollisionTime;
+		if (TimeSinceLastCollision > ParticleCollisionCooldownSeconds)
+		{
+			return false;
+		}
+
+		const FVector PriorNormal = Payload.LastCollisionNormal.IsNearlyZero()
+			? FVector::UpVector
+			: Payload.LastCollisionNormal.Normalized();
+		const float SameSurfaceDot = CollisionNormal.Dot(PriorNormal);
+		return SameSurfaceDot >= ParticleCollisionSameSurfaceNormalDotThreshold;
+	}
+
+	void UpdateRecentCollisionState(
+		UParticleModuleCollision::FCollisionParticlePayload& Payload,
+		float CollisionTimeSeconds,
+		const FVector& CollisionNormal)
+	{
+		Payload.LastCollisionTime = CollisionTimeSeconds;
+		Payload.LastCollisionNormal = CollisionNormal;
 	}
 }
 
@@ -971,8 +1016,45 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 
 	const FVector ImpactVelocityWorld =
 		ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
+	const float CollisionTimeSeconds = EmitterTimeSeconds + DeltaTime;
+	FVector CollisionNormal = Hit.ImpactNormal;
+	if (CollisionNormal.IsNearlyZero())
+	{
+		CollisionNormal = FVector::UpVector;
+	}
+	else
+	{
+		CollisionNormal.Normalize();
+	}
+
+	if (ShouldSuppressRepeatedCollisionHit(*Payload, CollisionNormal, CollisionTimeSeconds))
+	{
+		// This looks like repeated contact with the same surface within a very short
+		// time window. Calm the contact without incrementing collision count or
+		// emitting a normal collision event.
+		const FVector AdjustedWorldPosition =
+			Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
+		const float NormalSpeed = ImpactVelocityWorld.Dot(CollisionNormal);
+		FVector StabilizedVelocityWorld =
+			ImpactVelocityWorld - CollisionNormal * std::min(NormalSpeed, 0.0f);
+
+		if (!IsMeaningfulCollisionSpeed(GetCollisionSpeed(StabilizedVelocityWorld)))
+		{
+			StabilizedVelocityWorld = FVector::ZeroVector;
+		}
+
+		Particle.Location =
+			ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
+		Particle.OldLocation = Particle.Location;
+		Particle.Velocity =
+			ConvertVectorToSimulation(StabilizedVelocityWorld, EParticleValueSpace::World);
+		UpdateRecentCollisionState(*Payload, CollisionTimeSeconds, CollisionNormal);
+		return false;
+	}
+
 	const bool bKillImmediately =
 		ApplyImmediateParticleCollisionResponse(Particle, CollisionModule, Hit, ImpactVelocityWorld);
+	UpdateRecentCollisionState(*Payload, CollisionTimeSeconds, CollisionNormal);
 
 	++Payload->NumCollisions;
 
@@ -983,10 +1065,10 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		// applied. This keeps event timing consistent across response modes.
 		FParticleEventCollideData CollisionEvent;
 		CollisionEvent.Type = EParticleEventType::Collision;
-		CollisionEvent.TimeSeconds = EmitterTimeSeconds + DeltaTime;
+		CollisionEvent.TimeSeconds = CollisionTimeSeconds;
 		CollisionEvent.Location = Hit.WorldHitLocation;
 		CollisionEvent.Velocity = ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
-		CollisionEvent.Normal = Hit.ImpactNormal;
+		CollisionEvent.Normal = CollisionNormal;
 		CollisionEvent.ImpactVelocity = ImpactVelocityWorld;
 		CollisionEvent.Item = Hit.FaceIndex;
 		EmitCollisionEvent(CollisionEvent);
@@ -1032,6 +1114,9 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 	const FVector AdjustedWorldPosition =
 		Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
 
+	const bool bLowSpeedImpact =
+		!IsMeaningfulCollisionSpeed(GetCollisionSpeed(ImpactVelocity));
+
 	// Immediate response answers "what happens on this hit?" Completion semantics
 	// answer what to do only after the configured collision-count limit is reached.
 	switch (ResolveImmediateCollisionResponseMode(CollisionModule))
@@ -1053,8 +1138,11 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 		Particle.Location =
 			ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
 		Particle.OldLocation = Particle.Location;
-		Particle.Velocity =
-			ConvertVectorToSimulation(ReflectedVelocityWorld, EParticleValueSpace::World);
+		// Very low-speed contacts are usually repeated-contact noise rather than a
+		// visually meaningful new bounce. Calm them into a stop-like response.
+		Particle.Velocity = bLowSpeedImpact
+			? FVector::ZeroVector
+			: ConvertVectorToSimulation(ReflectedVelocityWorld, EParticleValueSpace::World);
 		return false;
 	}
 }

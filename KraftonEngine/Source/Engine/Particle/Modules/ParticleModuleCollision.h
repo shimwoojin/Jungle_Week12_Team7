@@ -76,10 +76,14 @@ public:
 	bool bGenerateCollisionEvents = false;
 
 	// Per-particle runtime collision state used by the emitter-instance pass.
+	// The recent-hit fields are intentionally lightweight and only exist to calm
+	// repeated-contact noise; they do not replace response/completion semantics.
 	struct FCollisionParticlePayload
 	{
 		int32 NumCollisions = 0;
 		bool bIgnoreFurtherCollisions = false;
 		bool bFrozenAfterLimit = false; // Persistently reverts post-update motion at collision pass.
+		float LastCollisionTime = -1.0f;
+		FVector LastCollisionNormal = FVector::ZeroVector;
 	};
 };
