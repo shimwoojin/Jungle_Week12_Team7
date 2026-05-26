@@ -3185,6 +3185,8 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				{
 					bChanged |= DrawFloatDistributionEditor("Noise Range", BeamNoise->NoiseRangeDistribution, BeamNoise, 0.1f, 0.0f, 10000.0f, "EmitterTime");
 					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("Noise Direction", BeamNoise->NoiseDirectionDistribution, BeamNoise, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					ImGui::Separator();
 					bChanged |= DrawFloatDistributionEditor("Frequency", BeamNoise->FrequencyDistribution, BeamNoise, 0.1f, 0.0f, 1000.0f, "EmitterTime");
 					ImGui::Separator();
 					bChanged |= DrawFloatDistributionEditor("Noise Speed", BeamNoise->NoiseSpeedDistribution, BeamNoise, 0.1f, -10000.0f, 10000.0f, "EmitterTime");
@@ -3201,7 +3203,6 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					if (ComboInt("Beam Method", BeamMethod, BeamMethodNames, 2)) { Beam->BeamMethod = static_cast<UParticleModuleTypeDataBeam::EBeam2Method>(BeamMethod); bChanged = true; }
 					bChanged |= ImGui::DragFloat("Speed", &Beam->Speed, 0.1f, 0.0f, 100000.0f, "%.2f");
 					bChanged |= ImGui::DragInt("Interpolation Points", &Beam->InterpolationPoints, 1.0f, 0, 128);
-					bChanged |= ImGui::DragInt("Sheets", &Beam->Sheets, 1.0f, 1, 16);
 					EnsureFloatConstantDistribution(Beam->WidthDistribution, Beam, Beam->Width);
 					EnsureFloatConstantDistribution(Beam->DistanceDistribution, Beam, Beam->Distance);
 					bChanged |= DrawFloatDistributionEditor("Width", Beam->WidthDistribution, Beam, 0.01f, 0.0f, 10000.0f, "EmitterTime");

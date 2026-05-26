@@ -2,6 +2,7 @@
 
 #include "Particle/ParticleModule.h"
 #include "Engine/Particle/Distributions/DistributionFloat.h"
+#include "Engine/Particle/Distributions/DistributionVector.h"
 
 #include "Source/Engine/Particle/Modules/ParticleModuleBeamNoise.generated.h"
 
@@ -24,10 +25,14 @@ public:
 	float EvaluateNoiseRange(float EmitterTime, UObject* Data = nullptr) const;
 	float EvaluateNoiseFrequency(float EmitterTime, UObject* Data = nullptr) const;
 	float EvaluateNoiseSpeed(float EmitterTime, UObject* Data = nullptr) const;
+	FVector ResolveNoiseDirection(const FParticleEmitterInstance* Owner, float EmitterTime) const;
 
 	// Beam 중심선에서 벗어나는 최대 거리. 0이면 직선 Beam이다.
 	UPROPERTY(Edit, Save, Instanced, Category="Beam Noise", DisplayName="Noise Range", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* NoiseRangeDistribution = nullptr;
+
+	UPROPERTY(Edit, Save, Instanced, Category="Beam Noise", DisplayName="Noise Direction", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* NoiseDirectionDistribution = nullptr;
 
 	// Beam 길이 기준 wave/noise 반복 수.
 	UPROPERTY(Edit, Save, Instanced, Category="Beam Noise", DisplayName="Frequency", Type=ObjectRef, AllowedClass=UDistributionFloat)

@@ -999,7 +999,6 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 
 			BeamDistance = BeamTypeData->EvaluateDistance(EvalTime, Component);
 			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
-			Data->Source.Sheets = BeamTypeData->Sheets;
 			Data->Source.Width = BeamTypeData->EvaluateWidth(EvalTime, Component);
 			Data->Source.bTileUV = BeamTypeData->bTileUV;
 			Data->Source.bRenderGeometry = BeamTypeData->bRenderGeometry;
@@ -1093,6 +1092,7 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 			if (NoiseModule->IsEnabled())
 			{
 				Data->Source.NoiseAmount = NoiseModule->EvaluateNoiseRange(EvalTime, Component);
+				Data->Source.NoiseDirection = NoiseModule->ResolveNoiseDirection(this, EvalTime);
 				Data->Source.NoiseFrequency = NoiseModule->EvaluateNoiseFrequency(EvalTime, Component);
 				Data->Source.NoiseSpeed = NoiseModule->EvaluateNoiseSpeed(EvalTime, Component);
 				Data->Source.NoiseTessellation = NoiseModule->NoiseTessellation;
