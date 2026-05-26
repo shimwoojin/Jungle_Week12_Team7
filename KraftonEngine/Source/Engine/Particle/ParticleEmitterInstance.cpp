@@ -1178,6 +1178,71 @@ void FParticleEmitterInstance::EmitCollisionEventForAcceptedHit(
 	EmitCollisionEvent(CollisionEvent);
 }
 
+bool FParticleEmitterInstance::BuildParticleCollisionQuerySegment(
+	const FBaseParticle& Particle,
+	FVector& OutStartWorld,
+	FVector& OutTravelDirection,
+	float& OutTravelDistance) const
+{
+	// This is the current point-like particle query strategy: a world-space
+	// segment from OldLocation to Location. Future thicker/sweep-style queries
+	// should replace or extend this helper instead of changing response policy.
+	OutStartWorld = ConvertPositionFromSimulation(Particle.OldLocation, EParticleValueSpace::World);
+	const FVector EndWorld = ConvertPositionFromSimulation(Particle.Location, EParticleValueSpace::World);
+
+	const FVector Travel = EndWorld - OutStartWorld;
+	OutTravelDistance = Travel.Length();
+	if (OutTravelDistance <= ParticleCollisionMinTravelDistance)
+	{
+		return false;
+	}
+
+	OutTravelDirection = Travel / OutTravelDistance;
+	return !OutTravelDirection.IsNearlyZero();
+}
+
+ECollisionChannel FParticleEmitterInstance::GetParticleCollisionQueryChannel(
+	const UParticleModuleCollision& CollisionModule) const
+{
+	// Current authoring is still channel-driven. A future object-type query path
+	// can branch from this policy selection layer without disturbing response,
+	// event, budget, or repeated-hit handling.
+	return CollisionModule.CollisionChannel;
+}
+
+const AActor* FParticleEmitterInstance::GetParticleCollisionQueryIgnoreActor() const
+{
+	// Current filter policy is intentionally lightweight: use the module's
+	// collision channel and ignore the owning actor. Future static/dynamic or
+	// richer object filtering should slot in here, not in response consumption.
+	return Component ? Component->GetOwner() : nullptr;
+}
+
+bool FParticleEmitterInstance::PerformParticleCollisionQuery(
+	const FVector& StartWorld,
+	const FVector& TravelDirection,
+	float TravelDistance,
+	const UParticleModuleCollision& CollisionModule,
+	FHitResult& OutHit) const
+{
+	UWorld* World = Component ? Component->GetWorld() : nullptr;
+	if (!World)
+	{
+		return false;
+	}
+
+	// Query/filter policy is separate from budget, repeated-hit suppression, LOD
+	// reduction, and event gating. This helper only answers "what do we ask the
+	// world/physics system to test right now?"
+	return World->PhysicsRaycast(
+		StartWorld,
+		TravelDirection,
+		TravelDistance,
+		OutHit,
+		GetParticleCollisionQueryChannel(CollisionModule),
+		GetParticleCollisionQueryIgnoreActor());
+}
+
 bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	FBaseParticle& Particle,
 	const UParticleModuleCollision& CollisionModule,
@@ -1196,41 +1261,33 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		return false;
 	}
 
-	const FVector StartWorld = ConvertPositionFromSimulation(Particle.OldLocation, EParticleValueSpace::World);
-	const FVector EndWorld = ConvertPositionFromSimulation(Particle.Location, EParticleValueSpace::World);
-	const FVector Travel = EndWorld - StartWorld;
-	const float TravelDistance = Travel.Length();
-
-	if (TravelDistance <= ParticleCollisionMinTravelDistance)
-	{
-		return false;
-	}
-
-	FVector TravelDirection = Travel / TravelDistance;
-	if (TravelDirection.IsNearlyZero())
-	{
-		return false;
-	}
-
-	UWorld* World = Component ? Component->GetWorld() : nullptr;
-	if (!World)
+	FVector StartWorld = FVector::ZeroVector;
+	FVector TravelDirection = FVector::ZeroVector;
+	float TravelDistance = 0.0f;
+	if (!BuildParticleCollisionQuerySegment(
+		Particle,
+		StartWorld,
+		TravelDirection,
+		TravelDistance))
 	{
 		return false;
 	}
 
 	FHitResult Hit;
-	const AActor* IgnoreActor = Component ? Component->GetOwner() : nullptr;
-	if (!World->PhysicsRaycast(
+	if (!PerformParticleCollisionQuery(
 		StartWorld,
 		TravelDirection,
 		TravelDistance,
-		Hit,
-		CollisionModule.CollisionChannel,
-		IgnoreActor))
+		CollisionModule,
+		Hit))
 	{
 		return false;
 	}
 
+	// Response currently depends on these FHitResult fields:
+	// - WorldHitLocation: resolved contact position
+	// - ImpactNormal: accepted collision normal for response math
+	// - FaceIndex: optional diagnostic/event detail
 	const FVector ImpactVelocityWorld =
 		ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
 	const float CollisionTimeSeconds = EmitterTimeSeconds + DeltaTime;

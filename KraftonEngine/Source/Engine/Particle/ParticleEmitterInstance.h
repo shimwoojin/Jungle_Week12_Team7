@@ -215,6 +215,20 @@ private:
 		const FVector& ImpactVelocityWorld,
 		const FHitResult& Hit,
 		float CollisionTimeSeconds);
+	bool BuildParticleCollisionQuerySegment(
+		const FBaseParticle& Particle,
+		FVector& OutStartWorld,
+		FVector& OutTravelDirection,
+		float& OutTravelDistance) const;
+	ECollisionChannel GetParticleCollisionQueryChannel(
+		const UParticleModuleCollision& CollisionModule) const;
+	const AActor* GetParticleCollisionQueryIgnoreActor() const;
+	bool PerformParticleCollisionQuery(
+		const FVector& StartWorld,
+		const FVector& TravelDirection,
+		float TravelDistance,
+		const UParticleModuleCollision& CollisionModule,
+		FHitResult& OutHit) const;
 	bool ResolveSingleParticleCollision(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,
