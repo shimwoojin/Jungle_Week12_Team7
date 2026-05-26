@@ -58,7 +58,7 @@ public:
 	void ScanShaderPaths();
 	const TArray<FString>& GetAvailableShaderPaths() const { return AvailableShaderPaths; }
 
-	// 머티리얼 에디터 텍스처 선택용 — Content/Texture/ 하위 이미지(.png) 열거.
+	// 머티리얼 에디터 텍스처 선택용 — Content/ 하위 이미지(.png) 열거.
 	void ScanTexturePaths();
 	const TArray<FString>& GetAvailableTexturePaths() const { return AvailableTexturePaths; }
 

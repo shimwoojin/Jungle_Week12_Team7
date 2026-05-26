@@ -2,6 +2,7 @@
 #include "Materials/MaterialManager.h"
 #include "Resource/ResourceManager.h"
 #include "Editor/UI/ContentBrowser/ContentItem.h"
+#include "Editor/UI/Util/EditorTextureManager.h"
 #include "Engine/Materials/Material.h"
 #include "Engine/Materials/MaterialDomain.h"
 #include "Engine/Runtime/Engine.h"
@@ -288,6 +289,17 @@ void FEditorMaterialInspector::RenderTextureSection()
 					{
 						CachedMaterial->SetTextureParameter(SlotName, NewTexture);
 						CachedMaterial->RebuildCachedSRVs();
+					}
+				}
+				// hover 시 PNG 썸네일 미리보기 — 어떤 텍스처인지 시각 확인
+				if (ImGui::IsItemHovered())
+				{
+					if (ID3D11ShaderResourceView* Thumb = FEditorTextureManager::Get().GetOrLoadThumbnail(TexPath))
+					{
+						ImGui::BeginTooltip();
+						ImGui::Image(Thumb, ImVec2(96.0f, 96.0f));
+						ImGui::TextUnformatted(TexPath.c_str());
+						ImGui::EndTooltip();
 					}
 				}
 				if (bSelected)

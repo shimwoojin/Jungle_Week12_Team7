@@ -86,7 +86,7 @@ void FMaterialManager::ScanTexturePaths()
 {
 	AvailableTexturePaths.clear();
 
-	const std::filesystem::path TextureRoot = FPaths::RootDir() + L"Content/Texture/";
+	const std::filesystem::path TextureRoot = FPaths::RootDir() + L"Content/";
 	if (!std::filesystem::exists(TextureRoot))
 	{
 		return;
@@ -98,7 +98,9 @@ void FMaterialManager::ScanTexturePaths()
 		if (!Entry.is_regular_file()) continue;
 
 		const std::filesystem::path& Path = Entry.path();
-		if (Path.extension() != L".png") continue; // 에디터 텍스처 규칙(.png)
+		std::wstring Ext = Path.extension().wstring();
+		for (wchar_t& Ch : Ext) if (Ch >= L'A' && Ch <= L'Z') Ch += (L'a' - L'A'); // ASCII 소문자화
+		if (Ext != L".png") continue; // .png / .PNG 등 대소문자 무관
 
 		AvailableTexturePaths.push_back(
 			FPaths::ToUtf8(Path.lexically_relative(ProjectRoot).generic_wstring()));
