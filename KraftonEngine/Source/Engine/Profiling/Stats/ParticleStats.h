@@ -38,6 +38,12 @@ struct FParticleStats
 	static uint64 ReservedDataBytes;   // 예약 입자 데이터 (MaxActiveParticles * stride 합)
 
 	// --- Ribbon RT geometry (per-frame aggregate) ---
+	// RibbonTrailBuilds            : ribbon trail build attempts that reached RT geometry emission
+	// RibbonRuntimeCappedBuilds    : builds where requested tessellation was reduced by sample budget
+	// RibbonMaxEffectiveTessellation : max post-budget tessellation actually used this frame
+	// RibbonControlSegments        : total control-point segments before tessellation
+	// RibbonSamplePoints           : total sampled curve points after tessellation budget was applied
+	// RibbonVertices / Indices     : final emitted RT geometry totals
 	static uint32 RibbonTrailBuilds;
 	static uint32 RibbonRuntimeCappedBuilds;
 	static uint32 RibbonMaxEffectiveTessellation;
@@ -71,6 +77,9 @@ struct FParticleStats
 		uint32 IndexCount,
 		bool bRuntimeCapped)
 	{
+		// Per-frame aggregates for Ribbon budget tuning:
+		//   control segments -> sample points -> vertices/indices
+		// and whether requested tessellation had to be lowered by runtime policy.
 		++RibbonTrailBuilds;
 		if (bRuntimeCapped)
 		{

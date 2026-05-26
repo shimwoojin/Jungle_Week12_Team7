@@ -42,7 +42,12 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
 
 namespace
 {
-	constexpr uint32 RibbonRuntimeSamplePointBudget = 16384;
+	// Current Ribbon operating policy:
+	// one emitter-level single-trail build may amplify control segments into many
+	// sampled points through tessellation. This per-trail budget caps only that
+	// tessellation-driven sample growth; it does not cap emitter count or rewrite
+	// the underlying control-point chain/topology.
+	constexpr uint32 RibbonRuntimeSamplePointBudgetPerTrail = 16384;
 
 	struct FRibbonControlPoint
 	{
@@ -256,7 +261,14 @@ namespace
 		}
 	}
 
-	uint32 ResolveRibbonEffectiveTessellation(
+	uint32 ComputeRibbonRequestedSamplePointCount(
+		uint32 ControlSegmentCount,
+		uint32 TessellationPerSegment)
+	{
+		return 1u + ControlSegmentCount * TessellationPerSegment;
+	}
+
+	uint32 ResolveRibbonEffectiveTessellationForSampleBudget(
 		uint32 RequestedTessellation,
 		uint32 ControlSegmentCount,
 		bool& bOutRuntimeCapped)
@@ -271,14 +283,17 @@ namespace
 		// base control-point chain itself. Very large active-particle chains can
 		// still be expensive, but authoring tessellation will not multiply them
 		// without bound on the RT path.
-		const uint32 RequestedSamplePoints = 1u + ControlSegmentCount * RequestedTessellation;
-		if (RequestedSamplePoints <= RibbonRuntimeSamplePointBudget)
+		const uint32 RequestedSamplePoints =
+			ComputeRibbonRequestedSamplePointCount(ControlSegmentCount, RequestedTessellation);
+		if (RequestedSamplePoints <= RibbonRuntimeSamplePointBudgetPerTrail)
 		{
 			return RequestedTessellation;
 		}
 
+		// We reserve one trailing sample point, then distribute the remaining sample
+		// budget across control segments as evenly as possible.
 		const uint32 BudgetDrivenTessellation =
-			std::max(1u, (RibbonRuntimeSamplePointBudget - 1u) / ControlSegmentCount);
+			std::max(1u, (RibbonRuntimeSamplePointBudgetPerTrail - 1u) / ControlSegmentCount);
 		const uint32 EffectiveTessellation = std::min(RequestedTessellation, BudgetDrivenTessellation);
 		bOutRuntimeCapped = EffectiveTessellation < RequestedTessellation;
 		return std::max(1u, EffectiveTessellation);
@@ -820,10 +835,13 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const uint32 ControlSegmentCount = static_cast<uint32>(ControlPoints.size()) - 1u;
 	bool bRuntimeCapped = false;
 	// Authoring tessellation is a shaping hint, not an unbounded RT promise.
-	// The current guard keeps tessellation from multiplying trail cost past a
-	// modest sample-point budget while preserving the same Hermite-based shaping
-	// model and single-trail semantics.
-	const uint32 TessellationPerSegment = ResolveRibbonEffectiveTessellation(
+	// Effective tessellation is derived from:
+	//   requested MaxTessellation
+	//   -> control segment count
+	//   -> per-trail sample-point budget
+	// The guard preserves the same Hermite-based shaping model and single-trail
+	// semantics; it only reduces tessellation-driven sample growth when needed.
+	const uint32 TessellationPerSegment = ResolveRibbonEffectiveTessellationForSampleBudget(
 		static_cast<uint32>(MaxTessellation),
 		ControlSegmentCount,
 		bRuntimeCapped);

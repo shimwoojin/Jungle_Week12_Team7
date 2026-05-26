@@ -397,7 +397,7 @@ void FOverlayStatSystem::BuildParticleLines(TArray<FString>& OutLines) const
 		snprintf(
 			Buffer,
 			sizeof(Buffer),
-			"Ribbon Trails : %u  Capped : %u  Max Effective Tess : %u",
+			"Ribbon Trails : %u  Budget-Capped : %u  Max Effective Tess : %u",
 			FParticleStats::RibbonTrailBuilds,
 			FParticleStats::RibbonRuntimeCappedBuilds,
 			FParticleStats::RibbonMaxEffectiveTessellation);
@@ -406,7 +406,7 @@ void FOverlayStatSystem::BuildParticleLines(TArray<FString>& OutLines) const
 		snprintf(
 			Buffer,
 			sizeof(Buffer),
-			"Ribbon Segments : %u  Samples : %u  Vertices : %u  Indices : %u",
+			"Ribbon Ctrl Segments : %u  Sample Points : %u  Vertices : %u  Indices : %u",
 			FParticleStats::RibbonControlSegments,
 			FParticleStats::RibbonSamplePoints,
 			FParticleStats::RibbonVertices,
