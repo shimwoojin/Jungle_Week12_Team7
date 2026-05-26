@@ -347,6 +347,11 @@ struct FDynamicEmitterReplayDataBase
 	UMaterial* Material = nullptr;
 	bool bUseLocalSpace = false;
 	FMatrix LocalToWorld;      // bUseLocalSpace == true 일 때만 의미 있음 (default ctor = zero)
+	// NOTE:
+	//   Base replay metadata는 현재 per-particle SimulationLODIndex별 render contract가 아니다.
+	//   지금 구조에서는 emitter의 current render LOD view에서 해석한 emitter-level snapshot을
+	//   GT가 RT로 넘긴다. live particle simulation continuity와 render replay shaping basis는
+	//   의도적으로 분리될 수 있다.
 
 	FParticleDataView GetParticleView() const
 	{
@@ -380,6 +385,8 @@ enum class EParticleSpriteReplayAlignment : uint8
 
 struct FDynamicSpriteEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Sprite shaping metadata는 current render replay LOD의 RequiredModule에서 해석한
+	// emitter-level 값이다. 개별 particle의 SimulationLODIndex를 따로 반영하지 않는다.
 	int32 SubImagesHorizontal = 1;
 	int32 SubImagesVertical   = 1;
 	EParticleSpriteReplayAlignment Alignment = EParticleSpriteReplayAlignment::Square;
@@ -403,6 +410,7 @@ enum class EParticleMeshReplayAlignment : uint8
 
 struct FDynamicMeshEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Mesh render metadata는 current render replay LOD의 TypeDataModule view에서 복사된다.
 	UStaticMesh* Mesh = nullptr;
 	EParticleMeshReplayAlignment Alignment = EParticleMeshReplayAlignment::None;
 	bool bOverrideMaterial = false;
@@ -418,6 +426,8 @@ struct FDynamicMeshEmitterData : FDynamicEmitterDataBase
 // -- Beam ----
 struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Beam shaping inputs도 emitter-level current render replay LOD view에서 해석한다.
+	// 현재 RT beam path는 per-particle simulation LOD별 beam contract를 따로 들고 가지 않는다.
 	int32 InterpolationPoints = 0;
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };
@@ -453,7 +463,8 @@ struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 	//
 	// The fields below are authoring/type-data derived shaping inputs consumed by
 	// the RT ribbon geometry builder. They describe how the single trail should be
-	// curved/tessellated/UV-tiled; they are not per-particle payload values.
+	// curved/tessellated/UV-tiled from the current render replay LOD view; they are
+	// not per-particle payload values.
 	int32 MaxTessellation = 8;
 	float TangentTension = 0.5f;    // ribbon tangent 보간 강도 (0 = 느슨함, 1 = 강함)
 	float TilesPerTrail = 1.0f;     // trail 전체 UV 반복 수

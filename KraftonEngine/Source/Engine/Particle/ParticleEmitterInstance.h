@@ -207,6 +207,11 @@ protected:
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.
 	void ResizeParticleData(uint32 NewMax);
 
+	// RT replay snapshot은 아직 per-particle SimulationLODIndex bucket이 아니라
+	// emitter-level "현재 render view"로 생성한다. 이 helper는 그 current render
+	// LOD basis를 simulation continuity와 구분해 드러내기 위한 경계다.
+	UParticleLODLevel* GetRenderReplayLODLevel() const;
+
 	void FillReplayData(FDynamicEmitterReplayDataBase& OutData) const;
 
 private:

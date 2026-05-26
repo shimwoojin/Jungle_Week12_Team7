@@ -362,6 +362,15 @@ UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
 	return Emitter->GetCurrentLODLevel(CurrentLODIndex);
 }
 
+UParticleLODLevel* FParticleEmitterInstance::GetRenderReplayLODLevel() const
+{
+	// Render replay는 아직 per-particle SimulationLODIndex별 snapshot을 만들지 않는다.
+	// GT는 현재 emitter가 보고 있는 render LOD view를 emitter-level snapshot으로 고정해
+	// RT에 넘긴다. 이 helper는 그 current render LOD basis를 simulation continuity와
+	// 구분해 드러내기 위한 contract boundary다.
+	return GetCurrentLOD();
+}
+
 void FParticleEmitterInstance::BuildActiveParticleSimulationLODBuckets(TArray<TArray<uint32>>& OutBuckets) const
 {
 	const int32 LODCount = Emitter ? std::max(Emitter->GetLODCount(), 1) : 1;
@@ -2313,7 +2322,7 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 		OutData.SnapshotStorage.ParticleIndices[i] = static_cast<uint16>(i);
 	}
 
-	UParticleLODLevel* LOD = GetCurrentLOD();
+	UParticleLODLevel* LOD = GetRenderReplayLODLevel();
 	if (!LOD || !LOD->RequiredModule)
 	{
 		return;
@@ -2328,6 +2337,8 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	// RequiredModule.BlendState로 Material을 override하고 싶으면 SceneProxy의
 	// Material 캐싱 단계에서 SetBlendState 같은 API 추가 필요 (현재 RequiredModule.SubImagesH/V와 동일 패턴).
 	OutData.bUseLocalSpace = Required->bUseLocalSpace;
+	// Base replay metadata는 current render replay LOD의 RequiredModule view에서 채워진다.
+	// 이미 살아 있는 particle의 SimulationLODIndex continuity와는 다른 계층의 계약이다.
 
 	if (Component)
 	{
@@ -2432,7 +2443,8 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Sprite;
 
-	UParticleLODLevel* LOD = GetCurrentLOD();
+	// Sprite replay shaping은 current render replay LOD의 RequiredModule 기준이다.
+	UParticleLODLevel* LOD = GetRenderReplayLODLevel();
 	if (LOD && LOD->RequiredModule)
 	{
 		Data->Source.SubImagesHorizontal = LOD->RequiredModule->SubImagesHorizontal;
@@ -2450,7 +2462,8 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
 
-	UParticleLODLevel* LOD = GetCurrentLOD();
+	// Mesh replay shaping은 current render replay LOD의 TypeDataModule view를 사용한다.
+	UParticleLODLevel* LOD = GetRenderReplayLODLevel();
 	if (LOD)
 	{
 		if (auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
@@ -2477,7 +2490,9 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 	FVector ResolvedSource = SourcePoint;
 	FVector ResolvedTarget = TargetPoint;
 
-	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	// Beam replay inputs도 emitter-level current render replay LOD에서 해석한다.
+	// Source/Target/Noise shaping은 현재 RT beam path가 소비할 단일 replay snapshot을 만들기 위한 값이다.
+	if (UParticleLODLevel* LOD = GetRenderReplayLODLevel())
 	{
 		const float EvalTime = GetCurrentLoopTimeSeconds();
 		UParticleModuleTypeDataBeam* BeamTypeData = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule);
@@ -2628,7 +2643,7 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;
 
-	if (UParticleLODLevel* LOD = GetCurrentLOD())
+	if (UParticleLODLevel* LOD = GetRenderReplayLODLevel())
 	{
 		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
 		{
