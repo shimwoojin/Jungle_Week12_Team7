@@ -1,4 +1,4 @@
-#include "ShadowMapPass.h"
+﻿#include "ShadowMapPass.h"
 #include "RenderPassRegistry.h"
 
 #include "Render/Device/D3DDevice.h"
@@ -689,6 +689,7 @@ void FShadowMapPass::DrawShadowCasters(ID3D11DeviceContext* DC, FScene& Scene, F
 		if (!Proxy->CastsShadow()) continue;
 		if (Proxy->HasProxyFlag(EPrimitiveProxyFlags::NeverCull)) continue;
 		if (Proxy->HasProxyFlag(EPrimitiveProxyFlags::EditorOnly)) continue;
+		if (Proxy->HasProxyFlag(EPrimitiveProxyFlags::Particle)) continue;
 
 		if (!Partition && !LightFrustum.IntersectAABB(Proxy->GetCachedBounds())) continue;
 

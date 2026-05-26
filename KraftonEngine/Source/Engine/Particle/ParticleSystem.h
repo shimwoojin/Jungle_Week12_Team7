@@ -37,7 +37,7 @@ public:
 	FVector SystemBoundsMax = {  100,  100,  100 };
 
 	UPROPERTY(Edit, Save, Category="System", DisplayName="Use Fixed Relative Bounding Box")
-	bool bUseFixedRelativeBoundingBox = true;
+	bool bUseFixedRelativeBoundingBox = false;
 
 	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Use Automatic LOD")
 	bool bUseAutomaticLOD = false;
