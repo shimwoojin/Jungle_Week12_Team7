@@ -207,6 +207,14 @@ private:
 		uint32 ModuleOffset,
 		float DeltaTime) const;
 	bool IsHighPriorityCollisionCandidate(float PriorityScore) const;
+	bool ShouldEmitCollisionEventForAcceptedHit(
+		const UParticleModuleCollision& CollisionModule) const;
+	void EmitCollisionEventForAcceptedHit(
+		const FBaseParticle& Particle,
+		const FVector& CollisionNormal,
+		const FVector& ImpactVelocityWorld,
+		const FHitResult& Hit,
+		float CollisionTimeSeconds);
 	bool ResolveSingleParticleCollision(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,

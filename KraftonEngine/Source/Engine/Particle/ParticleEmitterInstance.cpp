@@ -975,6 +975,9 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 		};
 
 	ProcessCollisionCandidates(HighPriorityCandidates);
+	// Any remaining candidates beyond the current budget are "not processed this
+	// tick" because of budget policy. That is distinct from processing a hit and
+	// then suppressing its event as repeated-contact noise or lower-LOD gating.
 	ProcessCollisionCandidates(FallbackCandidates);
 }
 
@@ -1141,6 +1144,34 @@ bool FParticleEmitterInstance::IsHighPriorityCollisionCandidate(float PrioritySc
 	return PriorityScore >= ParticleCollisionHighPriorityScoreThreshold;
 }
 
+bool FParticleEmitterInstance::ShouldEmitCollisionEventForAcceptedHit(
+	const UParticleModuleCollision& CollisionModule) const
+{
+	// Event eligibility is a reporting policy layer on top of accepted collision
+	// processing. A collision can still be processed even when the event report is
+	// gated off by module settings or lower-LOD event fidelity policy.
+	return CollisionModule.bGenerateCollisionEvents &&
+		ShouldEmitCollisionEventsForCurrentLOD();
+}
+
+void FParticleEmitterInstance::EmitCollisionEventForAcceptedHit(
+	const FBaseParticle& Particle,
+	const FVector& CollisionNormal,
+	const FVector& ImpactVelocityWorld,
+	const FHitResult& Hit,
+	float CollisionTimeSeconds)
+{
+	FParticleEventCollideData CollisionEvent;
+	CollisionEvent.Type = EParticleEventType::Collision;
+	CollisionEvent.TimeSeconds = CollisionTimeSeconds;
+	CollisionEvent.Location = Hit.WorldHitLocation;
+	CollisionEvent.Velocity = ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
+	CollisionEvent.Normal = CollisionNormal;
+	CollisionEvent.ImpactVelocity = ImpactVelocityWorld;
+	CollisionEvent.Item = Hit.FaceIndex;
+	EmitCollisionEvent(CollisionEvent);
+}
+
 bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	FBaseParticle& Particle,
 	const UParticleModuleCollision& CollisionModule,
@@ -1211,7 +1242,8 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	{
 		// This looks like repeated contact with the same surface within a very short
 		// time window. Calm the contact without incrementing collision count or
-		// emitting a normal collision event.
+		// emitting a normal collision event. This is "noise suppressed", not an
+		// accepted collision report.
 		const FVector AdjustedWorldPosition =
 			Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
 		const float NormalSpeed = ImpactVelocityWorld.Dot(CollisionNormal);
@@ -1236,23 +1268,22 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		ApplyImmediateParticleCollisionResponse(Particle, CollisionModule, Hit, ImpactVelocityWorld);
 	UpdateRecentCollisionState(*Payload, CollisionTimeSeconds, CollisionNormal);
 
+	// From this point on the hit is treated as an accepted / meaningful collision:
+	// it passed raw hit detection, budget processing, and repeated-contact noise
+	// suppression. Reporting remains a separate policy decision.
 	++Payload->NumCollisions;
 
-	if (CollisionModule.bGenerateCollisionEvents && ShouldEmitCollisionEventsForCurrentLOD())
+	if (ShouldEmitCollisionEventForAcceptedHit(CollisionModule))
 	{
-		// Base collision events are emitted after we recognize the hit and update
-		// collision count, but before final kill/freeze/disable consequences are
-		// applied. This keeps event timing consistent across response modes, while
-		// still allowing lower LODs to reduce event fidelity separately from queries.
-		FParticleEventCollideData CollisionEvent;
-		CollisionEvent.Type = EParticleEventType::Collision;
-		CollisionEvent.TimeSeconds = CollisionTimeSeconds;
-		CollisionEvent.Location = Hit.WorldHitLocation;
-		CollisionEvent.Velocity = ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
-		CollisionEvent.Normal = CollisionNormal;
-		CollisionEvent.ImpactVelocity = ImpactVelocityWorld;
-		CollisionEvent.Item = Hit.FaceIndex;
-		EmitCollisionEvent(CollisionEvent);
+		// Base collision events represent accepted collision reports, not just any
+		// raw raycast hit. They are emitted before final kill/freeze/ignore
+		// completion consequences so response-mode timing stays predictable.
+		EmitCollisionEventForAcceptedHit(
+			Particle,
+			CollisionNormal,
+			ImpactVelocityWorld,
+			Hit,
+			CollisionTimeSeconds);
 	}
 
 	if (bKillImmediately)
