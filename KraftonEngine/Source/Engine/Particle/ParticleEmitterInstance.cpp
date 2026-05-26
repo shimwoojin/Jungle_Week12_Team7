@@ -158,6 +158,7 @@ void FParticleEmitterInstance::Reset()
 	EmitterTimeSeconds = 0.0f;
 	CurrentLoopTimeSeconds = 0.0f;
 	LoopCount = 0;
+	bHaltSpawning = false;
 
 	ClearPendingEvents();
 
@@ -326,7 +327,8 @@ bool FParticleEmitterInstance::IsSpawningComplete() const
 
 bool FParticleEmitterInstance::IsFinished() const
 {
-	return IsSpawningComplete() && ActiveParticles == 0;
+	// halt(graceful deactivate) 시엔 더 이상 spawn이 없으므로 입자가 0이면 완료로 본다.
+	return (bHaltSpawning || IsSpawningComplete()) && ActiveParticles == 0;
 }
 
 bool FParticleEmitterInstance::ComputeDynamicBounds(FVector& OutMin, FVector& OutMax) const
@@ -884,7 +886,7 @@ const UParticleModuleRequired* FParticleEmitterInstance::GetRequiredModule() con
 
 bool FParticleEmitterInstance::IsSpawningAllowed() const
 {
-	return !IsSpawningComplete();
+	return !bHaltSpawning && !IsSpawningComplete();
 }
 
 void FParticleEmitterInstance::AdvanceLoopState(float DeltaTime)

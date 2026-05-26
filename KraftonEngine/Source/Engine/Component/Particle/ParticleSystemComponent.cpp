@@ -78,6 +78,11 @@ void UParticleSystemComponent::Activate(bool bReset)
 		CreateEmitterInstances();
 	}
 
+	// 재활성화 시 halt 해제 — 이전 Deactivate(graceful)로 spawn이 막혀 있을 수 있다.
+	// (bReset 경로의 ResetParticles 도 해제하지만, bReset 없이 Activate 되는 경우까지 보장.)
+	for (FParticleEmitterInstance* Inst : EmitterInstances)
+		if (Inst) Inst->SetHaltSpawning(false);
+
 	if (bReset || bResetOnActivate)
 	{
 		ResetParticles();
@@ -89,7 +94,11 @@ void UParticleSystemComponent::Activate(bool bReset)
 
 void UParticleSystemComponent::Deactivate()
 {
-	bActive = false;
+	// graceful: 신규 spawn만 중단하고 기존 입자는 수명대로 소멸시킨다(tick 유지).
+	// 모든 입자가 사라지면 TickComponent 의 IsSystemFinished 가 bActive=false + OnSystemFinished 를 처리.
+	// (즉시 정리가 필요하면 ResetParticles() 를 별도로 호출.)
+	for (FParticleEmitterInstance* Inst : EmitterInstances)
+		if (Inst) Inst->SetHaltSpawning(true);
 	MissingEventManagerTimeSeconds = 0.0f;
 	ResetAutomaticLODTransitionState();
 }

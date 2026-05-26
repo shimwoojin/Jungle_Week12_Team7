@@ -115,6 +115,9 @@ public:
 	// finite loop emitter가 더 이상 spawn하지 않는 상태인지 / 실제로 완전히 끝났는지.
 	bool   IsSpawningComplete()     const;
 	bool   IsFinished()             const;
+	// graceful deactivate: spawn만 중단하고 기존 입자는 수명대로 소멸시킨다.
+	// 켜지면 IsSpawningAllowed()=false, 입자가 0이 되면 IsFinished()=true → PSC가 시스템 완료 처리. Reset()에서 해제.
+	void   SetHaltSpawning(bool bInHalt) { bHaltSpawning = bInHalt; }
 	// active particle 기준의 느슨한 world-space bounds. 없으면 false를 반환해
 	// PSC가 template fixed bounds로 fallback 할 수 있게 한다.
 	bool   ComputeDynamicBounds(FVector& OutMin, FVector& OutMax) const;
@@ -229,6 +232,8 @@ protected:
 	float CurrentLoopTimeSeconds = 0.0f;
 	int32 LoopCount          = 0;
 	int32 CurrentLODIndex    = 0;
+	// graceful deactivate 플래그 — true면 신규 spawn 중단(기존 입자는 계속 tick·소멸). Reset()에서 해제.
+	bool  bHaltSpawning      = false;
 
 	// 이벤트 큐 (EventGenerator 모듈이 push, PSC/EventManager 가 drain).
 	TArray<FParticleEventSpawnData>     SpawnEvents;
