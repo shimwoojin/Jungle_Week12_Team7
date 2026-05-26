@@ -38,6 +38,10 @@ namespace
 	constexpr float ParticleCollisionEmitterPruneMinMovementDistance = 5.0f;
 	constexpr float ParticleCollisionEmitterPruneMinProbeDistance = 100.0f;
 	constexpr float ParticleCollisionEmitterPruneProbePadding = 50.0f;
+	constexpr float ParticleCollisionNearbyCacheRefreshSeconds = 0.1f;
+	constexpr float ParticleCollisionNearbyCacheMinCenterDelta = 25.0f;
+	constexpr float ParticleCollisionNearbyCacheMinExtentDelta = 10.0f;
+	constexpr float ParticleCollisionNearbyCacheLateralProbeMinExtent = 25.0f;
 	// Narrow runtime gate for collision observability. Leave false by default so
 	// normal gameplay stays quiet; flip during focused collision investigation.
 	bool GParticleCollisionDebugEnabled = false;
@@ -218,6 +222,7 @@ void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystem
 	ActiveParticles = 0;
 	LastCollisionPruneBoundsCenter = FVector::ZeroVector;
 	bHasLastCollisionPruneBoundsCenter = false;
+	NearbyCollisionCache = FEmitterNearbyCollisionCache{};
 
 	ClearPendingEvents();
 
@@ -292,6 +297,7 @@ void FParticleEmitterInstance::Reset()
 	LoopCount = 0;
 	LastCollisionPruneBoundsCenter = FVector::ZeroVector;
 	bHasLastCollisionPruneBoundsCenter = false;
+	NearbyCollisionCache = FEmitterNearbyCollisionCache{};
 
 	ClearPendingEvents();
 
@@ -966,6 +972,12 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 		return;
 	}
 
+	// Nearby-collider preselection is a short-lived context snapshot, not final
+	// hit authority. It runs after emitter-level pruning and before per-particle
+	// candidate selection so the emitter has a conservative sense of nearby scene
+	// collision relevance without redefining query/event/response semantics.
+	RefreshEmitterNearbyCollisionCache(*CollisionModule, &DebugStats);
+
 	TArray<uint32> HighPriorityCandidates;
 	TArray<uint32> FallbackCandidates;
 	HighPriorityCandidates.reserve(ActiveParticles);
@@ -1318,6 +1330,27 @@ bool FParticleEmitterInstance::ShouldPruneEmitterCollisionByBounds(
 	}
 
 	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+	const FVector BoundsExtent = (BoundsMax - BoundsMin) * 0.5f;
+	const bool bCanReuseNearbyCollisionCache =
+		NearbyCollisionCache.bValid &&
+		NearbyCollisionCache.CachedLODIndex == CurrentLODIndex &&
+		(EmitterTimeSeconds - NearbyCollisionCache.LastRefreshTimeSeconds) <= ParticleCollisionNearbyCacheRefreshSeconds &&
+		(BoundsCenter - NearbyCollisionCache.CachedBoundsCenter).Length() <= ParticleCollisionNearbyCacheMinCenterDelta &&
+		(BoundsExtent - NearbyCollisionCache.CachedBoundsExtent).Length() <= ParticleCollisionNearbyCacheMinExtentDelta;
+	if (bCanReuseNearbyCollisionCache && NearbyCollisionCache.bHasNearbyCollisionEvidence)
+	{
+		if (DebugStats)
+		{
+			DebugStats->bNearbyCollisionCacheValid = true;
+			DebugStats->bNearbyCollisionEvidence = true;
+			++DebugStats->NearbyCacheReuseCount;
+			DebugStats->NearbyEvidenceProbeCount += NearbyCollisionCache.EvidenceProbeCount;
+		}
+		LastCollisionPruneBoundsCenter = BoundsCenter;
+		bHasLastCollisionPruneBoundsCenter = true;
+		return false;
+	}
+
 	const bool bHasNearbyCollision =
 		HasNearbyCollisionForEmitterBounds(
 			CollisionModule,
@@ -1337,6 +1370,191 @@ bool FParticleEmitterInstance::ShouldPruneEmitterCollisionByBounds(
 		++DebugStats->EmitterPrunedCount;
 	}
 	return true;
+}
+
+void FParticleEmitterInstance::RefreshEmitterNearbyCollisionCache(
+	const UParticleModuleCollision& CollisionModule,
+	FParticleCollisionDebugStats* DebugStats)
+{
+	FVector BoundsMin = FVector::ZeroVector;
+	FVector BoundsMax = FVector::ZeroVector;
+	if (!ComputeDynamicBounds(BoundsMin, BoundsMax))
+	{
+		NearbyCollisionCache = FEmitterNearbyCollisionCache{};
+		if (DebugStats)
+		{
+			DebugStats->bNearbyCollisionCacheValid = false;
+			DebugStats->bNearbyCollisionEvidence = false;
+		}
+		return;
+	}
+
+	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+	const FVector BoundsExtent = (BoundsMax - BoundsMin) * 0.5f;
+	const float CenterDelta = (BoundsCenter - NearbyCollisionCache.CachedBoundsCenter).Length();
+	const float ExtentDelta = (BoundsExtent - NearbyCollisionCache.CachedBoundsExtent).Length();
+	const bool bShouldRefresh =
+		!NearbyCollisionCache.bValid ||
+		NearbyCollisionCache.CachedLODIndex != CurrentLODIndex ||
+		(EmitterTimeSeconds - NearbyCollisionCache.LastRefreshTimeSeconds) >= ParticleCollisionNearbyCacheRefreshSeconds ||
+		CenterDelta >= ParticleCollisionNearbyCacheMinCenterDelta ||
+		ExtentDelta >= ParticleCollisionNearbyCacheMinExtentDelta;
+
+	if (!bShouldRefresh)
+	{
+		if (DebugStats)
+		{
+			++DebugStats->NearbyCacheReuseCount;
+			DebugStats->bNearbyCollisionCacheValid = NearbyCollisionCache.bValid;
+			DebugStats->bNearbyCollisionEvidence = NearbyCollisionCache.bHasNearbyCollisionEvidence;
+			DebugStats->NearbyEvidenceProbeCount += NearbyCollisionCache.EvidenceProbeCount;
+			if (NearbyCollisionCache.bHasNearbyCollisionEvidence)
+			{
+				++DebugStats->NearbyEvidenceHitCount;
+			}
+			else
+			{
+				++DebugStats->NearbyEvidenceMissCount;
+			}
+		}
+		return;
+	}
+
+	int32 EvidenceProbeCount = 0;
+	const bool bHasNearbyCollisionEvidence =
+		GatherEmitterNearbyCollisionEvidence(
+			CollisionModule,
+			BoundsCenter,
+			BoundsExtent,
+			EvidenceProbeCount);
+
+	NearbyCollisionCache.bValid = true;
+	NearbyCollisionCache.bHasNearbyCollisionEvidence = bHasNearbyCollisionEvidence;
+	NearbyCollisionCache.CachedBoundsCenter = BoundsCenter;
+	NearbyCollisionCache.CachedBoundsExtent = BoundsExtent;
+	NearbyCollisionCache.LastRefreshTimeSeconds = EmitterTimeSeconds;
+	NearbyCollisionCache.CachedLODIndex = CurrentLODIndex;
+	NearbyCollisionCache.EvidenceProbeCount = EvidenceProbeCount;
+
+	if (DebugStats)
+	{
+		++DebugStats->NearbyCacheRefreshCount;
+		DebugStats->bNearbyCollisionCacheValid = true;
+		DebugStats->bNearbyCollisionEvidence = bHasNearbyCollisionEvidence;
+		DebugStats->NearbyEvidenceProbeCount += EvidenceProbeCount;
+		if (bHasNearbyCollisionEvidence)
+		{
+			++DebugStats->NearbyEvidenceHitCount;
+		}
+		else
+		{
+			++DebugStats->NearbyEvidenceMissCount;
+		}
+	}
+}
+
+bool FParticleEmitterInstance::GatherEmitterNearbyCollisionEvidence(
+	const UParticleModuleCollision& CollisionModule,
+	const FVector& BoundsCenter,
+	const FVector& BoundsExtent,
+	int32& OutEvidenceProbeCount)
+{
+	OutEvidenceProbeCount = 0;
+	const float BoundsRadius = BoundsExtent.Length();
+	const FVector MovementDelta = NearbyCollisionCache.bValid
+		? (BoundsCenter - NearbyCollisionCache.CachedBoundsCenter)
+		: FVector::ZeroVector;
+	const float MovementDistance = MovementDelta.Length();
+
+	auto TryNearbyProbe =
+		[this, &CollisionModule, &OutEvidenceProbeCount](
+			const FVector& StartWorld,
+			const FVector& Direction,
+			float Distance,
+			FHitResult& OutHit) -> bool
+		{
+			if (Distance <= ParticleCollisionMinTravelDistance)
+			{
+				return false;
+			}
+
+			FVector ProbeDirection = Direction;
+			if (ProbeDirection.IsNearlyZero())
+			{
+				return false;
+			}
+			ProbeDirection.Normalize();
+
+			const FVector ProbeEnd = StartWorld + ProbeDirection * Distance;
+			++OutEvidenceProbeCount;
+			const bool bHit = PerformParticleCollisionQuery(
+				StartWorld,
+				ProbeDirection,
+				Distance,
+				CollisionModule,
+				OutHit);
+			DebugDrawEmitterNearbyCollisionProbe(
+				StartWorld,
+				ProbeEnd,
+				bHit ? FColor(0, 220, 170) : FColor(200, 120, 255));
+			return bHit;
+		};
+
+	FHitResult Hit;
+	const float DownwardDistance = std::max(
+		BoundsExtent.Z + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
+		ParticleCollisionEmitterPruneMinProbeDistance);
+	if (TryNearbyProbe(BoundsCenter, -FVector::UpVector, DownwardDistance, Hit))
+	{
+		DebugDrawParticleCollisionHit(
+			Hit,
+			Hit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : Hit.ImpactNormal.Normalized(),
+			FColor(0, 220, 170),
+			FColor(0, 220, 170));
+		return true;
+	}
+
+	if (NearbyCollisionCache.bValid &&
+		MovementDistance >= ParticleCollisionEmitterPruneMinMovementDistance)
+	{
+		const float MovementProbeDistance = std::max(
+			MovementDistance + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
+			ParticleCollisionEmitterPruneMinProbeDistance);
+		if (TryNearbyProbe(BoundsCenter, MovementDelta, MovementProbeDistance, Hit))
+		{
+			DebugDrawParticleCollisionHit(
+				Hit,
+				Hit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : Hit.ImpactNormal.Normalized(),
+				FColor(0, 220, 170),
+				FColor(0, 220, 170));
+			return true;
+		}
+	}
+
+	const float DominantHorizontalExtent = std::max(std::abs(BoundsExtent.X), std::abs(BoundsExtent.Y));
+	if (DominantHorizontalExtent >= ParticleCollisionNearbyCacheLateralProbeMinExtent)
+	{
+		const FVector LateralDirection =
+			(std::abs(BoundsExtent.X) >= std::abs(BoundsExtent.Y))
+			? FVector::RightVector
+			: FVector::ForwardVector;
+		const float LateralDistance = std::max(
+			DominantHorizontalExtent + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
+			ParticleCollisionEmitterPruneMinProbeDistance);
+		if (TryNearbyProbe(BoundsCenter, LateralDirection, LateralDistance, Hit))
+		{
+			DebugDrawParticleCollisionHit(
+				Hit,
+				Hit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : Hit.ImpactNormal.Normalized(),
+				FColor(0, 220, 170),
+				FColor(0, 220, 170));
+			return true;
+		}
+	}
+
+	// Nearby preselection is coarse context only. A miss here means "no strong
+	// nearby evidence right now", not "future per-particle collision is impossible".
+	return false;
 }
 
 bool FParticleEmitterInstance::HasNearbyCollisionForEmitterBounds(
@@ -1486,6 +1704,24 @@ void FParticleEmitterInstance::DebugDrawEmitterCollisionPruneProbe(
 		ParticleCollisionDebugDrawDuration);
 }
 
+void FParticleEmitterInstance::DebugDrawEmitterNearbyCollisionProbe(
+	const FVector& StartWorld,
+	const FVector& EndWorld,
+	const FColor& Color) const
+{
+	if (!ShouldDebugParticleCollisions())
+	{
+		return;
+	}
+
+	DrawDebugLine(
+		Component->GetWorld(),
+		StartWorld,
+		EndWorld,
+		Color,
+		ParticleCollisionDebugDrawDuration);
+}
+
 void FParticleEmitterInstance::DebugDrawParticleCollisionHit(
 	const FHitResult& Hit,
 	const FVector& CollisionNormal,
@@ -1522,7 +1758,7 @@ void FParticleEmitterInstance::DebugLogParticleCollisionStats(
 
 	const std::string EmitterName = Emitter ? Emitter->GetName() : "<null>";
 	UE_LOG(
-		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d pruned=%d pruneProbeHit=%d pruneProbeMiss=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
+		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d pruned=%d pruneProbeHit=%d pruneProbeMiss=%d nearbyCacheValid=%d nearbyCacheRefreshed=%d nearbyCacheReused=%d nearbyEvidence=%d nearbyEvidenceHit=%d nearbyEvidenceMiss=%d nearbyProbeCount=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
 		EmitterName.c_str(),
 		Stats.CurrentLODIndex,
 		Stats.ActiveParticles,
@@ -1532,6 +1768,13 @@ void FParticleEmitterInstance::DebugLogParticleCollisionStats(
 		Stats.EmitterPrunedCount,
 		Stats.EmitterPruneProbeHitCount,
 		Stats.EmitterPruneProbeMissCount,
+		Stats.bNearbyCollisionCacheValid ? 1 : 0,
+		Stats.NearbyCacheRefreshCount,
+		Stats.NearbyCacheReuseCount,
+		Stats.bNearbyCollisionEvidence ? 1 : 0,
+		Stats.NearbyEvidenceHitCount,
+		Stats.NearbyEvidenceMissCount,
+		Stats.NearbyEvidenceProbeCount,
 		Stats.CandidateCount,
 		Stats.HighPriorityCandidateCount,
 		Stats.FallbackCandidateCount,

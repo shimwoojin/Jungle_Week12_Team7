@@ -189,6 +189,17 @@ protected:
 	void FillReplayData(FDynamicEmitterReplayDataBase& OutData) const;
 
 private:
+	struct FEmitterNearbyCollisionCache
+	{
+		bool bValid = false;
+		bool bHasNearbyCollisionEvidence = false;
+		FVector CachedBoundsCenter = FVector::ZeroVector;
+		FVector CachedBoundsExtent = FVector::ZeroVector;
+		float LastRefreshTimeSeconds = -1.0f;
+		int32 CachedLODIndex = 0;
+		int32 EvidenceProbeCount = 0;
+	};
+
 	struct FParticleCollisionDebugStats
 	{
 		int32 ActiveParticles = 0;
@@ -213,8 +224,15 @@ private:
 		int32 EmitterPrunedCount = 0;
 		int32 EmitterPruneProbeHitCount = 0;
 		int32 EmitterPruneProbeMissCount = 0;
+		int32 NearbyCacheRefreshCount = 0;
+		int32 NearbyCacheReuseCount = 0;
+		int32 NearbyEvidenceHitCount = 0;
+		int32 NearbyEvidenceMissCount = 0;
+		int32 NearbyEvidenceProbeCount = 0;
 		bool bCollisionFullyDisabledForLOD = false;
 		bool bCollisionEventGatedForLOD = false;
+		bool bNearbyCollisionCacheValid = false;
+		bool bNearbyCollisionEvidence = false;
 	};
 
 	uint32 GetInitialParticleCapacity() const;
@@ -268,12 +286,24 @@ private:
 		const FVector& BoundsMin,
 		const FVector& BoundsMax,
 		FParticleCollisionDebugStats* DebugStats);
+	void RefreshEmitterNearbyCollisionCache(
+		const UParticleModuleCollision& CollisionModule,
+		FParticleCollisionDebugStats* DebugStats);
+	bool GatherEmitterNearbyCollisionEvidence(
+		const UParticleModuleCollision& CollisionModule,
+		const FVector& BoundsCenter,
+		const FVector& BoundsExtent,
+		int32& OutEvidenceProbeCount);
 	bool ShouldDebugParticleCollisions() const;
 	void DebugDrawParticleCollisionQuery(
 		const FVector& StartWorld,
 		const FVector& EndWorld,
 		const FColor& Color) const;
 	void DebugDrawEmitterCollisionPruneProbe(
+		const FVector& StartWorld,
+		const FVector& EndWorld,
+		const FColor& Color) const;
+	void DebugDrawEmitterNearbyCollisionProbe(
 		const FVector& StartWorld,
 		const FVector& EndWorld,
 		const FColor& Color) const;
@@ -347,6 +377,7 @@ protected:
 	int32 CurrentLODIndex    = 0;
 	FVector LastCollisionPruneBoundsCenter = FVector::ZeroVector;
 	bool bHasLastCollisionPruneBoundsCenter = false;
+	FEmitterNearbyCollisionCache NearbyCollisionCache;
 
 	// 이벤트 큐 (EventGenerator 모듈이 push, PSC/EventManager 가 drain).
 	TArray<FParticleEventSpawnData>     SpawnEvents;
