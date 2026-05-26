@@ -65,6 +65,13 @@ namespace
 		float TrailAlpha = 0.0f;
 	};
 
+	struct FDefensivelySanitizedRibbonReplayShaping
+	{
+		int32 MaxTessellation = 8;
+		float TangentTension = 0.5f;
+		float TilesPerTrail = 1.0f;
+	};
+
 	FVector GetRibbonParticleWorldPosition(
 		const uint8* RawBase,
 		uint32 Stride,
@@ -304,6 +311,19 @@ namespace
 		const uint32 EffectiveTessellation = std::min(RequestedTessellation, BudgetDrivenTessellation);
 		bOutRuntimeCapped = EffectiveTessellation < RequestedTessellation;
 		return std::max(1u, EffectiveTessellation);
+	}
+
+	FDefensivelySanitizedRibbonReplayShaping ResolveDefensivelySanitizedRibbonReplayShapingOnRT(
+		const FDynamicRibbonEmitterReplayData& RibbonReplay)
+	{
+		FDefensivelySanitizedRibbonReplayShaping Shaping;
+		// GT replay build is authoritative for normal authoring-domain sanitize.
+		// RT keeps this lightweight revalidation as a defensive safety net so bad or
+		// incomplete replay data cannot explode ribbon geometry assumptions here.
+		Shaping.MaxTessellation = std::clamp(RibbonReplay.MaxTessellation, 1, 64);
+		Shaping.TangentTension = std::clamp(RibbonReplay.TangentTension, 0.0f, 1.0f);
+		Shaping.TilesPerTrail = std::max(0.0f, RibbonReplay.TilesPerTrail);
+		return Shaping;
 	}
 }
 
@@ -819,9 +839,11 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	}
 
 	const auto& RibbonReplay = static_cast<const FDynamicRibbonEmitterReplayData&>(Replay);
-	const int32 MaxTessellation = std::clamp(RibbonReplay.MaxTessellation, 1, 64);
-	const float TangentTension = std::clamp(RibbonReplay.TangentTension, 0.0f, 1.0f);
-	const float TilesPerTrail = std::max(0.0f, RibbonReplay.TilesPerTrail);
+	const FDefensivelySanitizedRibbonReplayShaping Shaping =
+		ResolveDefensivelySanitizedRibbonReplayShapingOnRT(RibbonReplay);
+	const int32 MaxTessellation = Shaping.MaxTessellation;
+	const float TangentTension = Shaping.TangentTension;
+	const float TilesPerTrail = Shaping.TilesPerTrail;
 
 	// Current Ribbon consumption contract:
 	// - one replay snapshot == one emitter-level ribbon trail for this frame

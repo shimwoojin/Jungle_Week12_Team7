@@ -153,6 +153,23 @@ namespace
 		Payload.LastCollisionTime = CollisionTimeSeconds;
 		Payload.LastCollisionNormal = CollisionNormal;
 	}
+
+	struct FSanitizedRibbonReplayShaping
+	{
+		int32 MaxTessellation = 8;
+		float TangentTension = 0.5f;
+		float TilesPerTrail = 1.0f;
+	};
+
+	FSanitizedRibbonReplayShaping BuildSanitizedRibbonReplayShapingOnGT(
+		const UParticleModuleTypeDataRibbon& RibbonTypeData)
+	{
+		FSanitizedRibbonReplayShaping Shaping;
+		Shaping.MaxTessellation = std::clamp(RibbonTypeData.MaxTessellation, 1, 64);
+		Shaping.TangentTension = std::clamp(RibbonTypeData.TangentTension, 0.0f, 1.0f);
+		Shaping.TilesPerTrail = std::max(0.0f, RibbonTypeData.TilesPerTrail);
+		return Shaping;
+	}
 }
 
 static EParticleReplaySortMode ToReplaySortMode(UParticleModuleRequired::ESortMode InSortMode)
@@ -2383,6 +2400,8 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	OutData.bUseLocalSpace = Required->bUseLocalSpace;
 	// Base replay metadata는 current render replay LOD의 RequiredModule view에서 채워진다.
 	// 이미 살아 있는 particle의 SimulationLODIndex continuity와는 다른 계층의 계약이다.
+	// 또한 GT는 여기서 fallback/default를 resolve한 render-ready snapshot을 만드는 쪽이
+	// authoritative하다. RT는 draw 직전 일부 값만 defensive safety net으로 재검증한다.
 
 	if (Component)
 	{
@@ -2705,9 +2724,14 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 			// TypeData values are sanitized here before crossing the GT->RT boundary so
 			// the replay struct stays a practical, render-ready contract rather than a
 			// raw bag of authoring values.
-			Data->Source.MaxTessellation = std::clamp(RibbonTypeData->MaxTessellation, 1, 64);
-			Data->Source.TangentTension = std::clamp(RibbonTypeData->TangentTension, 0.0f, 1.0f);
-			Data->Source.TilesPerTrail = std::max(0.0f, RibbonTypeData->TilesPerTrail);
+			// RT still revalidates these fields defensively before geometry emission,
+			// but that second clamp is a safety net, not the authoritative source of
+			// truth for normal authoring-domain sanitize.
+			const FSanitizedRibbonReplayShaping Shaping =
+				BuildSanitizedRibbonReplayShapingOnGT(*RibbonTypeData);
+			Data->Source.MaxTessellation = Shaping.MaxTessellation;
+			Data->Source.TangentTension = Shaping.TangentTension;
+			Data->Source.TilesPerTrail = Shaping.TilesPerTrail;
 		}
 	}
 

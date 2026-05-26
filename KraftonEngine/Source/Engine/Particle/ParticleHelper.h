@@ -354,6 +354,11 @@ struct FDynamicEmitterReplayDataBase
 	//   지금 구조에서는 emitter의 current render LOD view에서 해석한 emitter-level snapshot을
 	//   GT가 RT로 넘긴다. live particle simulation continuity와 render replay shaping basis는
 	//   의도적으로 분리될 수 있다.
+	//
+	//   또한 이 snapshot은 GT가 render-ready에 가깝게 정리한 계약이다. fallback/default
+	//   resolve와 authoring-derived sanitize는 가능하면 GT replay build 단계에서
+	//   authoritative 하게 끝내고, RT는 일부 값에 대해서만 legacy/bad replay 방어용
+	//   lightweight defensive validation을 추가로 둘 수 있다.
 
 	FParticleDataView GetParticleView() const
 	{
@@ -489,6 +494,12 @@ struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 	// the RT ribbon geometry builder. They describe how the single trail should be
 	// curved/tessellated/UV-tiled from the current render replay LOD view; they are
 	// not per-particle payload values.
+	//
+	// Sanitize responsibility:
+	//   - GT replay build is authoritative for normal authoring-domain clamp
+	//     (tessellation range, tangent tension range, non-negative UV tiling).
+	//   - RT may still defensively revalidate the same fields before geometry build
+	//     as a lightweight safety net for bad/incomplete replay inputs.
 	int32 MaxTessellation = 8;
 	float TangentTension = 0.5f;    // ribbon tangent 보간 강도 (0 = 느슨함, 1 = 강함)
 	float TilesPerTrail = 1.0f;     // trail 전체 UV 반복 수
