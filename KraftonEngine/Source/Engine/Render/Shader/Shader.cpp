@@ -182,6 +182,9 @@ void FShader::Create(ID3D11Device* InDevice, const wchar_t* InFilePath, const ch
 	ExtractCBufferInfo(vertexShaderCSO, ShaderParameterLayout);
 	ExtractCBufferInfo(pixelShaderCSO, ShaderParameterLayout);
 
+	ExtractTextureBindings(vertexShaderCSO);
+	ExtractTextureBindings(pixelShaderCSO);
+
 	vertexShaderCSO->Release();
 	pixelShaderCSO->Release();
 }
@@ -320,7 +323,7 @@ void FShader::CreateInputLayoutFromReflection(ID3D11Device* InDevice, ID3DBlob* 
 }
 
 //셰이더 컴파일 후 호출. 셰이더 코드의 cbuffer, 텍스처 샘플러 선언을 분석해서 outlayout에 채워넣음. 이 정보는 머티리얼 템플릿이 생성될 때 참조되어야 하므로 셰이더 내부에서 제공하는 형태로 존재해야 함.
-void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, FMaterialParameterInfo*>& OutLayout)
+void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& OutLayout)
 {
 	ID3D11ShaderReflection* Reflector = nullptr;
 	D3DReflect(ShaderBlob->GetBufferPointer(), ShaderBlob->GetBufferSize(),
@@ -351,7 +354,7 @@ void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, FMaterialPa
 			D3D11_SHADER_VARIABLE_DESC VarDesc;
 			Var->GetDesc(&VarDesc);
 
-			FMaterialParameterInfo* Info = new FMaterialParameterInfo();
+			auto Info = std::make_shared<FMaterialParameterInfo>();
 			Info->BufferName = BufferName;
 			Info->SlotIndex = SlotIndex;
 			Info->Offset = VarDesc.StartOffset;
@@ -361,6 +364,43 @@ void FShader::ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, FMaterialPa
 
 			OutLayout[VarDesc.Name] = Info;
 		}
+	}
+	Reflector->Release();
+}
+
+// 셰이더의 SRV 텍스처 바인딩(register t0~t7)을 리플렉션해 TextureBindings 에 채운다.
+// 머티리얼 슬롯은 t0~t7 만 사용하므로 시스템 텍스처(섀도우/GBuffer, t16+)는 제외한다.
+void FShader::ExtractTextureBindings(ID3DBlob* ShaderBlob)
+{
+	static constexpr UINT kMaterialTextureSlotCount = 8; // EMaterialTextureSlot::Max (t0~t7)
+
+	ID3D11ShaderReflection* Reflector = nullptr;
+	if (FAILED(D3DReflect(ShaderBlob->GetBufferPointer(), ShaderBlob->GetBufferSize(),
+		IID_ID3D11ShaderReflection, (void**)&Reflector)) || !Reflector)
+		return;
+
+	D3D11_SHADER_DESC ShaderDesc;
+	Reflector->GetDesc(&ShaderDesc);
+
+	for (UINT i = 0; i < ShaderDesc.BoundResources; ++i)
+	{
+		D3D11_SHADER_INPUT_BIND_DESC BindDesc;
+		if (FAILED(Reflector->GetResourceBindingDesc(i, &BindDesc)))
+			continue;
+
+		if (BindDesc.Type != D3D_SIT_TEXTURE) continue;          // SRV 텍스처만 (sampler/cbuffer/UAV 제외)
+		if (BindDesc.BindPoint >= kMaterialTextureSlotCount) continue; // 머티리얼 슬롯 t0~t7만
+
+		// VS/PS 양쪽에서 호출되므로 register 기준 중복 제거
+		bool bExists = false;
+		for (const FShaderTextureBinding& Existing : TextureBindings)
+			if (Existing.BindPoint == BindDesc.BindPoint) { bExists = true; break; }
+		if (bExists) continue;
+
+		FShaderTextureBinding Binding;
+		Binding.Name = BindDesc.Name;
+		Binding.BindPoint = BindDesc.BindPoint;
+		TextureBindings.push_back(Binding);
 	}
 	Reflector->Release();
 }

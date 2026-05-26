@@ -11,6 +11,7 @@
 void FMaterialTemplate::Create(FShader* InShader)
 {
 	ParameterLayout = InShader->GetParameterLayout(); // 셰이더에서 리플렉션된 파라미터 레이아웃 정보 확보
+	TextureBindings = InShader->GetTextureBindings(); // t0~t7 텍스처 바인딩도 확보
 	Shader = InShader;
 }
 
@@ -92,18 +93,15 @@ UMaterial::~UMaterial()
 }
 
 void UMaterial::Create(const FString& InPathFileName, FMaterialTemplate* InTemplate,
-	ERenderPass InRenderPass,
-	EBlendState InBlend,
-	EDepthStencilState InDepth,
-	ERasterizerState InRaster,
+	EMaterialDomain InDomain,
+	EBlendMode InBlendMode,
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>>&& InBuffers)
 {
 	PathFileName = InPathFileName;
 	Template = InTemplate;
-	RenderPass = InRenderPass;
-	BlendState = InBlend;
-	DepthStencilState = InDepth;
-	RasterizerState = InRaster;
+	Domain = InDomain;
+	BlendMode = InBlendMode;
+	RecomputeRenderState();  // 저수준 렌더상태 도출
 
 	ConstantBufferMap = std::move(InBuffers);
 }
@@ -117,10 +115,7 @@ bool UMaterial::SetParameter(const FString& Name, const void* Data, uint32 Size)
 	auto It = ConstantBufferMap.find(Info.BufferName);
 	if (It == ConstantBufferMap.end()) return false;
 
-	It->second->SetData(Data, Size, Info.Offset);
-	It->second->bDirty = true;
-
-	It->second->Upload(GEngine->GetRenderer().GetFD3DDevice().GetDeviceContext());
+	It->second->SetData(Data, Size, Info.Offset); // SetData 가 bDirty 설정. 업로드는 draw-build 의 FlushDirtyBuffers 가 dirty CB 만 일괄 처리.
 	return true;
 }
 
@@ -146,13 +141,12 @@ bool UMaterial::SetTextureParameter(const FString& ParamName, UTexture2D* Textur
 {
 	TextureParameters[ParamName] = Texture;
 
-	// CachedSRVs 갱신 — 슬롯 이름과 매칭되면 즉시 반영
-	for (int s = 0; s < (int)EMaterialTextureSlot::Max; s++)
+	// 리플렉션 텍스처 바인딩(이름→register)으로 CachedSRV 즉시 갱신 — RebuildCachedSRVs 와 동일 규칙.
+	for (const FShaderTextureBinding& B : GetTextureBindings())
 	{
-		FString SlotName = MaterialTextureSlot::ToString(s) + "Texture";
-		if (ParamName == SlotName)
+		if (B.Name == ParamName && B.BindPoint < (uint32)EMaterialTextureSlot::Max)
 		{
-			CachedSRVs[s] = (Texture && Texture->GetSRV()) ? Texture->GetSRV() : nullptr;
+			CachedSRVs[B.BindPoint] = (Texture && Texture->GetSRV()) ? Texture->GetSRV() : nullptr;
 			break;
 		}
 	}
@@ -226,10 +220,6 @@ bool UMaterial::GetMatrixParameter(const FString& ParamName, FMatrix& Value) con
 	return true;
 }
 
-void UMaterial::Bind(ID3D11DeviceContext* Context)
-{
-}
-
 const FString& UMaterial::GetTexturePathFileName(const FString& TextureName)const
 {
 	auto it = TextureParameters.find(TextureName);
@@ -245,21 +235,74 @@ const FString& UMaterial::GetTexturePathFileName(const FString& TextureName)cons
 	return EmptyString;
 }
 
+const TArray<FShaderTextureBinding>& UMaterial::GetTextureBindings() const
+{
+	static const TArray<FShaderTextureBinding> Empty;
+	return Template ? Template->GetTextureBindings() : Empty;
+}
+
 void UMaterial::RebuildCachedSRVs()
 {
 	for (int s = 0; s < (int)EMaterialTextureSlot::Max; s++)
-	{
 		CachedSRVs[s] = nullptr;
-		UTexture2D* Tex = nullptr;
-		FString SlotName = MaterialTextureSlot::ToString(s) + "Texture";
-		if (GetTextureParameter(SlotName, Tex) && Tex && Tex->GetSRV())
-			CachedSRVs[s] = Tex->GetSRV();
+
+	const TArray<FShaderTextureBinding>& Bindings = GetTextureBindings();
+	if (!Bindings.empty())
+	{
+		// 리플렉션된 바인딩: 텍스처 변수명 → register(t#) 로 SRV 배치 (셰이더 선언 그대로).
+		for (const FShaderTextureBinding& B : Bindings)
+		{
+			if (B.BindPoint >= (uint32)EMaterialTextureSlot::Max) continue;
+			UTexture2D* Tex = nullptr;
+			if (GetTextureParameter(B.Name, Tex) && Tex && Tex->GetSRV())
+				CachedSRVs[B.BindPoint] = Tex->GetSRV();
+		}
+	}
+	else
+	{
+		// 폴백(Template 없는 TransientShader 등): 고정 enum 규칙.
+		for (int s = 0; s < (int)EMaterialTextureSlot::Max; s++)
+		{
+			UTexture2D* Tex = nullptr;
+			FString SlotName = MaterialTextureSlot::ToString(s) + "Texture";
+			if (GetTextureParameter(SlotName, Tex) && Tex && Tex->GetSRV())
+				CachedSRVs[s] = Tex->GetSRV();
+		}
 	}
 }
 
 void UMaterial::Serialize(FArchive& Ar)
 {
-	Ar << PathFileName;
+	// [Phase 4] 고수준 의도 + custom-shader 플래그 + 저수준 override.
+	// PathFileName/ShaderPath 는 Manager 가 헤더 영역에서 처리한다
+	// (로드 순서 의존성: ShaderPath→Template→CB 생성 후에야 아래 CPUData 를 기록 가능).
+	uint8 DomainRaw = static_cast<uint8>(Domain);
+	uint8 BlendRaw  = static_cast<uint8>(BlendMode);
+	Ar << DomainRaw;
+	Ar << BlendRaw;
+	if (Ar.IsLoading())
+		SetDomainBlend(static_cast<EMaterialDomain>(DomainRaw), static_cast<EBlendMode>(BlendRaw));
+
+	Ar << bUseCustomShader; // 의도 플래그 (런타임 FShader* 는 Manager 가 Template 에서 재바인딩)
+
+	// 저수준 override 슬롯 (스프라이트 NoCull, CreateTransient 등 도출 불가 케이스)
+	{
+		uint32 PassV   = static_cast<uint32>(PassOverride);
+		uint8  BlendV  = static_cast<uint8>(BlendOverride);
+		uint8  DepthV  = static_cast<uint8>(DepthOverride);
+		uint8  RasterV = static_cast<uint8>(RasterOverride);
+		Ar << bHasPassOverride;   Ar << PassV;
+		Ar << bHasBlendOverride;  Ar << BlendV;
+		Ar << bHasDepthOverride;  Ar << DepthV;
+		Ar << bHasRasterOverride; Ar << RasterV;
+		if (Ar.IsLoading())
+		{
+			PassOverride   = static_cast<ERenderPass>(PassV);
+			BlendOverride  = static_cast<EBlendState>(BlendV);
+			DepthOverride  = static_cast<EDepthStencilState>(DepthV);
+			RasterOverride = static_cast<ERasterizerState>(RasterV);
+		}
+	}
 
 	uint32 BufferCount = static_cast<uint32>(ConstantBufferMap.size());
 	Ar << BufferCount;
@@ -329,11 +372,7 @@ void UMaterial::Serialize(FArchive& Ar)
 			if (!TexturePath.empty())
 			{
 				ID3D11Device* Device = GEngine->GetRenderer().GetFD3DDevice().GetDevice();
-				const bool bIsColorTexture =
-					SlotName == "DiffuseTexture" ||
-					SlotName == "EmissiveTexture" ||
-					SlotName == "Custom0Texture" ||
-					SlotName == "Custom1Texture";
+				const bool bIsColorTexture = MaterialTextureSlot::IsSRGBTextureSlot(SlotName);
 				UTexture2D* Loaded = UTexture2D::LoadFromFile(
 					TexturePath,
 					Device,
@@ -354,7 +393,13 @@ UMaterial* UMaterial::CreateTransient(ERenderPass InPass, EBlendState InBlend,
 {
 	UMaterial* Mat = UObjectManager::Get().CreateObject<UMaterial>();
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> EmptyBuffers;
-	Mat->Create(FString("__transient__"), nullptr, InPass, InBlend, InDepth, InRaster, std::move(EmptyBuffers));
-	Mat->TransientShader = InShader;
+	// Transient(Gizmo/Decal/Text/SubUV)는 Domain 으로 표현되지 않는 고정 패스/상태를 쓰므로
+	// 저수준 4개를 모두 override 로 박아 정확히 보존한다 (Domain/BlendMode 는 무의미).
+	Mat->Create(FString("__transient__"), nullptr, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(EmptyBuffers));
+	Mat->SetPassOverride(InPass);
+	Mat->SetBlendOverride(InBlend);
+	Mat->SetDepthOverride(InDepth);
+	Mat->SetRasterOverride(InRaster);
+	Mat->SetCustomShader(InShader);  // InShader!=null 이면 custom override 강제 (Gizmo/Decal/Text/SubUV)
 	return Mat;
 }

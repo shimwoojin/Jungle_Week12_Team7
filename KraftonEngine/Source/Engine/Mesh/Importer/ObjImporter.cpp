@@ -461,53 +461,21 @@ FString FObjImporter::ConvertMtlInfoToJson(const FObjMaterialInfo* MtlInfo)
 // MTL 정보에서 머티리얼 mat 파일로 변환하는 함수
 FString FObjImporter::ConvertMtlInfoToMat(const FObjMaterialInfo* MtlInfo)
 {
-	FString MatPath = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".mat";
+	const FString UassetPath = "Content/Material/Auto/" + MtlInfo->MaterialSlotName + ".uasset";
 
-	// 이미 존재하면 덮어쓰지 않음 (에디터에서 수정했을 수 있으므로)
-	if (std::filesystem::exists(FPaths::ToWide(MatPath)))
-		return MatPath;
+	// 이미 있으면 그대로 사용 (덮어쓰지 않음)
+	if (std::filesystem::exists(FPaths::ToWide(UassetPath)))
+		return UassetPath;
 
-	// Auto/ 디렉토리 보장
 	std::filesystem::create_directories(FPaths::ToWide("Content/Material/Auto"));
 
-	json::JSON JsonData;
-	JsonData["PathFileName"] = MatPath;
-	JsonData["Origin"] = "ObjImport";
-	JsonData["ShaderPath"] = "Shaders/Geometry/UberLit.hlsl";
-	JsonData["RenderPass"] = "Opaque";
+	const FVector4 SectionColor = MtlInfo->map_Kd.empty()
+		? FVector4(MtlInfo->Kd.X, MtlInfo->Kd.Y, MtlInfo->Kd.Z, 1.0f)
+		: FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 
-	if (!MtlInfo->map_Kd.empty())
-	{
-		JsonData["Textures"]["DiffuseTexture"] = MtlInfo->map_Kd;
-
-		JsonData["Parameters"]["SectionColor"][0] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][1] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][2] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][3] = 1.0f;
-	}
-	else
-	{
-
-		JsonData["Parameters"]["SectionColor"][0] = MtlInfo->Kd.X;
-		JsonData["Parameters"]["SectionColor"][1] = MtlInfo->Kd.Y;
-		JsonData["Parameters"]["SectionColor"][2] = MtlInfo->Kd.Z;
-		JsonData["Parameters"]["SectionColor"][3] = 1.0f;
-	}
-
-	if (!MtlInfo->map_Bump.empty())
-	{
-		JsonData["Textures"]["NormalTexture"] = MtlInfo->map_Bump;
-		JsonData["Parameters"]["HasNormalMap"] = 1.0f;
-	}
-	else
-	{
-		JsonData["Parameters"]["HasNormalMap"] = 0.0f;
-	}
-
-	std::ofstream File(FPaths::ToWide(MatPath));
-	File << JsonData.dump();
-
-	return MatPath;
+	// JSON 없이 머티리얼을 직접 빌드해 .uasset(바이너리)으로 저장.
+	FMaterialManager::Get().CreateImportedMaterialAsset(UassetPath, SectionColor, MtlInfo->map_Kd, MtlInfo->map_Bump);
+	return UassetPath;
 }
 
 FVector FObjImporter::RemapPosition(const FVector& ObjPos, EForwardAxis Axis)

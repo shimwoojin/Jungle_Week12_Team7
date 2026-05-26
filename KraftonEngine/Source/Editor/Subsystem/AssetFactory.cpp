@@ -8,6 +8,8 @@
 #include "FloatCurve/FloatCurveAsset.h"
 #include "Object/Reflection/ObjectFactory.h"
 #include "Platform/Paths.h"
+#include "Materials/MaterialManager.h"
+#include "Materials/Material.h"
 
 #include <filesystem>
 
@@ -186,5 +188,30 @@ bool FAssetFactory::CreateParticleSystem(
 
 	OutCreatedPath = CreatedPath;
 	UE_LOG("[ParticleSystemFactory] Create success. Path=%s", OutCreatedPath.c_str());
+	return true;
+}
+
+bool FAssetFactory::CreateMaterial(const FString& DirectoryPath, const FString& AssetName, FString& OutCreatedPath)
+{
+	const std::filesystem::path Directory(FPaths::ToWide(DirectoryPath));
+	if (!std::filesystem::exists(Directory) || !std::filesystem::is_directory(Directory))
+	{
+		return false;
+	}
+
+	const std::filesystem::path AssetPath = BuildUniqueAssetPath(
+		Directory, AssetName.empty() ? "NewMaterial" : AssetName, L".uasset");
+
+	// 머티리얼 자산 식별자는 프로젝트 상대경로(Content/...) — 임포터/매니저 경로 규칙과 동일.
+	const FString RelPath = FPaths::ToUtf8(
+		AssetPath.lexically_relative(FPaths::RootDir()).generic_wstring());
+
+	UMaterial* NewMaterial = FMaterialManager::Get().CreateMaterialAsset(RelPath);
+	if (!NewMaterial)
+	{
+		return false;
+	}
+
+	OutCreatedPath = RelPath;
 	return true;
 }

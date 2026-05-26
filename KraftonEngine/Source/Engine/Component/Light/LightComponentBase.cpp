@@ -18,16 +18,16 @@ UBillboardComponent* ULightComponentBase::EnsureEditorBillboard()
 	switch (GetLightType())
 	{
 	case ELightComponentType::Ambient:
-		IconMaterialPath = "Content/Material/Editor/AmbientLight.mat";
+		IconMaterialPath = "Content/Material/Editor/AmbientLight.uasset";
 		break;
 	case ELightComponentType::Directional:
-		IconMaterialPath = "Content/Material/Editor/DirectionalLight.mat";
+		IconMaterialPath = "Content/Material/Editor/DirectionalLight.uasset";
 		break;
 	case ELightComponentType::Point:
-		IconMaterialPath = "Content/Material/Editor/PointLight.mat";
+		IconMaterialPath = "Content/Material/Editor/PointLight.uasset";
 		break;
 	case ELightComponentType::Spot:
-		IconMaterialPath = "Content/Material/Editor/SpotLight.mat";
+		IconMaterialPath = "Content/Material/Editor/SpotLight.uasset";
 		break;
 	}
 

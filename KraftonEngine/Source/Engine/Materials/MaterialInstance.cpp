@@ -30,11 +30,15 @@ void UMaterialInstance::InitializeFromParent(UMaterial* InParent, const FString&
 
 	Create(InPathFileName,
 		Parent->Template,
-		Parent->RenderPass,
-		Parent->BlendState,
-		Parent->DepthStencilState,
-		Parent->RasterizerState,
+		Parent->Domain,
+		Parent->BlendMode,
 		std::move(Cloned));
+
+	// Parent 의 저수준 override 도 복제 (스프라이트 raster, transient 등).
+	if (Parent->bHasPassOverride)   SetPassOverride(Parent->PassOverride);
+	if (Parent->bHasBlendOverride)  SetBlendOverride(Parent->BlendOverride);
+	if (Parent->bHasDepthOverride)  SetDepthOverride(Parent->DepthOverride);
+	if (Parent->bHasRasterOverride) SetRasterOverride(Parent->RasterOverride);
 
 	// Texture는 핸들 공유 — UTexture2D 자체가 GPU 리소스라 deep clone 불필요.
 	for (const auto& Pair : Parent->TextureParameters)

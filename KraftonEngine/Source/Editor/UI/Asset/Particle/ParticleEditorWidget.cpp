@@ -50,6 +50,7 @@
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
+#include "Materials/Material.h" // ShaderPathForSerialize (RequiredModule 머티리얼 필터)
 
 namespace
 {
@@ -321,6 +322,46 @@ namespace
 	bool MaterialComboField(const char* Label, FSoftObjectPtr& Value)
 	{
 		return AssetComboField(Label, Value, FMaterialManager::Get().GetAvailableMaterialFiles());
+	}
+
+	// emitter 타입(TypeDataModule 클래스)이 강제하는 파티클 셰이더 경로 — ResolveSectionShader 와 동일 매핑.
+	FString ParticleForcedShaderPath(const UParticleLODLevel* LOD)
+	{
+		if (!LOD || LOD->TypeDataModule == nullptr)
+			return "Shaders/Particle/Sprite.hlsl";                       // Sprite (TypeData 없음 = 기본)
+		if (Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
+			return "Shaders/Particle/Mesh.hlsl";                         // Mesh
+		return "Shaders/Particle/BeamTrail.hlsl";                        // Beam / Ribbon
+	}
+
+	// emitter 강제 셰이더와 레이아웃(ShaderPathForSerialize)이 일치하는 머티리얼만 노출하는 콤보.
+	// (콤보가 열렸을 때만 머티리얼을 load → 캐시됨. 불일치 머티리얼은 셰이더 레이아웃이 안 맞아 사용 불가.)
+	bool MaterialComboFieldFiltered(const char* Label, FSoftObjectPtr& Value, const FString& RequiredShaderPath)
+	{
+		FString CurrentPath = Value.ToString();
+		if (CurrentPath.empty()) CurrentPath = "None";
+
+		bool bChanged = false;
+		if (ImGui::BeginCombo(Label, CurrentPath.c_str()))
+		{
+			const bool bSelectedNone = (CurrentPath == "None");
+			if (ImGui::Selectable("None", bSelectedNone)) { Value.SetPath("None"); CurrentPath = "None"; bChanged = true; }
+			if (bSelectedNone) ImGui::SetItemDefaultFocus();
+
+			for (const FMaterialAssetListItem& Item : FMaterialManager::Get().GetAvailableMaterialFiles())
+			{
+				UMaterial* Mat = FMaterialManager::Get().GetOrCreateMaterial(Item.FullPath);
+				if (!Mat || Mat->GetShaderPathForSerialize() != RequiredShaderPath)
+					continue; // emitter 강제 셰이더와 레이아웃 불일치 → 제외
+
+				const bool bSelected = (CurrentPath == Item.FullPath);
+				if (ImGui::Selectable(Item.DisplayName.c_str(), bSelected)) { Value.SetPath(Item.FullPath); CurrentPath = Item.FullPath; bChanged = true; }
+				if (bSelected) ImGui::SetItemDefaultFocus();
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Item.FullPath.c_str());
+			}
+			ImGui::EndCombo();
+		}
+		return bChanged;
 	}
 
 	bool MeshComboField(const char* Label, FSoftObjectPtr& Value)
@@ -2719,11 +2760,14 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			{
 				if (ImGui::CollapsingHeader("Required", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					if (MaterialComboField("Material", Required->MaterialSlot))
+					const FString ForcedShader = ParticleForcedShaderPath(LOD);
+					if (MaterialComboFieldFiltered("Material", Required->MaterialSlot, ForcedShader))
 					{
 						Required->CachedMaterial = nullptr;
 						bChanged = true;
 					}
+					// 셰이더는 emitter 타입이 강제 → 그 셰이더 레이아웃과 맞는 머티리얼만 위 목록에 표시.
+					ImGui::TextDisabled("Shader (forced by emitter): %s", ForcedShader.c_str());
 					// Blend State는 Material(.mat)이 결정 — 에디터 비노출. Material 슬롯에서 변경한다.
 					ImGui::TextDisabled("Blend State: from Material (.mat)");
 					bChanged |= ImGui::Checkbox("Use Local Space", &Required->bUseLocalSpace);

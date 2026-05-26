@@ -5,6 +5,7 @@
 #include "Math/Matrix.h"
 #include "Render/Types/RenderTypes.h"
 #include "Render/Types/RenderStateTypes.h"
+#include "Materials/MaterialDomain.h"
 #include "Render/Resource/Buffer.h"
 #include "Render/Types/MaterialTextureSlot.h"
 #include "Render/Types/RenderConstants.h"
@@ -36,10 +37,12 @@ class FMaterialTemplate
 private:
 	uint32 MaterialTemplateID; // 고유 ID
 	FShader* Shader; // 어떤 셰이더를 사용하는지
-	TMap<FString, FMaterialParameterInfo*> ParameterLayout; // 리플렉션 결과 : 쉐이더 constant buffer 레이아웃 정보
+	TMap<FString, std::shared_ptr<FMaterialParameterInfo>> ParameterLayout; // 리플렉션 결과 : cbuffer 레이아웃(셰이더와 수명 공유)
+	TArray<FShaderTextureBinding> TextureBindings;          // 리플렉션 결과 : t0~t7 텍스처 바인딩
 
 public:
-	const TMap<FString, FMaterialParameterInfo*>& GetParameterInfo() const { return ParameterLayout; }
+	const TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& GetParameterInfo() const { return ParameterLayout; }
+	const TArray<FShaderTextureBinding>& GetTextureBindings() const { return TextureBindings; }
 	void Create(FShader* InShader);
 
 	FShader* GetShader() const { return Shader; }
@@ -71,7 +74,7 @@ struct FMaterialConstantBuffer
 };
 
 //파라미터 값 + 텍스처 (런타임 데이터)
-//JSON으로 직렬화되는 데이터
+// 바이너리(.uasset)로 직렬화 — Manager 가 Serialize 를 위임
 UCLASS()
 class UMaterial : public UObject
 {
@@ -82,17 +85,27 @@ protected:
 	FString PathFileName;// 어떤 Material인지 판별하는 고유 이름
 	uint32 MaterialInstanceID; // 고유 ID
 	FMaterialTemplate* Template; // 공유
+	FString ShaderPathForSerialize; // 파라미터 레이아웃 소스 셰이더 경로 (바이너리 직렬화/Template 재구성용)
 
-	// 렌더링 상태 정보 (인스턴스별)
-	ERenderPass RenderPass = ERenderPass::Opaque;
-	EBlendState BlendState = EBlendState::Opaque;
-	EDepthStencilState DepthStencilState = EDepthStencilState::Default;
-	ERasterizerState RasterizerState = ERasterizerState::SolidBackCull;
+	// 고수준 의도 (단일 소스) — 저수준 렌더상태는 ResolveMaterialRenderState 로 도출.
+	EMaterialDomain Domain    = EMaterialDomain::Surface;
+	EBlendMode      BlendMode = EBlendMode::Opaque;
+	FMaterialRenderState CachedRenderState;  // = ResolveMaterialRenderState(Domain, BlendMode)
+
+	// 도출로 표현 불가한 특수 케이스 override.
+	//   .mat 일반 경로: raster 만 (스프라이트 NoCull 등). CreateTransient(Gizmo/Decal/Text): 4개 모두.
+	bool bHasPassOverride   = false; ERenderPass        PassOverride   = ERenderPass::Opaque;
+	bool bHasBlendOverride  = false; EBlendState        BlendOverride  = EBlendState::Opaque;
+	bool bHasDepthOverride  = false; EDepthStencilState DepthOverride  = EDepthStencilState::Default;
+	bool bHasRasterOverride = false; ERasterizerState   RasterOverride = ERasterizerState::SolidBackCull;
+
+	void RecomputeRenderState() { CachedRenderState = ResolveMaterialRenderState(Domain, BlendMode); }
 
 	TMap<FString, std::unique_ptr<FMaterialConstantBuffer>> ConstantBufferMap; // 인스턴스 고유
 	TMap<FString, UTexture2D*> TextureParameters;  //텍스처는 슬롯 이름으로 관리
 
-	FShader* TransientShader = nullptr; // CreateTransient에서 직접 지정된 셰이더 (Template 없는 경우)
+	FShader* TransientShader = nullptr; // CreateTransient / custom override 로 지정된 셰이더 (Template 없는 경우)
+	bool     bUseCustomShader = false;  // true면 ResolveSectionShader 가 TransientShader 를 강제 (도출 우회)
 
 	// Per-shader CB 오버라이드 — transient Material에서 프록시가 관리하는 외부 CB
 	FConstantBufferBinding PerShaderOverride;
@@ -107,15 +120,13 @@ public:
 	~UMaterial() override;
 
 	void Create(const FString& InPathFileName, FMaterialTemplate* InTemplate,
-		ERenderPass InRenderPass,
-		EBlendState InBlend,
-		EDepthStencilState InDepth,
-		ERasterizerState InRaster,
+		EMaterialDomain InDomain,
+		EBlendMode InBlendMode,
 		TMap<FString, std::unique_ptr<FMaterialConstantBuffer>>&& InBuffers);
 
 	const uint8* GetRawPtr(const FString& BufferName, uint32 Offset) const;
 
-	const TMap<FString, FMaterialParameterInfo*> GetParameterInfo() const { return Template->GetParameterInfo(); }
+	const TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& GetParameterInfo() const { return Template->GetParameterInfo(); }
 
 	virtual bool SetScalarParameter(const FString& ParamName, float Value);
 	virtual bool SetVector3Parameter(const FString& ParamName, const FVector& Value);
@@ -131,13 +142,52 @@ public:
 
 	TMap<FString, UTexture2D*>* GetTexture() { return &TextureParameters; }
 
-	void Bind(ID3D11DeviceContext* Context);
+	// 셰이더 리플렉션된 텍스처 슬롯(t0~t7) — 에디터 텍스처 편집 UI 용. Template 없으면 빈 목록.
+	const TArray<FShaderTextureBinding>& GetTextureBindings() const;
 
 	virtual FShader* GetShader() const { return Template ? Template->GetShader() : TransientShader; }
-	virtual ERenderPass GetRenderPass() const { return RenderPass; }
-	virtual EBlendState GetBlendState() const { return BlendState; }
-	virtual EDepthStencilState GetDepthStencilState() const { return DepthStencilState; }
-	virtual ERasterizerState GetRasterizerState() const { return RasterizerState; }
+
+	// custom shader override — 머티리얼이 셰이더를 강제할 때(CreateTransient: Gizmo/Decal/Text,
+	// 또는 비표준 셰이더 .mat). 없으면 엔진이 (Domain × VertexFactory × Pass × ViewMode)로 도출.
+	bool     HasCustomShader() const { return bUseCustomShader && TransientShader != nullptr; }
+	FShader* GetCustomShader() const { return TransientShader; }
+	void     SetCustomShader(FShader* InShader) { TransientShader = InShader; bUseCustomShader = (InShader != nullptr); }
+	// 직렬화에서 custom-shader '의도' 판정 (로드 직후 TransientShader 가 아직 null 이므로 플래그만 본다)
+	bool     WasCustomShaderRequested() const { return bUseCustomShader; }
+	// 에디터 토글 — ON 이면 머티리얼 자신의(레이아웃 소스) 셰이더를 강제 바인딩, OFF면 도출 복귀.
+	void     SetUseCustomShader(bool bEnable) { SetCustomShader(bEnable ? GetShader() : nullptr); }
+
+	// MaterialInstance 판별 (에디터: 인스턴스는 셰이더를 부모에서 상속하므로 셰이더/custom 변경 비활성).
+	virtual bool IsMaterialInstance() const { return false; }
+
+	// 바이너리 직렬화용 셰이더 경로(레이아웃 소스) — Manager 가 Create 후 주입.
+	void           SetShaderPathForSerialize(const FString& InPath) { ShaderPathForSerialize = InPath; }
+	const FString& GetShaderPathForSerialize() const { return ShaderPathForSerialize; }
+	virtual ERenderPass GetRenderPass() const { return bHasPassOverride ? PassOverride : CachedRenderState.Pass; }
+	virtual EBlendState GetBlendState() const { return bHasBlendOverride ? BlendOverride : CachedRenderState.Blend; }
+	virtual EDepthStencilState GetDepthStencilState() const { return bHasDepthOverride ? DepthOverride : CachedRenderState.DepthStencil; }
+	virtual ERasterizerState GetRasterizerState() const { return bHasRasterOverride ? RasterOverride : CachedRenderState.Rasterizer; }
+
+	// 고수준 의도 접근/설정
+	EMaterialDomain GetDomain() const { return Domain; }
+	EBlendMode GetBlendMode() const { return BlendMode; }
+	void SetDomainBlend(EMaterialDomain InDomain, EBlendMode InBlend) { Domain = InDomain; BlendMode = InBlend; RecomputeRenderState(); }
+
+	// 양면 렌더(Two Sided) — Raster override(NoCull) 슬롯 재사용(별도 직렬화 필드 불필요).
+	// off면 override 해제 → 도출 Rasterizer(Surface=BackCull, Decal=NoCull 등)로 복귀.
+	void SetTwoSided(bool bEnable)
+	{
+		if (bEnable) { bHasRasterOverride = true; RasterOverride = ERasterizerState::SolidNoCull; }
+		else         { bHasRasterOverride = false; }
+	}
+	bool IsTwoSided() const { return bHasRasterOverride && RasterOverride == ERasterizerState::SolidNoCull; }
+
+	// 저수준 override (도출 불가 케이스): CreateTransient / .mat raster 보존용.
+	void SetPassOverride(ERenderPass InPass)      { bHasPassOverride   = true; PassOverride   = InPass; }
+	void SetBlendOverride(EBlendState InBlend)    { bHasBlendOverride  = true; BlendOverride  = InBlend; }
+	void SetDepthOverride(EDepthStencilState InD) { bHasDepthOverride  = true; DepthOverride  = InD; }
+	void SetRasterOverride(ERasterizerState InR)  { bHasRasterOverride = true; RasterOverride = InR; }
+	void ClearRenderStateOverrides() { bHasPassOverride = bHasBlendOverride = bHasDepthOverride = bHasRasterOverride = false; }
 
 	// Per-shader CB 오버라이드 — transient Material에서 Gizmo/SubUV/Decal 등이 사용
 	template<typename T>

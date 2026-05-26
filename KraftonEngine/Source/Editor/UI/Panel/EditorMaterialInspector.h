@@ -4,7 +4,6 @@
 #include "Core/Types/CoreTypes.h"
 #include <fstream>
 #include <filesystem>
-#include "SimpleJSON/json.hpp"
 #include <wrl/client.h>
 #include <Engine/Materials/MaterialManager.h>
 
@@ -18,13 +17,13 @@ public:
 	void Render();
 
 private:
+	void RenderRenderStateSection();
 	void RenderShaderParameter();
 	void RenderTextureSection();
 
 private:
 	std::filesystem::path MaterialPath;
-	json::JSON CachedJson;
-	UMaterial* CachedMaterial;
+	UMaterial* CachedMaterial = nullptr;
 
 	TMap<FString, Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>> CachedSRVs;
 };

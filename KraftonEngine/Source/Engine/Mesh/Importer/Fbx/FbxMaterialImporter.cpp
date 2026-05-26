@@ -236,49 +236,22 @@ void FFbxMaterialImporter::BuildSkeletalMaterials(const FFbxImportContext& Conte
 
 FString FFbxMaterialImporter::CreateOrUpdateMaterialAsset(const FFbxImportedMaterialInfo& MaterialInfo)
 {
-	const FString MatPath = "Content/Material/Auto/" + MaterialInfo.Name + ".mat";
+	const FString UassetPath = "Content/Material/Auto/" + MaterialInfo.Name + ".uasset";
 
-	if (std::filesystem::exists(FPaths::ToWide(MatPath)))
+	if (std::filesystem::exists(FPaths::ToWide(UassetPath)))
 	{
-		return MatPath;
+		return UassetPath;
 	}
 
 	std::filesystem::create_directories(FPaths::ToWide("Content/Material/Auto"));
 
-	json::JSON JsonData;
-	JsonData["PathFileName"] = MatPath;
-	JsonData["Origin"] = "FbxImport";
-	JsonData["ShaderPath"] = "Shaders/Geometry/UberLit.hlsl";
-	JsonData["RenderPass"] = "Opaque";
+	const FVector4 SectionColor = MaterialInfo.DiffuseTexturePath.empty()
+		? FVector4(MaterialInfo.DiffuseColor.X, MaterialInfo.DiffuseColor.Y, MaterialInfo.DiffuseColor.Z, 1.0f)
+		: FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	const FString DiffuseTex = MaterialInfo.DiffuseTexturePath.empty() ? FString() : FPaths::MakeProjectRelative(MaterialInfo.DiffuseTexturePath);
+	const FString NormalTex  = MaterialInfo.NormalTexturePath.empty()  ? FString() : FPaths::MakeProjectRelative(MaterialInfo.NormalTexturePath);
 
-	if (!MaterialInfo.DiffuseTexturePath.empty())
-	{
-		JsonData["Textures"]["DiffuseTexture"] = FPaths::MakeProjectRelative(MaterialInfo.DiffuseTexturePath);
-		JsonData["Parameters"]["SectionColor"][0] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][1] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][2] = 1.0f;
-		JsonData["Parameters"]["SectionColor"][3] = 1.0f;
-	}
-	else
-	{
-		JsonData["Parameters"]["SectionColor"][0] = MaterialInfo.DiffuseColor.X;
-		JsonData["Parameters"]["SectionColor"][1] = MaterialInfo.DiffuseColor.Y;
-		JsonData["Parameters"]["SectionColor"][2] = MaterialInfo.DiffuseColor.Z;
-		JsonData["Parameters"]["SectionColor"][3] = 1.0f;
-	}
-
-	if (!MaterialInfo.NormalTexturePath.empty())
-	{
-		JsonData["Textures"]["NormalTexture"] = FPaths::MakeProjectRelative(MaterialInfo.NormalTexturePath);
-		JsonData["Parameters"]["HasNormalMap"] = 1.0f;
-	}
-	else
-	{
-		JsonData["Parameters"]["HasNormalMap"] = 0.0f;
-	}
-
-	std::ofstream File(FPaths::ToWide(MatPath));
-	File << JsonData.dump();
-
-	return MatPath;
+	// JSON 없이 머티리얼을 직접 빌드해 .uasset(바이너리)으로 저장.
+	FMaterialManager::Get().CreateImportedMaterialAsset(UassetPath, SectionColor, DiffuseTex, NormalTex);
+	return UassetPath;
 }

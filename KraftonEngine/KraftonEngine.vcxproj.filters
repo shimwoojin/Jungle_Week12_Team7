@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Intermediate">
@@ -261,6 +261,9 @@
     </Filter>
     <Filter Include="Source\Engine\Particle">
       <UniqueIdentifier>{1613146e-ae48-8d4a-1d6a-1540318e1782}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Engine\Particle\Distributions">
+      <UniqueIdentifier>{2aa03ec2-c0d8-8e9e-81b0-9a922ea9d7a5}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source\Engine\Particle\Modules">
       <UniqueIdentifier>{223332f0-c86a-4e9c-f72e-dfd36767fe45}</UniqueIdentifier>
@@ -566,6 +569,9 @@
     </FxCompile>
     <FxCompile Include="Shaders\Lighting\VSMBlur.hlsl">
       <Filter>Shaders\Lighting</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Particle\BeamTrail.hlsl">
+      <Filter>Shaders\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\Particle\Mesh.hlsl">
       <Filter>Shaders\Particle</Filter>
@@ -1304,6 +1310,36 @@
     <ClCompile Include="Source\Engine\Particle\ParticleSystemManager.cpp">
       <Filter>Source\Engine\Particle</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\Distribution.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFLoat.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVector.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
@@ -1332,6 +1368,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.cpp">
@@ -1464,6 +1503,9 @@
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\DecalPass.cpp">
+      <Filter>Source\Engine\Render\RenderPass</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Render\RenderPass\EditorIconPass.cpp">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Render\RenderPass\EditorLinesPass.cpp">
@@ -2363,6 +2405,9 @@
     <ClInclude Include="Source\Engine\Materials\Material.h">
       <Filter>Source\Engine\Materials</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Materials\MaterialDomain.h">
+      <Filter>Source\Engine\Materials</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Materials\MaterialInstance.h">
       <Filter>Source\Engine\Materials</Filter>
     </ClInclude>
@@ -2516,6 +2561,36 @@
     <ClInclude Include="Source\Engine\Particle\ParticleSystemManager.h">
       <Filter>Source\Engine\Particle</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\Distribution.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloat.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVector.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h">
+      <Filter>Source\Engine\Particle\Distributions</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleCollision.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
@@ -2544,6 +2619,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.h">
@@ -2699,6 +2777,9 @@
     <ClInclude Include="Source\Engine\Render\RenderPass\DecalPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Render\RenderPass\EditorIconPass.h">
+      <Filter>Source\Engine\Render\RenderPass</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Render\RenderPass\EditorLinesPass.h">
       <Filter>Source\Engine\Render\RenderPass</Filter>
     </ClInclude>
@@ -2838,6 +2919,9 @@
       <Filter>Source\Engine\Render\Types</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\Types\ShadowSettings.h">
+      <Filter>Source\Engine\Render\Types</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Render\Types\VertexFactoryType.h">
       <Filter>Source\Engine\Render\Types</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Render\Types\VertexTypes.h">

@@ -132,17 +132,17 @@ void FParticleSystemSceneProxy::UpdateMesh()
 	if (!SpriteMaterial)
 	{
 		SpriteMaterial = FMaterialManager::Get().GetOrCreateMaterial(
-			"Content/Material/Particle/ParticleSprite.mat");
+			"Content/Material/Particle/ParticleSprite.uasset");
 	}
 	if (!MeshMaterial)
 	{
 		MeshMaterial = FMaterialManager::Get().GetOrCreateMaterial(
-			"Content/Material/Particle/ParticleMesh.mat");
+			"Content/Material/Particle/ParticleMesh.uasset");
 	}
 	if (!BeamTrailMaterial)
 	{
 		BeamTrailMaterial = FMaterialManager::Get().GetOrCreateMaterial(
-			"Content/Material/Particle/ParticleBeamTrail.mat");
+			"Content/Material/Particle/ParticleBeamTrail.uasset");
 	}
 
 	// Template이 있으면 emitter index별 RequiredModule.Material 캐싱.
@@ -276,6 +276,15 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		Section.FirstIndex = 0;
 		Section.IndexCount = Spec.IndexCount;
 		Section.Material   = SectionMat;
+		// 정점 팩토리 타입 태깅 — ResolveSectionShader 가 emitter 종류로 파티클 셰이더 도출.
+		switch (Replay->EmitterType)
+		{
+		case EDynamicEmitterType::Sprite: Section.VertexFactory = EVertexFactoryType::ParticleSprite; break;
+		case EDynamicEmitterType::Mesh:   Section.VertexFactory = EVertexFactoryType::ParticleMesh;   break;
+		case EDynamicEmitterType::Beam:   Section.VertexFactory = EVertexFactoryType::ParticleBeam;   break;
+		case EDynamicEmitterType::Ribbon: Section.VertexFactory = EVertexFactoryType::ParticleRibbon; break;
+		default: break;
+		}
 		// 입자 섹션은 자체 대표 위치로 translucent depth 정렬 (proxy 단위 정렬의 부정확 보완).
 		Section.bHasSortPos  = true;
 		Section.SortWorldPos = Spec.SortWorldPos;

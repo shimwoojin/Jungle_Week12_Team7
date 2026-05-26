@@ -35,7 +35,8 @@ cbuffer PerShader1 : register(b2)
 {
     float4 SectionColor;
     float HasNormalMap;
-    float3 _pad;
+    float Opacity;   // 머티리얼 불투명도 [0,1] — _pad.x 재사용(레이아웃 32B 유지). 기본 1, Translucent 블렌드에서만 가시 효과.
+    float2 _pad;
 };
 
 
@@ -249,7 +250,7 @@ return output;
     finalColor = ApplyWireframe(finalColor);
 #endif
 
-    output.Color = float4(finalColor, baseColor.a);
+    output.Color = float4(finalColor, baseColor.a * Opacity); // Opacity는 alpha에만 (Translucent 블렌드에서 효과)
     output.Normal = float4(N, 1.0f); // alpha=1: 유효한 노말 마킹
     
     return output;

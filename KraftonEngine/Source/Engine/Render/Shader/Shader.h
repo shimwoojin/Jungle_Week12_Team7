@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "Render/Types/RenderTypes.h"
+#include <memory>
 
 struct FMaterialParameterInfo;
 
@@ -73,7 +74,8 @@ public:
 
 	bool IsValid() const { return VertexShader != nullptr && PixelShader != nullptr; }
 
-	const TMap<FString, FMaterialParameterInfo*>& GetParameterLayout() const { return ShaderParameterLayout; }
+	const TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& GetParameterLayout() const { return ShaderParameterLayout; }
+	const TArray<FShaderTextureBinding>& GetTextureBindings() const { return TextureBindings; }
 private:
 	ID3D11VertexShader* VertexShader = nullptr;
 	ID3D11PixelShader* PixelShader = nullptr;
@@ -83,6 +85,9 @@ private:
 	size_t CachedPixelShaderSize = 0;
 
 	void CreateInputLayoutFromReflection(ID3D11Device* InDevice, ID3DBlob* VSBlob);
-	void ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, FMaterialParameterInfo*>& OutLayout);
-	TMap<FString, FMaterialParameterInfo*> ShaderParameterLayout;
+	void ExtractCBufferInfo(ID3DBlob* ShaderBlob, TMap<FString, std::shared_ptr<FMaterialParameterInfo>>& OutLayout);
+	void ExtractTextureBindings(ID3DBlob* ShaderBlob);
+	// shared_ptr 소유 — FShader 와 (얕은 복사하는) FMaterialTemplate 가 수명을 공유, 수동 delete 불필요.
+	TMap<FString, std::shared_ptr<FMaterialParameterInfo>> ShaderParameterLayout;
+	TArray<FShaderTextureBinding> TextureBindings; // 리플렉션된 t0~t7 텍스처 바인딩
 };

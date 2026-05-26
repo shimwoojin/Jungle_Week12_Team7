@@ -5,6 +5,7 @@
 #include "Render/Geometry/LineGeometry.h"
 #include "Render/Geometry/FontGeometry.h"
 #include "Render/Proxy/PrimitiveSceneProxy.h"
+#include "Render/Types/VertexFactoryType.h"
 
 class FPassRenderStateTable;
 class FTextRenderSceneProxy;
@@ -60,6 +61,8 @@ private:
 	void EmitLineCommand(FLineGeometry& Lines, FShader* Shader, const FDrawCommandRenderState& RS);
 	void ApplyMaterialRenderState(FDrawCommandRenderState& OutState, const UMaterial* Mat, const FDrawCommandRenderState& BaseState);
 	FShader* SelectEffectiveShader(FShader* ProxyShader, EViewMode ViewMode, bool bUseSkeletalVertexFactory, bool bWeightBoneHeatMap);
+	// shader-agnostic 도출: custom override 우선, 아니면 (Domain × VertexFactory × Pass × ViewMode).
+	FShader* ResolveSectionShader(class UMaterial* Mat, EVertexFactoryType VFType, EViewMode ViewMode, bool bGPUSkinning, bool bWeightBoneHeatMap);
 
 	FConstantBuffer* GetPerObjectCBForProxy(FScene* Scene, const FPrimitiveSceneProxy& Proxy);
 	void EnsurePerObjectCBPoolCapacity(FScene* Scene, uint32 RequiredCount);

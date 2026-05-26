@@ -431,6 +431,9 @@ void FEditorContentBrowserWidget::RefreshContent()
 				case EAssetPackageType::ParticleSystem:
 					Element = std::make_shared<ParticleSystemElement>();
 					break;
+				case EAssetPackageType::Material:
+					Element = std::make_shared<MaterialElement>();
+					break;
 				default:
 					Element = std::make_shared<ContentBrowserElement>();
 					break;
@@ -589,7 +592,15 @@ void FEditorContentBrowserWidget::DrawContents()
 					}
 				}
 			}
-			if (ImGui::MenuItem("Particle System"))
+			if (ImGui::MenuItem("Material"))
+				{
+					FString CreatedPath;
+					if (FAssetFactory::CreateMaterial(FPaths::ToUtf8(BrowserContext.CurrentPath), "NewMaterial", CreatedPath))
+					{
+						Refresh();
+					}
+				}
+				if (ImGui::MenuItem("Particle System"))
 			{
 				FString CreatedPath;
 				if (FAssetFactory::CreateParticleSystem(

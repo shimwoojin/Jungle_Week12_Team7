@@ -87,7 +87,7 @@ namespace
 		// Required: Sprite Material + (옵션) SubUV 그리드
 		if (UParticleModuleRequired* Required = LOD->RequiredModule)
 		{
-			Required->MaterialSlot       = "Content/Material/Particle/ParticleSprite.mat";
+			Required->MaterialSlot       = "Content/Material/Particle/ParticleSprite.uasset";
 			Required->SubImagesHorizontal = 1;
 			Required->SubImagesVertical   = 1;
 			Required->bUseLocalSpace      = false;
@@ -145,7 +145,7 @@ namespace
 		// Parent: ParticleMesh.mat → SubImagesH/V만 override.
 		if (UParticleModuleRequired* Required = LOD->RequiredModule)
 		{
-			Required->MaterialSlot       = "Content/Material/Particle/ParticleMesh_Atlas2x2.mat";
+			Required->MaterialSlot       = "Content/Material/Particle/ParticleMesh_Atlas2x2.uasset";
 			Required->SubImagesHorizontal = 2;
 			Required->SubImagesVertical   = 2;
 			Required->bUseLocalSpace      = false;

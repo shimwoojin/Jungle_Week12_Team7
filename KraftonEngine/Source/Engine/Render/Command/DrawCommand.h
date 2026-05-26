@@ -110,7 +110,7 @@ struct FDrawCommand
 	}
 
 	// ===== SortKey 생성 유틸리티 (정적) =====
-	// 일반 패스: Pass(4) | ShaderHash(16) | MeshHash(16) | SRVHash(16) | UserBits(12)
+	// 일반 패스: Pass(5) | ShaderHash(16) | MeshHash(16) | SRVHash(16) | UserBits(11)
 	// 상태 전환(셰이더/메시/텍스처) 그룹핑 위주.
 	static uint64 ComputeSortKey(ERenderPass InPass, const FShader* InShader,
 		const void* InMeshId, const ID3D11ShaderResourceView* InSRV,
@@ -124,15 +124,15 @@ struct FDrawCommand
 		};
 
 		uint64 Key = 0;
-		Key |= (static_cast<uint64>(InPass) & 0xF) << 60;           // [63:60] Pass
-		Key |= (static_cast<uint64>(PtrHash16(InShader))) << 44;     // [59:44] Shader
-		Key |= (static_cast<uint64>(PtrHash16(InMeshId))) << 28;      // [43:28] MeshBuffer
-		Key |= (static_cast<uint64>(PtrHash16(InSRV))) << 12;        // [27:12] SRV
-		Key |= (static_cast<uint64>(UserBits) & 0xFFF);              // [11:0]  User
+		Key |= (static_cast<uint64>(InPass) & 0x1F) << 59;          // [63:59] Pass (5비트, 최대 32패스)
+		Key |= (static_cast<uint64>(PtrHash16(InShader))) << 43;     // [58:43] Shader
+		Key |= (static_cast<uint64>(PtrHash16(InMeshId))) << 27;      // [42:27] MeshBuffer
+		Key |= (static_cast<uint64>(PtrHash16(InSRV))) << 11;        // [26:11] SRV
+		Key |= (static_cast<uint64>(UserBits) & 0x7FF);              // [10:0]  User (11비트)
 		return Key;
 	}
 
-	// Translucent 전용: Pass(4) | DepthBucket(28) | ShaderHash(16) | UserBits(16)
+	// Translucent 전용: Pass(5) | DepthBucket(28) | ShaderHash(16) | UserBits(15)
 	// DepthBucket = MAX_28BIT - quantize(CameraDistSquared) — 멀수록 작은 키 → 먼저 그림 (back-to-front).
 	// 같은 깊이 버킷 내에선 Shader로 묶어 상태 전환 최소화.
 	static uint64 ComputeTranslucentSortKey(ERenderPass InPass, const FShader* InShader,
@@ -155,10 +155,10 @@ struct FDrawCommand
 		const uint32 Bucket = MAX_BUCKET - Q;  // 멀면 작은 키 → 먼저 그림
 
 		uint64 Key = 0;
-		Key |= (static_cast<uint64>(InPass) & 0xF) << 60;                 // [63:60] Pass
-		Key |= (static_cast<uint64>(Bucket) & 0x0FFFFFFFull) << 32;        // [59:32] DepthBucket (역양자화)
-		Key |= (static_cast<uint64>(PtrHash16(InShader))) << 16;           // [31:16] ShaderHash
-		Key |= (static_cast<uint64>(UserBits));                            // [15:0]  UserBits
+		Key |= (static_cast<uint64>(InPass) & 0x1F) << 59;                // [63:59] Pass (5비트)
+		Key |= (static_cast<uint64>(Bucket) & 0x0FFFFFFFull) << 31;        // [58:31] DepthBucket (역양자화)
+		Key |= (static_cast<uint64>(PtrHash16(InShader))) << 15;           // [30:15] ShaderHash
+		Key |= (static_cast<uint64>(UserBits) & 0x7FFF);                   // [14:0]  UserBits (15비트)
 		return Key;
 	}
 };

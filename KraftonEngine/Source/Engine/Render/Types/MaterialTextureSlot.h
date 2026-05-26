@@ -3,8 +3,7 @@
 #include "Core/Types/CoreTypes.h"
 
 ////////////////////////////////////////////
-//JSon에 Enum + Texture만 적으면 자동으로 바인딩 될겁니다. 아마도....
-//t0 ~ t7은 MaterialSlot입니다.
+// 머티리얼 텍스처 슬롯 t0~t7. 셰이더 텍스처 바인딩 리플렉션(FShaderTextureBinding)과 register 기준으로 매칭된다.
 enum class EMaterialTextureSlot : uint32
 {
 	Diffuse = 0,
@@ -49,7 +48,17 @@ namespace MaterialTextureSlot
 			return FString("Custom1");
 
 		default:
-			throw "How";
+			return FString(); // 알 수 없는 슬롯 — 빈 문자열 반환(렌더/직렬화 경로에서 throw 금지)
 		}
+	}
+
+	// 색(sRGB) 텍스처 슬롯 판정 — Diffuse/Emissive/Custom* 은 sRGB, 그 외(Normal/Roughness/AO 등)는 Linear.
+	// 텍스처 로드 시 색공간 결정의 단일 소스(엔진/에디터 공용).
+	inline bool IsSRGBTextureSlot(const FString& SlotName)
+	{
+		return SlotName == "DiffuseTexture"
+			|| SlotName == "EmissiveTexture"
+			|| SlotName == "Custom0Texture"
+			|| SlotName == "Custom1Texture";
 	}
 }
