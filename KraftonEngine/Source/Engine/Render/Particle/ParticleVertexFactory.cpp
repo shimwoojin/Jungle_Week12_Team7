@@ -6,6 +6,7 @@
 #include "Mesh/Static/StaticMesh.h"
 #include "Mesh/MeshManager.h"
 #include "Materials/Material.h"
+#include "Profiling/Stats/ParticleStats.h"
 
 #include <d3d11.h>
 #include <vector>
@@ -36,6 +37,293 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
 	case EParticleReplaySortMode::None:
 	default:
 		return false;
+	}
+}
+
+namespace
+{
+	// Current Ribbon operating policy:
+	// one emitter-level single-trail build may amplify control segments into many
+	// sampled points through tessellation. This per-trail budget caps only that
+	// tessellation-driven sample growth; it does not cap emitter count or rewrite
+	// the underlying control-point chain/topology.
+	constexpr uint32 RibbonRuntimeSamplePointBudgetPerTrail = 16384;
+
+	struct FRibbonControlPoint
+	{
+		FVector Position;
+		FVector Tangent;
+		FVector4 Color;
+		FVector Size;
+	};
+
+	struct FRibbonSamplePoint
+	{
+		FVector Position;
+		FVector4 Color;
+		FVector Size;
+		float TrailAlpha = 0.0f;
+	};
+
+	struct FDefensivelySanitizedRibbonReplayShaping
+	{
+		int32 MaxTessellation = 8;
+		float TangentTension = 0.5f;
+		float TilesPerTrail = 1.0f;
+	};
+
+	FVector GetRibbonParticleWorldPosition(
+		const uint8* RawBase,
+		uint32 Stride,
+		bool bLocal,
+		const FMatrix& LocalToWorld,
+		uint32 ParticleIndex)
+	{
+		const auto& Particle = *reinterpret_cast<const FBaseParticle*>(RawBase + ParticleIndex * Stride);
+		FVector WorldPosition = Particle.Location;
+		if (bLocal)
+		{
+			WorldPosition = LocalToWorld.TransformPositionWithW(WorldPosition);
+		}
+
+		return WorldPosition;
+	}
+
+	std::vector<uint32> BuildRibbonTrailOrderFromRelativeTime(
+		const uint8* RawBase,
+		uint32 Stride,
+		uint32 ParticleCount)
+	{
+		// Current Ribbon single-trail rule:
+		// one emitter snapshot becomes one ordered chain, so the RT path rebuilds
+		// trail continuity from RelativeTime rather than from generic replay sort
+		// metadata or implicit particle grouping.
+		std::vector<uint32> Order(ParticleCount);
+		for (uint32 i = 0; i < ParticleCount; ++i)
+		{
+			Order[i] = i;
+		}
+
+		std::sort(Order.begin(), Order.end(), [RawBase, Stride](uint32 A, uint32 B)
+		{
+			const auto& ParticleA = *reinterpret_cast<const FBaseParticle*>(RawBase + A * Stride);
+			const auto& ParticleB = *reinterpret_cast<const FBaseParticle*>(RawBase + B * Stride);
+			return ParticleA.RelativeTime > ParticleB.RelativeTime;
+		});
+
+		return Order;
+	}
+
+	void BuildRibbonControlPoints(
+		const uint8* RawBase,
+		uint32 Stride,
+		bool bLocal,
+		const FMatrix& LocalToWorld,
+		const std::vector<uint32>& OrderedParticleIndices,
+		std::vector<FRibbonControlPoint>& OutControlPoints)
+	{
+		OutControlPoints.clear();
+		OutControlPoints.reserve(OrderedParticleIndices.size());
+
+		for (uint32 ParticleIndex : OrderedParticleIndices)
+		{
+			const FBaseParticle& Particle =
+				*reinterpret_cast<const FBaseParticle*>(RawBase + ParticleIndex * Stride);
+
+			FRibbonControlPoint ControlPoint;
+			ControlPoint.Position =
+				GetRibbonParticleWorldPosition(RawBase, Stride, bLocal, LocalToWorld, ParticleIndex);
+			ControlPoint.Tangent = FVector::ZeroVector;
+			ControlPoint.Color = Particle.Color;
+			ControlPoint.Size = Particle.Size;
+			OutControlPoints.push_back(ControlPoint);
+		}
+	}
+
+	void ComputeRibbonTangents(std::vector<FRibbonControlPoint>& ControlPoints, float TangentTension)
+	{
+		for (size_t i = 0; i < ControlPoints.size(); ++i)
+		{
+			const FVector Prev =
+				(i > 0) ? ControlPoints[i - 1].Position : ControlPoints[i].Position;
+			const FVector Next =
+				(i + 1 < ControlPoints.size()) ? ControlPoints[i + 1].Position : ControlPoints[i].Position;
+			ControlPoints[i].Tangent = (Next - Prev) * (0.5f * TangentTension);
+		}
+	}
+
+	FVector HermiteInterpolateRibbon(
+		const FVector& P0,
+		const FVector& T0,
+		const FVector& P1,
+		const FVector& T1,
+		float T)
+	{
+		const float T2 = T * T;
+		const float T3 = T2 * T;
+
+		return
+			P0 * (2.0f * T3 - 3.0f * T2 + 1.0f) +
+			T0 * (T3 - 2.0f * T2 + T) +
+			P1 * (-2.0f * T3 + 3.0f * T2) +
+			T1 * (T3 - T2);
+	}
+
+	void SampleRibbonCurve(
+		const std::vector<FRibbonControlPoint>& ControlPoints,
+		uint32 TessellationPerSegment,
+		std::vector<FRibbonSamplePoint>& OutSamples)
+	{
+		OutSamples.clear();
+		if (ControlPoints.size() < 2)
+		{
+			return;
+		}
+
+		const uint32 ControlSegmentCount = static_cast<uint32>(ControlPoints.size()) - 1;
+		OutSamples.reserve(1 + ControlSegmentCount * TessellationPerSegment);
+
+		for (uint32 Segment = 0; Segment < ControlSegmentCount; ++Segment)
+		{
+			const FRibbonControlPoint& A = ControlPoints[Segment];
+			const FRibbonControlPoint& B = ControlPoints[Segment + 1];
+
+			for (uint32 Step = 0; Step < TessellationPerSegment; ++Step)
+			{
+				const float LocalT = static_cast<float>(Step) / static_cast<float>(TessellationPerSegment);
+				const float GlobalT = static_cast<float>(Segment) + LocalT;
+
+				FRibbonSamplePoint Sample;
+				Sample.Position =
+					HermiteInterpolateRibbon(A.Position, A.Tangent, B.Position, B.Tangent, LocalT);
+				Sample.Color = A.Color + (B.Color - A.Color) * LocalT;
+				Sample.Size = A.Size + (B.Size - A.Size) * LocalT;
+				Sample.TrailAlpha = GlobalT / static_cast<float>(ControlSegmentCount);
+				OutSamples.push_back(Sample);
+			}
+		}
+
+		const FRibbonControlPoint& Last = ControlPoints.back();
+		FRibbonSamplePoint LastSample;
+		LastSample.Position = Last.Position;
+		LastSample.Color = Last.Color;
+		LastSample.Size = Last.Size;
+		LastSample.TrailAlpha = 1.0f;
+		OutSamples.push_back(LastSample);
+	}
+
+	void BuildRibbonVertices(
+		const std::vector<FRibbonSamplePoint>& Samples,
+		float TilesPerTrail,
+		const FVector& CameraPosition,
+		std::vector<FParticleBeamTrailVertex>& OutVertices)
+	{
+		const uint32 NumPoints = static_cast<uint32>(Samples.size());
+		OutVertices.clear();
+		OutVertices.resize(NumPoints * 2);
+
+		for (uint32 i = 0; i < NumPoints; ++i)
+		{
+			const FRibbonSamplePoint& Sample = Samples[i];
+			const FVector Position = Sample.Position;
+
+			FVector SegmentDirection = (i + 1 < NumPoints)
+				? (Samples[i + 1].Position - Position)
+				: (Position - Samples[i - 1].Position);
+			const float DirectionLength = SegmentDirection.Length();
+			if (DirectionLength > 1e-4f)
+			{
+				SegmentDirection = SegmentDirection * (1.0f / DirectionLength);
+			}
+			else
+			{
+				SegmentDirection = FVector::ForwardVector;
+			}
+
+			FVector Side = SegmentDirection.Cross(CameraPosition - Position);
+			const float SideLength = Side.Length();
+			const float HalfWidth = Sample.Size.X * 0.5f;
+			Side = (SideLength > 1e-4f) ? (Side * (HalfWidth / SideLength)) : FVector{ 0, HalfWidth, 0 };
+
+			const float U = Sample.TrailAlpha * TilesPerTrail;
+			FParticleBeamTrailVertex& LeftVertex = OutVertices[i * 2 + 0];
+			FParticleBeamTrailVertex& RightVertex = OutVertices[i * 2 + 1];
+			LeftVertex.Position = Position - Side;
+			LeftVertex.Color = Sample.Color;
+			LeftVertex.UV = { U, 0.0f };
+			RightVertex.Position = Position + Side;
+			RightVertex.Color = Sample.Color;
+			RightVertex.UV = { U, 1.0f };
+		}
+	}
+
+	void BuildRibbonIndices(uint32 SegmentCount, std::vector<uint32>& OutIndices)
+	{
+		OutIndices.clear();
+		OutIndices.resize(SegmentCount * 6);
+
+		for (uint32 SegmentIndex = 0; SegmentIndex < SegmentCount; ++SegmentIndex)
+		{
+			const uint32 BaseVertex = SegmentIndex * 2;
+			uint32* IndexDst = OutIndices.data() + SegmentIndex * 6;
+			IndexDst[0] = BaseVertex + 0;
+			IndexDst[1] = BaseVertex + 1;
+			IndexDst[2] = BaseVertex + 2;
+			IndexDst[3] = BaseVertex + 1;
+			IndexDst[4] = BaseVertex + 3;
+			IndexDst[5] = BaseVertex + 2;
+		}
+	}
+
+	uint32 ComputeRibbonRequestedSamplePointCount(
+		uint32 ControlSegmentCount,
+		uint32 TessellationPerSegment)
+	{
+		return 1u + ControlSegmentCount * TessellationPerSegment;
+	}
+
+	uint32 ResolveRibbonEffectiveTessellationForSampleBudget(
+		uint32 RequestedTessellation,
+		uint32 ControlSegmentCount,
+		bool& bOutRuntimeCapped)
+	{
+		bOutRuntimeCapped = false;
+		if (RequestedTessellation <= 1 || ControlSegmentCount == 0)
+		{
+			return std::max(1u, RequestedTessellation);
+		}
+
+		// This guard intentionally caps tessellation-driven amplification, not the
+		// base control-point chain itself. Very large active-particle chains can
+		// still be expensive, but authoring tessellation will not multiply them
+		// without bound on the RT path.
+		const uint32 RequestedSamplePoints =
+			ComputeRibbonRequestedSamplePointCount(ControlSegmentCount, RequestedTessellation);
+		if (RequestedSamplePoints <= RibbonRuntimeSamplePointBudgetPerTrail)
+		{
+			return RequestedTessellation;
+		}
+
+		// We reserve one trailing sample point, then distribute the remaining sample
+		// budget across control segments as evenly as possible.
+		const uint32 BudgetDrivenTessellation =
+			std::max(1u, (RibbonRuntimeSamplePointBudgetPerTrail - 1u) / ControlSegmentCount);
+		const uint32 EffectiveTessellation = std::min(RequestedTessellation, BudgetDrivenTessellation);
+		bOutRuntimeCapped = EffectiveTessellation < RequestedTessellation;
+		return std::max(1u, EffectiveTessellation);
+	}
+
+	FDefensivelySanitizedRibbonReplayShaping ResolveDefensivelySanitizedRibbonReplayShapingOnRT(
+		const FDynamicRibbonEmitterReplayData& RibbonReplay)
+	{
+		FDefensivelySanitizedRibbonReplayShaping Shaping;
+		// GT replay build is authoritative for normal authoring-domain sanitize.
+		// RT keeps this lightweight revalidation as a defensive safety net so bad or
+		// incomplete replay data cannot explode ribbon geometry assumptions here.
+		Shaping.MaxTessellation = std::clamp(RibbonReplay.MaxTessellation, 1, 64);
+		Shaping.TangentTension = std::clamp(RibbonReplay.TangentTension, 0.0f, 1.0f);
+		Shaping.TilesPerTrail = std::max(0.0f, RibbonReplay.TilesPerTrail);
+		return Shaping;
 	}
 }
 
@@ -78,6 +366,9 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// VertexFactory::BuildDraw is the last RT step before command submission:
+	// it consumes the emitter-level replay contract and emits draw-ready geometry
+	// buffers/spec for exactly one replay emitter section.
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
@@ -170,6 +461,11 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	OutDraw.VertexCount    = QuadVB.GetVertexCount();
 	OutDraw.IndexCount     = QuadIB.GetIndexCount();
 	OutDraw.InstanceCount  = N;
+#if STATS
+	// Sprite RT geometry is instance-driven: 1 particle -> 1 emitted instance,
+	// while the shared static quad contributes the per-instance vertex/index shape.
+	PARTICLE_STATS_ADD_SPRITE_RT_GEOMETRY(N, OutDraw.VertexCount * N, OutDraw.IndexCount * N);
+#endif
 	return true;
 }
 
@@ -202,11 +498,20 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// Mesh RT build consumes the shared replay header plus the narrower Mesh
+	// shaping contract and turns them into one instanced draw-ready section spec.
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
 
 	const auto& MeshReplay = static_cast<const FDynamicMeshEmitterReplayData&>(Replay);
+	// Current RT Mesh consumption is intentionally narrower than the full replay struct:
+	//   - MeshReplay.Mesh      : actively selects the static mesh (with cube fallback)
+	//   - MeshReplay.Material  : actively affects section material and SubImagesH/V lookup
+	//   - MeshReplay.Alignment : not yet interpreted here for instance orientation
+	//   - MeshReplay.bOverrideMaterial : not yet used to alter RT material resolution;
+	//                                    the shared replay-first material authority chain
+	//                                    is already resolved before this BuildDraw path
 	UStaticMesh* Mesh = MeshReplay.Mesh ? MeshReplay.Mesh : CachedCubeFallback;
 	if (!Mesh) return false;
 	FMeshBuffer* MB = Mesh->GetLODMeshBuffer(0);
@@ -264,6 +569,9 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		const uint32 i = SortedIdx[sortI];
 		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
 
+		// Instance orientation currently comes from the particle's own scale/rotation/
+		// translation only. Replay Alignment is carried through from GT for contract
+		// visibility, but is not yet consumed as an extra RT orientation mode.
 		FMatrix M = FMatrix::MakeScaleMatrix(P.Size)
 			* FMatrix::MakeRotationZ(P.Rotation)
 			* FMatrix::MakeTranslationMatrix(P.Location);
@@ -310,12 +618,32 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	OutDraw.VertexCount = MB->GetVertexBuffer().GetVertexCount();
 	OutDraw.IndexCount = MB->GetIndexBuffer().GetIndexCount();
 	OutDraw.InstanceCount = N;
+#if STATS
+	// Mesh RT geometry is also instance-driven: the mesh VB/IB is reused, while
+	// emitted instance count reflects how many particle instances hit the RT path.
+	PARTICLE_STATS_ADD_MESH_RT_GEOMETRY(N, OutDraw.VertexCount * N, OutDraw.IndexCount * N);
+#endif
 	return true;
 }
 
 // =============================================================================
 // Beam — SourcePoint→TargetPoint 카메라facing quad strip
 // =============================================================================
+namespace
+{
+uint32 ResolveBeamStripMultiplicity(const FDynamicBeamEmitterReplayData& BeamReplay)
+{
+	const FParticleDataView View = BeamReplay.GetParticleView();
+
+	// Current Beam contract note:
+	//   Beam replay itself is emitter-level (one source/target/tangent/noise snapshot).
+	//   RT does not consume per-particle independent endpoint sets here.
+	//   ActiveParticleCount is therefore not "beam endpoint pair count", but a legacy/
+	//   minimal multiplicity hint that can duplicate the same logical beam strip.
+	return std::max(1u, View.ActiveParticleCount);
+}
+}
+
 void FParticleBeamVertexFactory::InitResources(ID3D11Device* /*Device*/)
 {
 	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleBeamTrail);
@@ -337,6 +665,9 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// Beam RT build does not reconstruct per-particle beam contracts; it consumes
+	// one emitter-level beam shape snapshot and emits the strip geometry that
+	// SceneProxy will submit as one section.
 	const auto& BeamReplay = static_cast<const FDynamicBeamEmitterReplayData&>(Replay);
 
 	FVector Source = BeamReplay.SourcePoint;
@@ -354,8 +685,7 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	}
 
 	if (!BeamReplay.bRenderGeometry) return false;
-	const FParticleDataView View = BeamReplay.GetParticleView();
-	const uint32 BeamCount = std::max(1u, View.ActiveParticleCount);
+	const uint32 BeamStripCount = ResolveBeamStripMultiplicity(BeamReplay);
 
 	const FVector Axis = Target - Source;
 	const float BeamLen = Axis.Length();
@@ -388,12 +718,15 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const float BeamTime   = BeamReplay.EmitterTime;
 	constexpr float Pi = 3.14159265358979323846f;
 
-	const uint32 VertCount = static_cast<uint32>(NumPoints * 2) * BeamCount;
-	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6) * BeamCount;
+	const uint32 VertCount = static_cast<uint32>(NumPoints * 2) * BeamStripCount;
+	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6) * BeamStripCount;
 
 	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
-	for (uint32 BeamIndex = 0; BeamIndex < BeamCount; ++BeamIndex)
+	for (uint32 BeamIndex = 0; BeamIndex < BeamStripCount; ++BeamIndex)
 	{
+		// Current RT behavior duplicates the same logical beam shape with a phase offset
+		// when multiplicity > 1. This is not a per-particle independent beam contract;
+		// it is a legacy/minimal way to let generic emitter activity influence beam count.
 		const float BeamPhaseOffset = static_cast<float>(BeamIndex) * 0.73f;
 		for (int32 i = 0; i < NumPoints; ++i)
 		{
@@ -449,7 +782,7 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	}
 
 	std::vector<uint32> Indices(IndexCount);
-	for (uint32 BeamIndex = 0; BeamIndex < BeamCount; ++BeamIndex)
+	for (uint32 BeamIndex = 0; BeamIndex < BeamStripCount; ++BeamIndex)
 	{
 		for (int32 s = 0; s < NumSegments; ++s)
 		{
@@ -477,6 +810,10 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	OutDraw.VertexCount  = VertCount;
 	OutDraw.IndexCount   = IndexCount;
 	OutDraw.InstanceCount = 0;
+#if STATS
+	// Beam RT geometry is strip-driven rather than instance-driven.
+	PARTICLE_STATS_ADD_BEAM_RT_GEOMETRY(BeamStripCount, VertCount, IndexCount);
+#endif
 	return true;
 }
 
@@ -504,16 +841,25 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// Ribbon RT build consumes one emitter-level single-trail replay snapshot and
+	// expands it into the actual sampled strip geometry that one RT section draws.
 	if (Replay.EmitterType != EDynamicEmitterType::Ribbon)
 	{
 		return false;
 	}
 
 	const auto& RibbonReplay = static_cast<const FDynamicRibbonEmitterReplayData&>(Replay);
-	const int32 MaxTessellation = std::clamp(RibbonReplay.MaxTessellation, 1, 64);
-	const float TangentTension = std::clamp(RibbonReplay.TangentTension, 0.0f, 1.0f);
-	const float TilesPerTrail = std::max(0.0f, RibbonReplay.TilesPerTrail);
+	const FDefensivelySanitizedRibbonReplayShaping Shaping =
+		ResolveDefensivelySanitizedRibbonReplayShapingOnRT(RibbonReplay);
+	const int32 MaxTessellation = Shaping.MaxTessellation;
+	const float TangentTension = Shaping.TangentTension;
+	const float TilesPerTrail = Shaping.TilesPerTrail;
 
+	// Current Ribbon consumption contract:
+	// - one replay snapshot == one emitter-level ribbon trail for this frame
+	// - the active-particle snapshot is interpreted as a single ordered chain
+	// - generic particle translucent SortMode does not define ribbon topology
+	//   ordering or split the trail into multiple chains; trail continuity does
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N < 2 || View.ParticleStride == 0 || !View.ParticleData) return false; // trail은 최소 2점
@@ -523,158 +869,59 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const bool bLocal = Replay.bUseLocalSpace;
 	const FMatrix& L2W = Replay.LocalToWorld;
 
-	auto GetWorldPos = [RawBase, Stride, bLocal, &L2W](uint32 i) -> FVector
-	{
-		const auto& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
-		FVector W = P.Location;
-		if (bLocal) W = L2W.TransformPositionWithW(W);
-		return W;
-	};
+	// Ribbon은 일반 translucent particle처럼 "그리기용 depth sort"를 우선하지 않고,
+	// trail topology를 복원하기 위한 order를 우선한다. 따라서 shared replay SortMode가
+	// 존재하더라도, current Ribbon RT는 그것을 chain topology나 multi-trail grouping
+	// 규칙으로 해석하지 않는다. 현재 구현은 emitter의 active particle snapshot 전체를
+	// 하나의 trail로 보고, RelativeTime이 큰(더 오래된) 입자부터 이어 붙인다.
+	const std::vector<uint32> OrderedParticleIndices =
+		BuildRibbonTrailOrderFromRelativeTime(RawBase, Stride, N);
 
-	// age(RelativeTime)순 정렬 — 오래된 입자부터 이어 trail 연속성 확보.
-	std::vector<uint32> Order(N);
-	for (uint32 i = 0; i < N; ++i) Order[i] = i;
-	std::sort(Order.begin(), Order.end(), [RawBase, Stride](uint32 a, uint32 b)
-	{
-		const auto& PA = *reinterpret_cast<const FBaseParticle*>(RawBase + a * Stride);
-		const auto& PB = *reinterpret_cast<const FBaseParticle*>(RawBase + b * Stride);
-		return PA.RelativeTime > PB.RelativeTime;
-	});
-
-	struct FRibbonControlPoint
-	{
-		FVector Position;
-		FVector Tangent;
-		FVector4 Color;
-		FVector Size;
-	};
-
-	struct FRibbonSamplePoint
-	{
-		FVector Position;
-		FVector4 Color;
-		FVector Size;
-		float TrailAlpha = 0.0f;
-	};
-
-	auto HermiteInterpolate = [](const FVector& P0, const FVector& T0,
-	                             const FVector& P1, const FVector& T1,
-	                             float T) -> FVector
-	{
-		const float T2 = T * T;
-		const float T3 = T2 * T;
-
-		return
-			P0 * (2.0f * T3 - 3.0f * T2 + 1.0f) +
-			T0 * (T3 - 2.0f * T2 + T) +
-			P1 * (-2.0f * T3 + 3.0f * T2) +
-			T1 * (T3 - T2);
-	};
-
+	// Stage 1: ordered particle chain -> control points
 	std::vector<FRibbonControlPoint> ControlPoints;
-	ControlPoints.reserve(N);
-	for (uint32 i = 0; i < N; ++i)
-	{
-		const uint32 Idx = Order[i];
-		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + Idx * Stride);
+	BuildRibbonControlPoints(RawBase, Stride, bLocal, L2W, OrderedParticleIndices, ControlPoints);
 
-		FRibbonControlPoint CP;
-		CP.Position = GetWorldPos(Idx);
-		CP.Tangent = FVector::ZeroVector;
-		CP.Color = P.Color;
-		CP.Size = P.Size;
-		ControlPoints.push_back(CP);
-	}
+	// Stage 2: control points -> curve tangents
+	// TangentTension은 particle payload가 아니라 emitter-level ribbon shaping
+	// rule이며, GT replay가 넘긴 authoring/type-data 계약을 RT가 소비하는 지점이다.
+	ComputeRibbonTangents(ControlPoints, TangentTension);
 
-	// 각 control point의 tangent를 계산한다. TangentTension은 곡선 보간 강도다.
-	for (uint32 i = 0; i < N; ++i)
-	{
-		const FVector Prev = (i > 0) ? ControlPoints[i - 1].Position : ControlPoints[i].Position;
-		const FVector Next = (i + 1 < N) ? ControlPoints[i + 1].Position : ControlPoints[i].Position;
-		ControlPoints[i].Tangent = (Next - Prev) * (0.5f * TangentTension);
-	}
-
-	const uint32 ControlSegmentCount = N - 1;
-	const uint32 TessellationPerSegment = static_cast<uint32>(MaxTessellation);
-
+	// Stage 3: control points/tangents -> sampled curve points
+	const uint32 ControlSegmentCount = static_cast<uint32>(ControlPoints.size()) - 1u;
+	bool bRuntimeCapped = false;
+	// Authoring tessellation is a shaping hint, not an unbounded RT promise.
+	// Effective tessellation is derived from:
+	//   requested MaxTessellation
+	//   -> control segment count
+	//   -> per-trail sample-point budget
+	// The guard preserves the same Hermite-based shaping model and single-trail
+	// semantics; it only reduces tessellation-driven sample growth when needed.
+	const uint32 TessellationPerSegment = ResolveRibbonEffectiveTessellationForSampleBudget(
+		static_cast<uint32>(MaxTessellation),
+		ControlSegmentCount,
+		bRuntimeCapped);
 	std::vector<FRibbonSamplePoint> Samples;
-	Samples.reserve(1 + ControlSegmentCount * TessellationPerSegment);
-
-	for (uint32 Segment = 0; Segment < ControlSegmentCount; ++Segment)
-	{
-		const FRibbonControlPoint& A = ControlPoints[Segment];
-		const FRibbonControlPoint& B = ControlPoints[Segment + 1];
-
-		for (uint32 Step = 0; Step < TessellationPerSegment; ++Step)
-		{
-			const float LocalT = static_cast<float>(Step) / static_cast<float>(TessellationPerSegment);
-			const float GlobalT = static_cast<float>(Segment) + LocalT;
-
-			FRibbonSamplePoint S;
-			S.Position = HermiteInterpolate(A.Position, A.Tangent, B.Position, B.Tangent, LocalT);
-			S.Color = A.Color + (B.Color - A.Color) * LocalT;
-			S.Size = A.Size + (B.Size - A.Size) * LocalT;
-			S.TrailAlpha = GlobalT / static_cast<float>(ControlSegmentCount);
-			Samples.push_back(S);
-		}
-	}
-
-	// 마지막 control point는 위 루프에서 중복 생성을 피하려고 별도로 추가한다.
-	{
-		const FRibbonControlPoint& Last = ControlPoints.back();
-
-		FRibbonSamplePoint S;
-		S.Position = Last.Position;
-		S.Color = Last.Color;
-		S.Size = Last.Size;
-		S.TrailAlpha = 1.0f;
-		Samples.push_back(S);
-	}
+	SampleRibbonCurve(ControlPoints, TessellationPerSegment, Samples);
 
 	const uint32 NumPoints = static_cast<uint32>(Samples.size());
 	const uint32 NumSegments = NumPoints - 1;
 	const uint32 VertCount = NumPoints * 2;
 	const uint32 IndexCount = NumSegments * 6;
 
+	// Stage 4: sampled curve -> renderable ribbon strip vertices/indices
 	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
-	for (uint32 i = 0; i < NumPoints; ++i)
-	{
-		const FRibbonSamplePoint& S = Samples[i];
-		const FVector Pos = S.Position;
-
-		// segment 방향: 다음 sample로 (마지막은 직전 방향 재사용).
-		FVector Dir = (i + 1 < NumPoints) ? (Samples[i + 1].Position - Pos)
-		                                  : (Pos - Samples[i - 1].Position);
-		const float DirLen = Dir.Length();
-		if (DirLen > 1e-4f)
-		{
-			Dir = Dir * (1.0f / DirLen);
-		}
-		else
-		{
-			Dir = FVector::ForwardVector;
-		}
-
-		FVector Side = Dir.Cross(CameraPosition - Pos);
-		const float SideLen = Side.Length();
-		const float HalfWidth = S.Size.X * 0.5f;
-		Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
-
-		const float U = S.TrailAlpha * TilesPerTrail;
-		FParticleBeamTrailVertex& L = Vertices[i * 2 + 0];
-		FParticleBeamTrailVertex& R = Vertices[i * 2 + 1];
-		L.Position = Pos - Side; L.Color = S.Color; L.UV = { U, 0.0f };
-		R.Position = Pos + Side; R.Color = S.Color; R.UV = { U, 1.0f };
-	}
+	BuildRibbonVertices(Samples, TilesPerTrail, CameraPosition, Vertices);
 
 	std::vector<uint32> Indices(IndexCount);
-	for (uint32 s = 0; s < NumSegments; ++s)
-	{
-		const uint32 Base = s * 2;
-		uint32* Dst = Indices.data() + s * 6;
-		Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
-		Dst[3] = Base + 1; Dst[4] = Base + 3; Dst[5] = Base + 2;
-	}
+	BuildRibbonIndices(NumSegments, Indices);
+
+	PARTICLE_STATS_ADD_RIBBON_GEOMETRY(
+		TessellationPerSegment,
+		ControlSegmentCount,
+		NumPoints,
+		VertCount,
+		IndexCount,
+		bRuntimeCapped);
 
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));
@@ -687,7 +934,10 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 
 	// 섹션 depth 정렬용 대표 위치 = 입자 월드 위치 평균.
 	FVector SortSum{ 0, 0, 0 };
-	for (uint32 k = 0; k < N; ++k) SortSum += GetWorldPos(k);
+	for (uint32 k = 0; k < N; ++k)
+	{
+		SortSum += GetRibbonParticleWorldPosition(RawBase, Stride, bLocal, L2W, k);
+	}
 	OutDraw.SortWorldPos = SortSum * (1.0f / static_cast<float>(N));
 
 	OutDraw.StaticIB     = IB.GetBuffer();

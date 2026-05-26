@@ -333,6 +333,10 @@ enum class EParticleReplaySortMode : uint8
 
 struct FDynamicEmitterReplayDataBase
 {
+	// One emitter / one frame replay snapshot.
+	// GT simulation owns the live particles; RT consumes this reduced emitter-level
+	// contract after current render replay LOD interpretation and shared fallback
+	// resolution have already happened on GT.
 	EDynamicEmitterType EmitterType = EDynamicEmitterType::Unknown;
 	// RequiredModule.SortMode를 GT에서 복사해 둔 값.
 	// RT는 이 필드만 보고 emitter 내부 입자 정렬 정책을 선택한다.
@@ -343,10 +347,22 @@ struct FDynamicEmitterReplayDataBase
 	FParticleStorage SnapshotStorage;
 
 	// Material이 BlendState/DepthStencilState 등 렌더 상태의 single source of truth.
+	// RT는 이 값을 section material의 primary source로 우선 사용하고, 없을 때만
+	// SceneProxy cached material / type fallback으로 내려간다.
 	// 별도 BlendState 필드를 두지 않음 — Material->GetBlendState() 사용.
 	UMaterial* Material = nullptr;
 	bool bUseLocalSpace = false;
 	FMatrix LocalToWorld;      // bUseLocalSpace == true 일 때만 의미 있음 (default ctor = zero)
+	// NOTE:
+	//   Base replay metadata는 현재 per-particle SimulationLODIndex별 render contract가 아니다.
+	//   지금 구조에서는 emitter의 current render LOD view에서 해석한 emitter-level snapshot을
+	//   GT가 RT로 넘긴다. live particle simulation continuity와 render replay shaping basis는
+	//   의도적으로 분리될 수 있다.
+	//
+	//   또한 이 snapshot은 GT가 render-ready에 가깝게 정리한 계약이다. fallback/default
+	//   resolve와 authoring-derived sanitize는 가능하면 GT replay build 단계에서
+	//   authoritative 하게 끝내고, RT는 일부 값에 대해서만 legacy/bad replay 방어용
+	//   lightweight defensive validation을 추가로 둘 수 있다.
 
 	FParticleDataView GetParticleView() const
 	{
@@ -380,6 +396,8 @@ enum class EParticleSpriteReplayAlignment : uint8
 
 struct FDynamicSpriteEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Sprite shaping metadata는 current render replay LOD의 RequiredModule에서 해석한
+	// emitter-level 값이다. 개별 particle의 SimulationLODIndex를 따로 반영하지 않는다.
 	int32 SubImagesHorizontal = 1;
 	int32 SubImagesVertical   = 1;
 	EParticleSpriteReplayAlignment Alignment = EParticleSpriteReplayAlignment::Square;
@@ -403,6 +421,16 @@ enum class EParticleMeshReplayAlignment : uint8
 
 struct FDynamicMeshEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Mesh render metadata는 current render replay LOD의 TypeDataModule view에서 복사된다.
+	//
+	// Current RT Mesh contract:
+	//   - Mesh                : actively consumed (static mesh selection / fallback)
+	//   - Material            : actively consumed via base replay contract (section material,
+	//                           SubImagesH/V lookup for frame count)
+	//   - Alignment           : currently representational only; carried from GT but not yet
+	//                           applied to RT instance orientation
+	//   - bOverrideMaterial   : currently representational only; actual RT material authority
+	//                           is still driven by the shared replay-first material chain
 	UStaticMesh* Mesh = nullptr;
 	EParticleMeshReplayAlignment Alignment = EParticleMeshReplayAlignment::None;
 	bool bOverrideMaterial = false;
@@ -418,6 +446,16 @@ struct FDynamicMeshEmitterData : FDynamicEmitterDataBase
 // -- Beam ----
 struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Beam shaping inputs도 emitter-level current render replay LOD view에서 해석한다.
+	// 현재 RT beam path는 per-particle simulation LOD별 beam contract를 따로 들고 가지 않는다.
+	//
+	// 즉 이 struct의 Source/Target/Tangent/Noise 값은 "각 active particle마다 독립 beam"
+	// 을 기술하는 per-particle payload가 아니라, emitter 하나가 이번 프레임에 보여줄
+	// beam strip shape를 설명하는 emitter-level snapshot이다.
+	//
+	// 참고로 Base.ActiveParticleCount는 generic replay header에서 온 값이며, 현재 Beam RT
+	// path에서는 독립 endpoint 집합 수가 아니라 strip multiplicity를 결정하는 제한적/
+	// legacy hint로만 사용된다.
 	int32 InterpolationPoints = 0;
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };
@@ -447,6 +485,25 @@ struct FDynamicBeamEmitterData : FDynamicEmitterDataBase
 // -- Ribbon ----
 struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 {
+	// Current Ribbon render contract is emitter-level and single-trail:
+	// one replay snapshot represents one emitter's active-particle trail for this
+	// frame, not multiple independent ribbon chains.
+	//
+	// Shared replay base still carries generic SortMode metadata, but current
+	// Ribbon RT does not treat that as "how many ribbon chains exist" or "how the
+	// chain is topologically connected." Ribbon chain order is reconstructed from
+	// trail continuity rules in the RT path.
+	//
+	// The fields below are authoring/type-data derived shaping inputs consumed by
+	// the RT ribbon geometry builder. They describe how the single trail should be
+	// curved/tessellated/UV-tiled from the current render replay LOD view; they are
+	// not per-particle payload values.
+	//
+	// Sanitize responsibility:
+	//   - GT replay build is authoritative for normal authoring-domain clamp
+	//     (tessellation range, tangent tension range, non-negative UV tiling).
+	//   - RT may still defensively revalidate the same fields before geometry build
+	//     as a lightweight safety net for bad/incomplete replay inputs.
 	int32 MaxTessellation = 8;
 	float TangentTension = 0.5f;    // ribbon tangent 보간 강도 (0 = 느슨함, 1 = 강함)
 	float TilesPerTrail = 1.0f;     // trail 전체 UV 반복 수

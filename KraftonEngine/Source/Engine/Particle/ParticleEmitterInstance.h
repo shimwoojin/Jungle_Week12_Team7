@@ -31,6 +31,8 @@ enum class EParticleValueSpace : uint8
 //   - 입자 buffer (ParticleData/ParticleIndices) 관리
 //   - 모듈 Spawn/Update 호출
 //   - GameThread tick 의 끝에서 GetDynamicData() 로 RenderThread 용 snapshot 생성
+//   - 즉 "live simulation owner" 이면서, 프레임 끝에는 RT가 소비할 replay contract의
+//     GT 쪽 생산자 역할도 맡는다.
 //
 //   UObject 아님 (raw struct/class). PSC 가 소유 (unique_ptr 동등).
 // =============================================================================
@@ -50,6 +52,8 @@ public:
 	virtual void Reset();
 
 	// 현재 활성 입자 수 → snapshot 으로 옮겨 RenderThread 로 전달.
+	// 여기서 만들어지는 값은 live particle state 그 자체가 아니라, current render replay
+	// LOD 기준으로 해석한 emitter-level render contract다.
 	// 호출 측이 unique_ptr 처럼 소유권을 받는다 (PSC 가 매 프레임 delete).
 	virtual FDynamicEmitterDataBase* GetDynamicData();
 
@@ -207,6 +211,16 @@ protected:
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.
 	void ResizeParticleData(uint32 NewMax);
 
+	// RT replay snapshot은 아직 per-particle SimulationLODIndex bucket이 아니라
+	// emitter-level "현재 render view"로 생성한다. 이 helper는 그 current render
+	// LOD basis를 simulation continuity와 구분해 드러내기 위한 경계다.
+	UParticleLODLevel* GetRenderReplayLODLevel() const;
+
+	// shared GT replay build entry point.
+	//   - particle snapshot copy
+	//   - current render replay LOD resolve
+	//   - RequiredModule 기반 base render contract fill
+	// type-specific shaping metadata는 각 subclass GetDynamicData()에서 이어서 채운다.
 	void FillReplayData(FDynamicEmitterReplayDataBase& OutData) const;
 
 private:
@@ -223,6 +237,7 @@ private:
 
 	struct FParticleCollisionDebugStats
 	{
+		// ---- outer collision policy / workload gating ----
 		int32 ActiveParticles = 0;
 		int32 CurrentLODIndex = 0;
 		int32 EffectiveBudget = 0;
@@ -233,6 +248,8 @@ private:
 		int32 SkippedByState = 0;
 		int32 SkippedByEarlyOut = 0;
 		int32 SkippedByBudget = 0;
+
+		// ---- simulation-contract interpretation / accepted-hit outcomes ----
 		int32 NoHitCount = 0;
 		int32 AcceptedHitCount = 0;
 		int32 SuppressedAsNoiseCount = 0;
@@ -261,8 +278,16 @@ private:
 	bool IsParticleKilled(const FBaseParticle* Particle) const;
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
 	const class UParticleModuleRequired* GetRequiredModule() const;
+	// Convenience lookup for the emitter's current-LOD collision authoring.
+	// This is useful for outer policy defaults, not a replacement for
+	// per-particle simulation-LOD collision module resolution.
 	const UParticleModuleCollision* GetCollisionModule() const;
 	const UParticleModuleCollision* GetCollisionModule(const UParticleLODLevel* LOD) const;
+	const UParticleModuleCollision* ResolveCollisionOuterPolicyModule(
+		const TArray<TArray<uint32>>& ActiveParticleBuckets) const;
+	void InitializeCollisionOuterPolicyDebugStats(
+		FParticleCollisionDebugStats& OutStats,
+		int32 CollisionBudget) const;
 	void BuildActiveParticleSimulationLODBuckets(TArray<TArray<uint32>>& OutBuckets) const;
 	bool FinalizeParticleCollisionWithoutQuery(
 		FBaseParticle& Particle,
