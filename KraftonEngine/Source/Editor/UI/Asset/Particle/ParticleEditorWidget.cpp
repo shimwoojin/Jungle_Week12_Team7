@@ -1974,6 +1974,7 @@ void FParticleEditorWidget::RenderToolbar()
 
 	ImGui::SameLine();
 	ImGui::Checkbox("Bounds", &bShowBounds);
+	ViewportClient.GetRenderOptions().ShowFlags.bParticleBounds = bShowBounds;
 
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(120.0f);
@@ -2060,13 +2061,6 @@ void FParticleEditorWidget::RenderPreviewViewport(ImVec2 Size)
 
 	// Cascade reference view does not draw an additional bottom-left overlay axis here.
 	// The preview render target may still draw its own scene gizmos if the viewport client enables them.
-
-	if (bShowBounds)
-	{
-		DrawList->AddRect(ImVec2(ViewportPos.x + 12.0f, ViewportPos.y + 42.0f),
-			ImVec2(ViewportPos.x + PanelSize.x - 12.0f, ViewportPos.y + PanelSize.y - 12.0f),
-			IM_COL32(220, 220, 100, 160), 0.0f, 0, 1.0f);
-	}
 
 	ImGui::EndChild();
 }
