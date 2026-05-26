@@ -2994,7 +2994,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 						}
 						if (ImGui::Button("Add Burst"))
 						{
-							UParticleModuleSpawn::FBurstEntry Entry;
+							FBurstEntry Entry;
 							Entry.Time = 0.0f;
 							Entry.Count = 10;
 							Spawn->BurstList.push_back(Entry);

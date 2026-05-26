@@ -754,7 +754,7 @@ int32 FParticleEmitterInstance::SpawnBurstParticles(UParticleModuleSpawn* SpawnM
 		Payload->LastProcessedBurstTime = CurrentTime;
 	}
 
-	for (const UParticleModuleSpawn::FBurstEntry& Entry : SpawnModule->BurstList)
+	for (const FBurstEntry& Entry : SpawnModule->BurstList)
 	{
 		if (InOutSpawnBudget <= 0) break;
 

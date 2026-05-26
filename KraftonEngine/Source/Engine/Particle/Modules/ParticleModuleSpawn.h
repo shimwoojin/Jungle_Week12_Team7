@@ -11,6 +11,19 @@
 //   Rate/RateScale Distribution은 emitter loop time 기준으로 평가한다.
 //   Burst Entry.Time도 emitter loop 기준 seconds이다.
 // =============================================================================
+USTRUCT()
+struct FBurstEntry
+{
+	GENERATED_BODY()
+
+	// Emitter loop 기준 burst 발생 시간(seconds). Particle->RelativeTime이 아니다.
+	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Time")
+	float Time = 0.0f;
+
+	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Count")
+	int32 Count = 0;
+};
+
 UCLASS()
 class UParticleModuleSpawn : public UParticleModule
 {
@@ -39,12 +52,6 @@ public:
 	UPROPERTY(Edit, Save, Instanced, Category="Spawn", DisplayName="Rate Scale Distribution", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* RateScaleDistribution = nullptr;
 
-	struct FBurstEntry
-	{
-		// Emitter loop 기준 burst 발생 시간(seconds). Particle->RelativeTime이 아니다.
-		float Time   = 0.0f;
-		int32 Count  = 0;
-	};
-	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Bursts", Type=Array)
+	UPROPERTY(Edit, Save, Category="Spawn", DisplayName="Bursts", Type=Array, Struct=FBurstEntry)
 	TArray<FBurstEntry> BurstList;
 };
