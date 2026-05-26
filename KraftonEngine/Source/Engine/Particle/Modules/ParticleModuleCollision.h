@@ -48,8 +48,16 @@ public:
 
 	uint32 RequiredBytes(UParticleLODLevel* LODLevel) const override;
 
+	// Primarily controls how much of the bounce / normal response is retained
+	// after an accepted collision.
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Damping Factor", Min=0.0f, Max=1.0f)
 	float DampingFactor = 0.5f;
+
+	// Controls how much surface-parallel velocity is retained after an accepted
+	// Bounce collision. Lower values feel more "sticky"; higher values preserve
+	// more sliding motion along the hit surface.
+	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Tangential Damping", Min=0.0f, Max=1.0f)
+	float TangentialDamping = 0.75f;
 
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Max Collisions")
 	int32 MaxCollisions = 4; // <= 0 means unlimited.

@@ -34,9 +34,15 @@ namespace
 	constexpr int32 ParticleCollisionBudgetLOD1 = 128;
 	constexpr int32 ParticleCollisionBudgetLOD2OrLower = 0;
 
-	FVector ReflectVelocityAboutNormal(const FVector& Velocity, const FVector& Normal)
+	void DecomposeVelocityAgainstSurfaceNormal(
+		const FVector& Velocity,
+		const FVector& SurfaceNormal,
+		FVector& OutNormalComponent,
+		FVector& OutTangentialComponent)
 	{
-		return Velocity - Normal * (2.0f * Velocity.Dot(Normal));
+		const float NormalSpeed = Velocity.Dot(SurfaceNormal);
+		OutNormalComponent = SurfaceNormal * NormalSpeed;
+		OutTangentialComponent = Velocity - OutNormalComponent;
 	}
 
 	bool HasCollisionCountLimit(const UParticleModuleCollision& CollisionModule)
@@ -1319,10 +1325,6 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 		CollisionNormal.Normalize();
 	}
 
-	const FVector ReflectedVelocityWorld =
-		ReflectVelocityAboutNormal(ImpactVelocity, CollisionNormal) *
-		std::max(0.0f, CollisionModule.DampingFactor);
-
 	const FVector AdjustedWorldPosition =
 		Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
 
@@ -1347,15 +1349,40 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 		return false;
 	case UParticleModuleCollision::ECollisionResponseMode::Bounce:
 	default:
+	{
+		FVector NormalVelocityWorld = FVector::ZeroVector;
+		FVector TangentialVelocityWorld = FVector::ZeroVector;
+		DecomposeVelocityAgainstSurfaceNormal(
+			ImpactVelocity,
+			CollisionNormal,
+			NormalVelocityWorld,
+			TangentialVelocityWorld);
+
+		const float NormalBounceRetention =
+			std::max(0.0f, CollisionModule.DampingFactor);
+		const float TangentialRetention =
+			std::clamp(CollisionModule.TangentialDamping, 0.0f, 1.0f);
+
+		const FVector ReflectedNormalVelocityWorld =
+			-NormalVelocityWorld * NormalBounceRetention;
+		const FVector DampedTangentialVelocityWorld =
+			TangentialVelocityWorld * TangentialRetention;
+		const FVector BouncedVelocityWorld =
+			ReflectedNormalVelocityWorld + DampedTangentialVelocityWorld;
+
 		Particle.Location =
 			ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
 		Particle.OldLocation = Particle.Location;
-		// Very low-speed contacts are usually repeated-contact noise rather than a
-		// visually meaningful new bounce. Calm them into a stop-like response.
+		// Bounce now separates the two main response axes:
+		// - DampingFactor: retained normal / bounce energy
+		// - TangentialDamping: retained surface-parallel sliding energy
+		// Very low-speed contacts are still calmed into a stop-like response so the
+		// richer tangential model does not reintroduce jitter.
 		Particle.Velocity = bLowSpeedImpact
 			? FVector::ZeroVector
-			: ConvertVectorToSimulation(ReflectedVelocityWorld, EParticleValueSpace::World);
+			: ConvertVectorToSimulation(BouncedVelocityWorld, EParticleValueSpace::World);
 		return false;
+	}
 	}
 }
 
