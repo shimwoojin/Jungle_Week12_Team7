@@ -25,6 +25,11 @@ namespace
 	constexpr float ParticleCollisionCooldownSeconds = 2.5e-2f;
 	constexpr float ParticleCollisionSameSurfaceNormalDotThreshold = 0.95f;
 	constexpr float ParticleCollisionSurfaceOffset = 1.0e-2f;
+	constexpr float ParticleCollisionBudgetPrioritySpeedWeight = 0.1f;
+	constexpr float ParticleCollisionBudgetNearLimitPenalty = 0.5f;
+	constexpr float ParticleCollisionBudgetRecentHitPenalty = 0.35f;
+	constexpr float ParticleCollisionBudgetLowSpeedPenalty = 0.5f;
+	constexpr float ParticleCollisionHighPriorityScoreThreshold = 20.0f;
 	constexpr int32 ParticleCollisionBudgetLOD0 = 512;
 	constexpr int32 ParticleCollisionBudgetLOD1 = 128;
 	constexpr int32 ParticleCollisionBudgetLOD2OrLower = 0;
@@ -47,6 +52,14 @@ namespace
 	bool IsMeaningfulCollisionSpeed(float Speed)
 	{
 		return Speed > ParticleCollisionMinMeaningfulSpeed;
+	}
+
+	bool WasCollisionHandledRecently(
+		const UParticleModuleCollision::FCollisionParticlePayload& Payload,
+		float EvaluationTimeSeconds)
+	{
+		return Payload.LastCollisionTime >= 0.0f &&
+			(EvaluationTimeSeconds - Payload.LastCollisionTime) <= ParticleCollisionCooldownSeconds;
 	}
 
 	UParticleModuleCollision::ECollisionResponseMode ResolveImmediateCollisionResponseMode(
@@ -903,25 +916,66 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 		return;
 	}
 
-	int32 CollisionChecksRemaining = CollisionBudget;
-	ForEachActiveParticle([this, CollisionModule, CollisionModuleOffset, DeltaTime, &CollisionChecksRemaining](uint32 ActiveIndex, FBaseParticle& Particle)
+	TArray<uint32> HighPriorityCandidates;
+	TArray<uint32> FallbackCandidates;
+	HighPriorityCandidates.reserve(ActiveParticles);
+	FallbackCandidates.reserve(ActiveParticles);
+
+	ForEachActiveParticle([this, CollisionModule, CollisionModuleOffset, DeltaTime, &HighPriorityCandidates, &FallbackCandidates](uint32 ActiveIndex, FBaseParticle& Particle)
 		{
-			(void)ActiveIndex;
-
-			if (CollisionChecksRemaining <= 0)
+			// Budget is no longer "first N particles win". We first remove obvious
+			// no-query cases, then spend the limited collision work on the more
+			// meaningful movers before falling back to lower-value candidates.
+			if (FinalizeParticleCollisionWithoutQuery(Particle, *CollisionModule, CollisionModuleOffset))
 			{
 				return;
 			}
 
-			const uint32 KilledFlag = static_cast<uint32>(EParticleStateFlags::Killed);
-			if ((Particle.Flags & KilledFlag) != 0)
+			if (ShouldSkipParticleCollisionForBudget(Particle, *CollisionModule, CollisionModuleOffset, DeltaTime))
 			{
 				return;
 			}
 
-			--CollisionChecksRemaining;
-			ResolveSingleParticleCollision(Particle, *CollisionModule, CollisionModuleOffset, DeltaTime);
+			const float PriorityScore =
+				GetParticleCollisionPriorityScore(Particle, *CollisionModule, CollisionModuleOffset, DeltaTime);
+
+			if (IsHighPriorityCollisionCandidate(PriorityScore))
+			{
+				HighPriorityCandidates.push_back(ActiveIndex);
+				return;
+			}
+
+			FallbackCandidates.push_back(ActiveIndex);
 		});
+
+	int32 CollisionChecksRemaining = CollisionBudget;
+	auto ProcessCollisionCandidates = [this, CollisionModule, CollisionModuleOffset, DeltaTime, &CollisionChecksRemaining](const TArray<uint32>& CandidateIndices)
+		{
+			for (uint32 ActiveIndex : CandidateIndices)
+			{
+				if (CollisionChecksRemaining <= 0)
+				{
+					return;
+				}
+
+				FBaseParticle* Particle = GetParticleAt(ActiveIndex);
+				if (!Particle)
+				{
+					continue;
+				}
+
+				if (FinalizeParticleCollisionWithoutQuery(*Particle, *CollisionModule, CollisionModuleOffset))
+				{
+					continue;
+				}
+
+				--CollisionChecksRemaining;
+				ResolveSingleParticleCollision(*Particle, *CollisionModule, CollisionModuleOffset, DeltaTime);
+			}
+		};
+
+	ProcessCollisionCandidates(HighPriorityCandidates);
+	ProcessCollisionCandidates(FallbackCandidates);
 }
 
 const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule() const
@@ -948,40 +1002,160 @@ const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule() c
 	return nullptr;
 }
 
+bool FParticleEmitterInstance::FinalizeParticleCollisionWithoutQuery(
+	FBaseParticle& Particle,
+	const UParticleModuleCollision& CollisionModule,
+	uint32 ModuleOffset) const
+{
+	const uint32 KilledFlag = static_cast<uint32>(EParticleStateFlags::Killed);
+	if ((Particle.Flags & KilledFlag) != 0)
+	{
+		return true;
+	}
+
+	auto* Payload =
+		PARTICLE_PAYLOAD(&Particle, ModuleOffset, UParticleModuleCollision::FCollisionParticlePayload);
+	if (!Payload)
+	{
+		return true;
+	}
+
+	Payload->NumCollisions = std::max(0, Payload->NumCollisions);
+	if (Payload->bFrozenAfterLimit)
+	{
+		// Freeze is a long-lived completion state. We keep restoring it without
+		// spending query budget so low-value settled particles do not crowd out
+		// faster, still-meaningful collision candidates.
+		Particle.Location = Particle.OldLocation;
+		Particle.Velocity = FVector::ZeroVector;
+		return true;
+	}
+
+	if (Payload->bIgnoreFurtherCollisions)
+	{
+		return true;
+	}
+
+	if (HasCollisionCountLimit(CollisionModule) && Payload->NumCollisions >= CollisionModule.MaxCollisions)
+	{
+		ApplyCollisionCompletionBehavior(Particle, *Payload, CollisionModule);
+		return true;
+	}
+
+	return false;
+}
+
+bool FParticleEmitterInstance::ShouldSkipParticleCollisionForBudget(
+	const FBaseParticle& Particle,
+	const UParticleModuleCollision& CollisionModule,
+	uint32 ModuleOffset,
+	float DeltaTime) const
+{
+	const auto* Payload =
+		PARTICLE_PAYLOAD_CONST(&Particle, ModuleOffset, UParticleModuleCollision::FCollisionParticlePayload);
+	if (!Payload)
+	{
+		return true;
+	}
+
+	const FVector StartWorld = ConvertPositionFromSimulation(Particle.OldLocation, EParticleValueSpace::World);
+	const FVector EndWorld = ConvertPositionFromSimulation(Particle.Location, EParticleValueSpace::World);
+	const float TravelDistance = (EndWorld - StartWorld).Length();
+	if (TravelDistance <= ParticleCollisionMinTravelDistance)
+	{
+		return true;
+	}
+
+	const float CollisionSpeed = GetCollisionSpeed(
+		ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World));
+	if (!IsMeaningfulCollisionSpeed(CollisionSpeed) &&
+		WasCollisionHandledRecently(*Payload, EmitterTimeSeconds + DeltaTime))
+	{
+		// Very low-speed particles that just interacted recently are likely to hit
+		// the repeated-contact stabilizer again. Skip spending scarce query budget
+		// on them so faster movers get first claim.
+		return true;
+	}
+
+	if (HasCollisionCountLimit(CollisionModule))
+	{
+		const int32 RemainingCollisions = CollisionModule.MaxCollisions - Payload->NumCollisions;
+		if (RemainingCollisions <= 0)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+float FParticleEmitterInstance::GetParticleCollisionPriorityScore(
+	const FBaseParticle& Particle,
+	const UParticleModuleCollision& CollisionModule,
+	uint32 ModuleOffset,
+	float DeltaTime) const
+{
+	const auto* Payload =
+		PARTICLE_PAYLOAD_CONST(&Particle, ModuleOffset, UParticleModuleCollision::FCollisionParticlePayload);
+	if (!Payload)
+	{
+		return 0.0f;
+	}
+
+	const FVector StartWorld = ConvertPositionFromSimulation(Particle.OldLocation, EParticleValueSpace::World);
+	const FVector EndWorld = ConvertPositionFromSimulation(Particle.Location, EParticleValueSpace::World);
+	const float TravelDistance = (EndWorld - StartWorld).Length();
+	const float CollisionSpeed = GetCollisionSpeed(
+		ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World));
+
+	float PriorityScore =
+		TravelDistance + (CollisionSpeed * ParticleCollisionBudgetPrioritySpeedWeight);
+	// Current LOD still decides the outer collision budget envelope. This score
+	// only decides how to spend that remaining budget more selectively inside the
+	// explicit CPU collision pass.
+
+	if (WasCollisionHandledRecently(*Payload, EmitterTimeSeconds + DeltaTime))
+	{
+		PriorityScore *= ParticleCollisionBudgetRecentHitPenalty;
+	}
+
+	if (!IsMeaningfulCollisionSpeed(CollisionSpeed))
+	{
+		PriorityScore *= ParticleCollisionBudgetLowSpeedPenalty;
+	}
+
+	if (HasCollisionCountLimit(CollisionModule))
+	{
+		const int32 RemainingCollisions = CollisionModule.MaxCollisions - Payload->NumCollisions;
+		if (RemainingCollisions <= 1)
+		{
+			PriorityScore *= ParticleCollisionBudgetNearLimitPenalty;
+		}
+	}
+
+	return PriorityScore;
+}
+
+bool FParticleEmitterInstance::IsHighPriorityCollisionCandidate(float PriorityScore) const
+{
+	return PriorityScore >= ParticleCollisionHighPriorityScoreThreshold;
+}
+
 bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	FBaseParticle& Particle,
 	const UParticleModuleCollision& CollisionModule,
 	uint32 ModuleOffset,
 	float DeltaTime)
 {
+	if (FinalizeParticleCollisionWithoutQuery(Particle, CollisionModule, ModuleOffset))
+	{
+		return false;
+	}
+
 	auto* Payload =
 		PARTICLE_PAYLOAD(&Particle, ModuleOffset, UParticleModuleCollision::FCollisionParticlePayload);
 	if (!Payload)
 	{
-		return false;
-	}
-
-	Payload->NumCollisions = std::max(0, Payload->NumCollisions);
-	if (Payload->bFrozenAfterLimit)
-	{
-		// Freeze is a post-limit state, not just a one-frame Stop response.
-		// Generic modules may have already touched the particle earlier in the tick,
-		// so the collision pass restores the resolved frozen state here.
-		Particle.Location = Particle.OldLocation;
-		Particle.Velocity = FVector::ZeroVector;
-		return false;
-	}
-
-	if (Payload->bIgnoreFurtherCollisions)
-	{
-		return false;
-	}
-
-	if (HasCollisionCountLimit(CollisionModule) && Payload->NumCollisions >= CollisionModule.MaxCollisions)
-	{
-		// If a particle arrives here already at the limit, enter the configured
-		// completion state instead of applying more ad hoc bounce behavior.
-		ApplyCollisionCompletionBehavior(Particle, *Payload, CollisionModule);
 		return false;
 	}
 

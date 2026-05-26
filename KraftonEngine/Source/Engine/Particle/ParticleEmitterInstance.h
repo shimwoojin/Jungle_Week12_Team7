@@ -192,6 +192,21 @@ private:
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
 	const class UParticleModuleRequired* GetRequiredModule() const;
 	const UParticleModuleCollision* GetCollisionModule() const;
+	bool FinalizeParticleCollisionWithoutQuery(
+		FBaseParticle& Particle,
+		const UParticleModuleCollision& CollisionModule,
+		uint32 ModuleOffset) const;
+	bool ShouldSkipParticleCollisionForBudget(
+		const FBaseParticle& Particle,
+		const UParticleModuleCollision& CollisionModule,
+		uint32 ModuleOffset,
+		float DeltaTime) const;
+	float GetParticleCollisionPriorityScore(
+		const FBaseParticle& Particle,
+		const UParticleModuleCollision& CollisionModule,
+		uint32 ModuleOffset,
+		float DeltaTime) const;
+	bool IsHighPriorityCollisionCandidate(float PriorityScore) const;
 	bool ResolveSingleParticleCollision(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,
