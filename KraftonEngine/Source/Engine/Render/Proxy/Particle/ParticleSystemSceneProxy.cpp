@@ -63,6 +63,121 @@ UMaterial* ResolveReplaySectionMaterial(
 
 	return TypeFallbackMaterial;
 }
+
+void CollectReplayEmitters(
+	const UParticleSystemComponent::FDynamicData* DynamicData,
+	TArray<const FDynamicEmitterReplayDataBase*>& OutReplays)
+{
+	OutReplays.clear();
+	if (!DynamicData || DynamicData->Emitters.empty())
+	{
+		return;
+	}
+
+	for (FDynamicEmitterDataBase* EmitterData : DynamicData->Emitters)
+	{
+		if (EmitterData)
+		{
+			OutReplays.push_back(&EmitterData->GetReplayDataBase());
+		}
+	}
+}
+
+FDynamicVertexBuffer* ResolveReplayEmitterVertexBuffer(
+	EDynamicEmitterType EmitterType,
+	FDynamicVertexBuffer& SpriteVB,
+	FDynamicVertexBuffer& MeshInstanceVB,
+	FDynamicVertexBuffer& BeamVB,
+	FDynamicVertexBuffer& RibbonVB)
+{
+	switch (EmitterType)
+	{
+	case EDynamicEmitterType::Sprite: return &SpriteVB;
+	case EDynamicEmitterType::Mesh:   return &MeshInstanceVB;
+	case EDynamicEmitterType::Beam:   return &BeamVB;
+	case EDynamicEmitterType::Ribbon: return &RibbonVB;
+	default:                          return nullptr;
+	}
+}
+
+EVertexFactoryType ResolveReplaySectionVertexFactoryType(EDynamicEmitterType EmitterType)
+{
+	switch (EmitterType)
+	{
+	case EDynamicEmitterType::Sprite: return EVertexFactoryType::ParticleSprite;
+	case EDynamicEmitterType::Mesh:   return EVertexFactoryType::ParticleMesh;
+	case EDynamicEmitterType::Beam:   return EVertexFactoryType::ParticleBeam;
+	case EDynamicEmitterType::Ribbon: return EVertexFactoryType::ParticleRibbon;
+	default:                          return EVertexFactoryType::Auto;
+	}
+}
+
+bool BuildDrawSpecForReplayEmitter(
+	FParticleVertexFactory& Factory,
+	ID3D11Device* Device,
+	ID3D11DeviceContext* Context,
+	const FDynamicEmitterReplayDataBase& Replay,
+	const FVector& CameraRight,
+	const FVector& CameraUp,
+	const FVector& CameraPosition,
+	FDynamicVertexBuffer& EmitterVB,
+	FParticleVertexFactory::FDrawSpec& OutSpec)
+{
+	// 정렬 필요 여부는 material blend가 아니라 replay 계약의 SortMode가 결정한다.
+	const bool bRequiresSort = Replay.SortMode != EParticleReplaySortMode::None;
+	return Factory.BuildDraw(
+		Device,
+		Context,
+		Replay,
+		CameraRight,
+		CameraUp,
+		CameraPosition,
+		bRequiresSort,
+		Replay.SortMode,
+		EmitterVB,
+		OutSpec);
+}
+
+void AppendReplayDrawSection(
+	const FDynamicEmitterReplayDataBase& Replay,
+	UMaterial* SectionMaterial,
+	const FParticleVertexFactory::FDrawSpec& Spec,
+	const FDynamicVertexBuffer& EmitterVB,
+	TArray<FMeshSectionDraw>& OutSections,
+	uint32& InOutTotalIndexCount)
+{
+	FMeshSectionDraw Section;
+	Section.FirstIndex = 0;
+	Section.IndexCount = Spec.IndexCount;
+	Section.Material = SectionMaterial;
+	Section.VertexFactory = ResolveReplaySectionVertexFactoryType(Replay.EmitterType);
+
+	// 입자 섹션은 자체 대표 위치로 translucent depth 정렬 (proxy 단위 정렬의 부정확 보완).
+	Section.bHasSortPos = true;
+	Section.SortWorldPos = Spec.SortWorldPos;
+
+	if (Spec.InstanceCount > 0)
+	{
+		// Sprite/Mesh 인스턴싱: 정적 VB(slot 0) + 정적 IB + dynamic per-instance VB(slot 1).
+		// Sprite는 unit quad(4정점/6인덱스), Mesh는 실제 mesh를 slot 0에 둔다. DrawIndexedInstanced(IndexCount, N).
+		Section.BufferOverride.VB               = Spec.StaticVB;
+		Section.BufferOverride.VBStride         = Spec.StaticVBStride;
+		Section.BufferOverride.IB               = Spec.StaticIB;
+		Section.BufferOverride.InstanceCount    = Spec.InstanceCount;
+		Section.BufferOverride.InstanceVB       = EmitterVB.GetBuffer();
+		Section.BufferOverride.InstanceVBStride = EmitterVB.GetStride();
+	}
+	else
+	{
+		// Beam/Ribbon strip(비인스턴싱): 동적 VB(EmitterVB) + 동적 IB(factory). DrawIndexed.
+		Section.BufferOverride.VB       = EmitterVB.GetBuffer();
+		Section.BufferOverride.VBStride = EmitterVB.GetStride();
+		Section.BufferOverride.IB       = Spec.StaticIB;
+	}
+
+	OutSections.push_back(std::move(Section));
+	InOutTotalIndexCount += Spec.IndexCount;
+}
 }
 
 // =============================================================================
@@ -266,13 +381,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	// ---- Replay 목록 — PSC.TickComponent → BuildDynamicData에서 채워짐.
 	// Editor 모드(PIE 미실행)에선 PSC가 Tick 안 해서 DynamicData가 null이라 빈 채로 return.
 	TArray<const FDynamicEmitterReplayDataBase*> Replays;
-	if (DynamicData && !DynamicData->Emitters.empty())
-	{
-		for (FDynamicEmitterDataBase* E : DynamicData->Emitters)
-		{
-			if (E) Replays.push_back(&E->GetReplayDataBase());
-		}
-	}
+	CollectReplayEmitters(DynamicData, Replays);
 	if (Replays.empty()) return false;
 
 	// 빌보드 corner expansion + VB/IB 업로드 CPU 비용 (입자 있는 프레임만 측정).
@@ -290,15 +399,13 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		if (!Factory) { ++EmitterIdx; continue; }
 
 		// emitter type별 dedicated VB (Sprite/Mesh 정점 포맷 다르니 공유 불가)
-		FDynamicVertexBuffer* EmitterVB = nullptr;
-		switch (Replay->EmitterType)
-		{
-		case EDynamicEmitterType::Sprite: EmitterVB = &SpriteVB;       break;
-		case EDynamicEmitterType::Mesh:   EmitterVB = &MeshInstanceVB; break;
-		case EDynamicEmitterType::Beam:   EmitterVB = &BeamVB;         break;
-		case EDynamicEmitterType::Ribbon: EmitterVB = &RibbonVB;       break;
-		default: ++EmitterIdx; continue;
-		}
+		FDynamicVertexBuffer* EmitterVB = ResolveReplayEmitterVertexBuffer(
+			Replay->EmitterType,
+			SpriteVB,
+			MeshInstanceVB,
+			BeamVB,
+			RibbonVB);
+		if (!EmitterVB) { ++EmitterIdx; continue; }
 
 		// Material 먼저 결정 — sort 조건 산출 위해 BuildDraw 호출 전에 BlendState 확인.
 		// 현재 전 타입 공통 RT material authority는
@@ -311,57 +418,30 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 			Replay->EmitterType, SpriteMaterial, MeshMaterial, BeamTrailMaterial);
 		UMaterial* SectionMat = ResolveReplaySectionMaterial(*Replay, RequiredMat, FallbackMat);
 
-		// 정렬 필요 여부는 이제 material blend가 아니라 replay 계약의 SortMode가 결정한다.
-		const bool bRequiresSort = Replay->SortMode != EParticleReplaySortMode::None;
-
 		FParticleVertexFactory::FDrawSpec Spec;
-		if (!Factory->BuildDraw(Device, Context, *Replay,
-			CachedCameraRight, CachedCameraUp, CachedCameraPosition,
-			bRequiresSort, Replay->SortMode, *EmitterVB, Spec))
+		if (!BuildDrawSpecForReplayEmitter(
+			*Factory,
+			Device,
+			Context,
+			*Replay,
+			CachedCameraRight,
+			CachedCameraUp,
+			CachedCameraPosition,
+			*EmitterVB,
+			Spec))
 		{
 			++EmitterIdx;
 			continue;
 		}
 		if (Spec.IndexCount == 0) { ++EmitterIdx; continue; }
 
-		FMeshSectionDraw Section;
-		Section.FirstIndex = 0;
-		Section.IndexCount = Spec.IndexCount;
-		Section.Material   = SectionMat;
-		// 정점 팩토리 타입 태깅 — ResolveSectionShader 가 emitter 종류로 파티클 셰이더 도출.
-		switch (Replay->EmitterType)
-		{
-		case EDynamicEmitterType::Sprite: Section.VertexFactory = EVertexFactoryType::ParticleSprite; break;
-		case EDynamicEmitterType::Mesh:   Section.VertexFactory = EVertexFactoryType::ParticleMesh;   break;
-		case EDynamicEmitterType::Beam:   Section.VertexFactory = EVertexFactoryType::ParticleBeam;   break;
-		case EDynamicEmitterType::Ribbon: Section.VertexFactory = EVertexFactoryType::ParticleRibbon; break;
-		default: break;
-		}
-		// 입자 섹션은 자체 대표 위치로 translucent depth 정렬 (proxy 단위 정렬의 부정확 보완).
-		Section.bHasSortPos  = true;
-		Section.SortWorldPos = Spec.SortWorldPos;
-
-		if (Spec.InstanceCount > 0)
-		{
-			// Sprite/Mesh 인스턴싱: 정적 VB(slot 0) + 정적 IB + dynamic per-instance VB(slot 1).
-			// Sprite는 unit quad(4정점/6인덱스), Mesh는 실제 mesh를 slot 0에 둔다. DrawIndexedInstanced(IndexCount, N).
-			Section.BufferOverride.VB               = Spec.StaticVB;
-			Section.BufferOverride.VBStride         = Spec.StaticVBStride;
-			Section.BufferOverride.IB               = Spec.StaticIB;
-			Section.BufferOverride.InstanceCount    = Spec.InstanceCount;
-			Section.BufferOverride.InstanceVB       = EmitterVB->GetBuffer();
-			Section.BufferOverride.InstanceVBStride = EmitterVB->GetStride();
-		}
-		else
-		{
-			// Beam/Ribbon strip(비인스턴싱): 동적 VB(EmitterVB) + 동적 IB(factory). DrawIndexed.
-			Section.BufferOverride.VB       = EmitterVB->GetBuffer();
-			Section.BufferOverride.VBStride = EmitterVB->GetStride();
-			Section.BufferOverride.IB       = Spec.StaticIB;
-		}
-
-		MutableSections.push_back(std::move(Section));
-		TotalIndexCount += Spec.IndexCount;
+		AppendReplayDrawSection(
+			*Replay,
+			SectionMat,
+			Spec,
+			*EmitterVB,
+			MutableSections,
+			TotalIndexCount);
 		++EmitterIdx;
 	}
 
