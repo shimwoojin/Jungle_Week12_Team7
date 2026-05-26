@@ -1676,6 +1676,7 @@
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\Distribution.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFLoat.cpp" />
     <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.cpp" />
@@ -4617,6 +4618,7 @@
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\Distribution.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloat.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.h" />

@@ -45,6 +45,7 @@
 #include "Particle/Modules/ParticleModuleSizeByLife.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleSubUV.h"
+#include "Particle/Modules/ParticleModuleSubUVMovie.h"
 #include "Particle/Modules/ParticleModuleVelocity.h"
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
@@ -69,6 +70,8 @@ namespace
 	constexpr int32 CurveSourceColorOverLifeAlpha = 9;
 	constexpr int32 CurveSourceInitialColorRGB = 10;
 	constexpr int32 CurveSourceInitialColorAlpha = 11;
+	constexpr int32 CurveSourceSubImageIndex = 12;
+	constexpr int32 CurveSourceSubUVMovieFrameRate = 13;
 
 	uint32 GNextParticleEditorInstanceId = 0;
 
@@ -232,7 +235,9 @@ namespace
 			Cast<UParticleModuleSize>(Module) ||
 			Cast<UParticleModuleSizeByLife>(Module) ||
 			Cast<UParticleModuleColor>(Module) ||
-			Cast<UParticleModuleColorOverLife>(Module);
+			Cast<UParticleModuleColorOverLife>(Module) ||
+			Cast<UParticleModuleSubUV>(Module) ||
+			Cast<UParticleModuleSubUVMovie>(Module);
 	}
 
 	void CopyToBuffer(char* Buffer, size_t BufferSize, const FString& Text)
@@ -2217,6 +2222,12 @@ void FParticleEditorWidget::RenderEmitterColumn(UParticleEmitter* Emitter, int32
 						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
 						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
 					}
+					if (ImGui::MenuItem("SubUV Movie"))
+					{
+						UParticleModule* Module = CreateParticleModule<UParticleModuleSubUVMovie>(ContextLOD, Emitter);
+						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
+						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
+					}
 					ImGui::EndMenu();
 				}
 				if (ImGui::BeginMenu("TypeData"))
@@ -2831,13 +2842,22 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 			}
 			else if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
 			{
-				if (ImGui::CollapsingHeader("SubUV", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::CollapsingHeader("Sub Image Index", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					bChanged |= ImGui::DragInt("Start Frame", &SubUV->StartFrame, 1.0f, 0, 100000);
-					bChanged |= ImGui::DragInt("End Frame (-1 = Last)", &SubUV->EndFrame, 1.0f, -1, 100000);
-					bChanged |= ImGui::DragFloat("Frame Rate (0 = RelativeTime)", &SubUV->FrameRate, 0.1f, 0.0f, 240.0f, "%.2f");
-					bChanged |= ImGui::Checkbox("Is Looped", &SubUV->bLooped);
-					bChanged |= ImGui::Checkbox("Random Start Frame", &SubUV->bRandomStartFrame);
+					bChanged |= DrawFloatDistributionEditor("Sub Image Index", SubUV->SubImageIndexDistribution, SubUV, 1.0f, 0.0f, 100000.0f, "RelativeTime");
+					ImGui::TextDisabled("RelativeTime 0..1 -> evaluated frame index. Frame 0 is valid; -1 is render fallback only.");
+				}
+			}
+			else if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
+			{
+				if (ImGui::CollapsingHeader("SubUV Movie", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					bChanged |= ImGui::DragInt("Start Frame", &SubUVMovie->StartFrame, 1.0f, 0, 100000);
+					bChanged |= ImGui::DragInt("End Frame (-1 = Last)", &SubUVMovie->EndFrame, 1.0f, -1, 100000);
+					bChanged |= DrawFloatDistributionEditor("Frame Rate", SubUVMovie->FrameRateDistribution, SubUVMovie, 0.1f, 0.0f, 240.0f, "RelativeTime");
+					ImGui::TextDisabled("Frame Rate is FPS. 10.0 means next frame every 0.1 sec; 0 or less means one pass over particle lifetime.");
+					bChanged |= ImGui::Checkbox("Is Looped", &SubUVMovie->bLooped);
+					bChanged |= ImGui::Checkbox("Random Start Frame", &SubUVMovie->bRandomStartFrame);
 				}
 			}
 			else if (UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
@@ -3235,6 +3255,18 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 	{
 		bHasCurve = DrawColorOverLifeCurves(ColorOverLife);
 	}
+	else if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
+	{
+		bHasCurve |= Cast<UDistributionFloatCurve>(SubUV->SubImageIndexDistribution) != nullptr;
+		bChanged |= DrawFloatCurveDistributionPanel("Sub Image Index", SubUV->SubImageIndexDistribution, CurveSourceSubImageIndex,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
+	else if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
+	{
+		bHasCurve |= Cast<UDistributionFloatCurve>(SubUVMovie->FrameRateDistribution) != nullptr;
+		bChanged |= DrawFloatCurveDistributionPanel("SubUV Movie Frame Rate", SubUVMovie->FrameRateDistribution, CurveSourceSubUVMovieFrameRate,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
 
 	if (!bHasCurve)
 	{
@@ -3329,6 +3361,7 @@ void FParticleEditorWidget::RenderAddModulePopup()
 		AddRegular("Collision", UParticleModule::EModuleCategory::Collision, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleCollision>(LOD, Emitter); });
 		AddRegular("Event Generator", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventGenerator>(LOD, Emitter); });
 		AddRegular("Sub Image Index", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUV>(LOD, Emitter); });
+		AddRegular("SubUV Movie", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUVMovie>(LOD, Emitter); });
 
 		ImGui::Separator();
 		const bool bHasTypeData = LOD->TypeDataModule != nullptr;
@@ -3532,6 +3565,14 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 	{
 		return TryVectorCurve(ColorOverLife->ColorOverLifeDistribution, CurveSourceColorOverLifeRGB) ||
 			TryFloatCurve(ColorOverLife->AlphaOverLifeDistribution, CurveSourceColorOverLifeRGB, 3);
+	}
+	if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
+	{
+		return TryFloatCurve(SubUV->SubImageIndexDistribution, CurveSourceSubImageIndex, 0);
+	}
+	if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
+	{
+		return TryFloatCurve(SubUVMovie->FrameRateDistribution, CurveSourceSubUVMovieFrameRate, 0);
 	}
 
 	return false;
@@ -3799,6 +3840,18 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 		if (UParticleModuleColorOverLife* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
 		{
 			return SelectFloatCurve(ColorOverLife->AlphaOverLifeDistribution, "Color Over Life Alpha", "Alpha");
+		}
+		break;
+	case CurveSourceSubImageIndex:
+		if (UParticleModuleSubUV* SubUV = Cast<UParticleModuleSubUV>(Module))
+		{
+			return SelectFloatCurve(SubUV->SubImageIndexDistribution, "Sub Image Index", "Value");
+		}
+		break;
+	case CurveSourceSubUVMovieFrameRate:
+		if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
+		{
+			return SelectFloatCurve(SubUVMovie->FrameRateDistribution, "SubUV Movie Frame Rate", "FPS");
 		}
 		break;
 	default:
