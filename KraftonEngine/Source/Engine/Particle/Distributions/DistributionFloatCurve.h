@@ -22,6 +22,7 @@ public:
 	float GetValue(float Time, UObject* Data = nullptr) const override;
 	void GetInRange(float& OutMin, float& OutMax) const override;
 	void GetOutRange(float& OutMin, float& OutMax) const override;
+	const char* GetDistributionDisplayName() const override;
 
 	FFloatCurve& GetCurve() { return Curve; }
 	const FFloatCurve& GetCurve() const { return Curve; }

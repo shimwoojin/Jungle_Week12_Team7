@@ -1,45 +1,36 @@
 ﻿#pragma once
 
 #include "Particle/ParticleModule.h"
-#include "Math/Vector.h"
+#include "Engine/Particle/Distributions/DistributionFloat.h"
 
 #include "Source/Engine/Particle/Modules/ParticleModuleSubUV.generated.h"
 
 // =============================================================================
 // UParticleModuleSubUV
-//   현재 구현은 StartFrame/EndFrame/FrameRate 기반이다.
-//   FrameRate가 0보다 크면 particle age seconds 기준으로 frame을 진행하고,
-//   아니면 Particle->RelativeTime(0..1) 기준으로 StartFrame~EndFrame을 보간한다.
+//   Cascade의 SubImage Index 역할.
+//   SubImageIndexDistribution을 Particle->RelativeTime(0..1) 기준으로 평가해서
+//   현재 보여줄 SubUV atlas frame index를 직접 지정한다.
+//
+//   - 0번 frame은 유효한 첫 번째 frame이다.
+//   - 미설정/fallback은 FBaseParticle::SubImageIndex == -1 로 구분한다.
+//   - flipbook 자동 재생은 UParticleModuleSubUVMovie가 담당한다.
 // =============================================================================
 UCLASS()
 class UParticleModuleSubUV : public UParticleModule
 {
 public:
 	GENERATED_BODY()
-	UParticleModuleSubUV() = default;
+	UParticleModuleSubUV();
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::SubUV; }
-	const char* GetDisplayName() const override { return "SubUV"; }
+	const char* GetDisplayName() const override { return "Sub Image Index"; }
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
 	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime) override;
-	uint32 RequiredBytes(UParticleLODLevel* LODLevel) const override;
 
-	struct FSubUVParticlePayload
-	{
-		int32 RandomFrameOffset = 0;
-	};
-
-	UPROPERTY(Edit, Save, Category="SubUV", DisplayName="Start Frame", Min=0.0f)
-	int32 StartFrame = 0;
-
-	UPROPERTY(Edit, Save, Category="SubUV", DisplayName="End Frame")
-	int32 EndFrame = -1;
-
-	UPROPERTY(Edit, Save, Category="SubUV", DisplayName="Frame Rate", Min=0.0f)
-	float FrameRate = 0.0f;
-
-	UPROPERTY(Edit, Save, Category="SubUV", DisplayName="Random Start Frame")
-	bool bRandomStartFrame = false;
+	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
+	// The evaluated value is floored and clamped to [0, FrameCount - 1].
+	UPROPERTY(Edit, Save, Instanced, Category="SubUV", DisplayName="Sub Image Index", Type=ObjectRef, AllowedClass=UDistributionFloat)
+	UDistributionFloat* SubImageIndexDistribution = nullptr;
 };

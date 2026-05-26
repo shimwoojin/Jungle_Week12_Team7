@@ -34,6 +34,7 @@
 #include "Mesh/Static/StaticMesh.h"
 #include "Mesh/Skeletal/SkeletalMesh.h"
 #include "Particle/ParticleSystemManager.h"
+#include "Particle/Distributions/Distribution.h"
 #include "Editor/UI/Asset/Mesh/MeshEditorWidget.h"
 #include "Platform/Paths.h"
 #include "Serialization/MemoryArchive.h"
@@ -205,6 +206,11 @@ namespace
 		if (!Object)
 		{
 			return "None";
+		}
+
+		if (const UDistribution* Distribution = Cast<UDistribution>(Object))
+		{
+			return Distribution->GetDistributionDisplayName();
 		}
 
 		FString Label = Object->GetFName().ToString();
@@ -2268,11 +2274,7 @@ bool FEditorPropertyWidget::RenderPropertyWidget(TArray<FPropertyValue>& Props, 
 					continue;
 				}
 
-				FString CandidateName = Candidate->GetName();
-				if (CandidateName.empty())
-				{
-					CandidateName = Candidate->GetClass()->GetName();
-				}
+				FString CandidateName = GetObjectReferenceChoiceLabel(Candidate);
 
 				const bool bSelected = Current == Candidate;
 				if (ImGui::Selectable(CandidateName.c_str(), bSelected))

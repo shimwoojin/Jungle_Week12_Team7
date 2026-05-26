@@ -12,6 +12,11 @@ namespace
 
 }
 
+const char* UDistributionFloatUniform::GetDistributionDisplayName() const
+{
+	return "Distribution Float Uniform";
+}
+
 float UDistributionFloatUniform::GetValue(float Time, UObject* Data) const
 {
 	(void)Time;

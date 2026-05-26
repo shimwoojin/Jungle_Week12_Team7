@@ -7,6 +7,11 @@ UDistributionFloatCurve::UDistributionFloatCurve()
 	SetLinear(0.0f, 0.0f, 1.0f, 1.0f);
 }
 
+const char* UDistributionFloatCurve::GetDistributionDisplayName() const
+{
+	return "Distribution Float Constant Curve";
+}
+
 float UDistributionFloatCurve::GetValue(float Time, UObject* Data) const
 {
 	(void)Data;
