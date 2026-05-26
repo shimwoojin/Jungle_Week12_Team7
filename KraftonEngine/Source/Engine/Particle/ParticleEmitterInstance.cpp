@@ -233,7 +233,6 @@ void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystem
 
 	if (Emitter)
 	{
-		Emitter->InitializeDefaultLODLevel();
 		Emitter->CacheEmitterModuleInfo();
 
 		ModuleOffsetMap = &Emitter->GetModuleOffsetMap();
