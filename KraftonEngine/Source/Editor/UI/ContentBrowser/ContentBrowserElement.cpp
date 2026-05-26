@@ -296,6 +296,22 @@ bool ContentBrowserElement::RenameTo(const FString& NewStem, FString* OutError)
 	return true;
 }
 
+bool ContentBrowserElement::Delete(FString* OutError)
+{
+	std::error_code Ec;
+	if (std::filesystem::is_directory(ContentItem.Path))
+		std::filesystem::remove_all(ContentItem.Path, Ec); // 폴더 + 내부 전체(재귀)
+	else
+		std::filesystem::remove(ContentItem.Path, Ec);
+
+	if (Ec)
+	{
+		if (OutError) *OutError = Ec.message().c_str();
+		return false;
+	}
+	return true;
+}
+
 bool ContentBrowserElement::RenderSelectSpace(ContentBrowserContext& Context)
 {
 	FString Name = FPaths::ToUtf8(ContentItem.Name);
@@ -389,6 +405,11 @@ void ContentBrowserElement::Render(ContentBrowserContext& Context)
 		{
 			Context.SelectedElement = shared_from_this();
 			Context.bRenameRequested = true;
+		}
+		if (ImGui::MenuItem("Delete"))
+		{
+			Context.SelectedElement = shared_from_this();
+			Context.bDeleteRequested = true;
 		}
 		ImGui::Separator();
 		RenderContextMenu(Context);

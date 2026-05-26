@@ -29,6 +29,9 @@ public:
 	// 실제 .uasset 안의 AssetPathFileName 등 캐시는 별도로 reload 필요 (다음 refresh).
 	bool RenameTo(const FString& NewStem, FString* OutError = nullptr);
 
+	// 디스크에서 삭제 — 파일은 remove, 디렉토리는 remove_all(재귀). 실패 시 false + OutError.
+	bool Delete(FString* OutError = nullptr);
+
 protected:
 	FString EllipsisText(const FString& text, float maxWidth);
 

@@ -216,6 +216,54 @@ void FEditorContentBrowserWidget::Render(float DeltaTime)
 		ImGui::EndPopup();
 	}
 
+	// ── 우클릭 메뉴 → Delete 확인 popup ──
+	static FString sDeleteError;
+	if (BrowserContext.bDeleteRequested && BrowserContext.SelectedElement)
+	{
+		sDeleteError.clear();
+		ImGui::OpenPopup("##DeleteElement");
+		BrowserContext.bDeleteRequested = false;
+	}
+	if (ImGui::BeginPopupModal("##DeleteElement", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		ImGui::TextUnformatted("Delete");
+		ImGui::Separator();
+		if (BrowserContext.SelectedElement)
+		{
+			const FContentItem& Item = BrowserContext.SelectedElement->GetContentItem();
+			const FString Name = FPaths::ToUtf8(Item.Path.filename().wstring());
+			if (Item.bIsDirectory)
+				ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "폴더 '%s' 와 내부 전체를 삭제합니다. 되돌릴 수 없습니다.", Name.c_str());
+			else
+				ImGui::Text("'%s' 을(를) 삭제합니다. 되돌릴 수 없습니다.", Name.c_str());
+		}
+		if (!sDeleteError.empty())
+			ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", sDeleteError.c_str());
+
+		const bool bConfirmDel = ImGui::Button("Delete");
+		ImGui::SameLine();
+		const bool bCancelDel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+		if (bConfirmDel && BrowserContext.SelectedElement)
+		{
+			FString Error;
+			if (BrowserContext.SelectedElement->Delete(&Error))
+			{
+				BrowserContext.SelectedElement.reset();
+				BrowserContext.bPendingContentRefresh = true;
+				ImGui::CloseCurrentPopup();
+			}
+			else
+			{
+				sDeleteError = Error;
+			}
+		}
+		if (bCancelDel)
+		{
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
 	ImGui::SameLine();
 	std::wstring PathText = BrowserContext.CurrentPath;
 	if (BrowserContext.SelectedElement)
@@ -619,6 +667,18 @@ void FEditorContentBrowserWidget::DrawContents()
 				}
 			}
 			ImGui::EndMenu();
+		}
+
+		if (ImGui::MenuItem("New Folder"))
+		{
+			std::filesystem::path Dir(BrowserContext.CurrentPath);
+			std::filesystem::path NewDir = Dir / L"NewFolder";
+			int Suffix = 1;
+			while (std::filesystem::exists(NewDir))
+				NewDir = Dir / (std::wstring(L"NewFolder_") + std::to_wstring(Suffix++));
+			std::error_code Ec;
+			std::filesystem::create_directories(NewDir, Ec);
+			if (!Ec) Refresh();
 		}
 
 		ImGui::Separator();
