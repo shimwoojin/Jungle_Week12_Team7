@@ -2513,6 +2513,9 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 		if (auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
 		{
 			Data->Source.Mesh = MeshTypeData->ResolveMesh();
+			// Alignment / bOverrideMaterial are still forwarded so the replay snapshot
+			// preserves authoring intent, but the current RT Mesh path does not yet
+			// interpret them as active orientation/material-behavior switches.
 			Data->Source.Alignment = ToReplayMeshAlignment(MeshTypeData->Alignment);
 			Data->Source.bOverrideMaterial = MeshTypeData->bOverrideMaterial;
 		}

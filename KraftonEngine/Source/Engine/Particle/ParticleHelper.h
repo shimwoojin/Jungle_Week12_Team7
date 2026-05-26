@@ -413,6 +413,15 @@ enum class EParticleMeshReplayAlignment : uint8
 struct FDynamicMeshEmitterReplayData : FDynamicEmitterReplayDataBase
 {
 	// Mesh render metadata는 current render replay LOD의 TypeDataModule view에서 복사된다.
+	//
+	// Current RT Mesh contract:
+	//   - Mesh                : actively consumed (static mesh selection / fallback)
+	//   - Material            : actively consumed via base replay contract (section material,
+	//                           SubImagesH/V lookup for frame count)
+	//   - Alignment           : currently representational only; carried from GT but not yet
+	//                           applied to RT instance orientation
+	//   - bOverrideMaterial   : currently representational only; actual RT material authority
+	//                           is still driven by the shared replay-first material chain
 	UStaticMesh* Mesh = nullptr;
 	EParticleMeshReplayAlignment Alignment = EParticleMeshReplayAlignment::None;
 	bool bOverrideMaterial = false;

@@ -453,6 +453,13 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
 
 	const auto& MeshReplay = static_cast<const FDynamicMeshEmitterReplayData&>(Replay);
+	// Current RT Mesh consumption is intentionally narrower than the full replay struct:
+	//   - MeshReplay.Mesh      : actively selects the static mesh (with cube fallback)
+	//   - MeshReplay.Material  : actively affects section material and SubImagesH/V lookup
+	//   - MeshReplay.Alignment : not yet interpreted here for instance orientation
+	//   - MeshReplay.bOverrideMaterial : not yet used to alter RT material resolution;
+	//                                    the shared replay-first material authority chain
+	//                                    is already resolved before this BuildDraw path
 	UStaticMesh* Mesh = MeshReplay.Mesh ? MeshReplay.Mesh : CachedCubeFallback;
 	if (!Mesh) return false;
 	FMeshBuffer* MB = Mesh->GetLODMeshBuffer(0);
@@ -510,6 +517,9 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		const uint32 i = SortedIdx[sortI];
 		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
 
+		// Instance orientation currently comes from the particle's own scale/rotation/
+		// translation only. Replay Alignment is carried through from GT for contract
+		// visibility, but is not yet consumed as an extra RT orientation mode.
 		FMatrix M = FMatrix::MakeScaleMatrix(P.Size)
 			* FMatrix::MakeRotationZ(P.Rotation)
 			* FMatrix::MakeTranslationMatrix(P.Location);
