@@ -2836,6 +2836,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					bChanged |= ImGui::DragInt("Start Frame", &SubUV->StartFrame, 1.0f, 0, 100000);
 					bChanged |= ImGui::DragInt("End Frame (-1 = Last)", &SubUV->EndFrame, 1.0f, -1, 100000);
 					bChanged |= ImGui::DragFloat("Frame Rate (0 = RelativeTime)", &SubUV->FrameRate, 0.1f, 0.0f, 240.0f, "%.2f");
+					bChanged |= ImGui::Checkbox("Is Looped", &SubUV->bLooped);
 					bChanged |= ImGui::Checkbox("Random Start Frame", &SubUV->bRandomStartFrame);
 				}
 			}

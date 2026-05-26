@@ -74,7 +74,7 @@ struct FBaseParticle
 	float    RelativeTime      = 0.0f; // 0..1, 1 도달 시 kill
 	float    OneOverMaxLifetime = 1.0f;
 	uint32   Flags             = 0;
-	int32    SubImageIndex     = 0;    // SubUV 프레임 인덱스
+	int32    SubImageIndex     = -1;   // SubUV 프레임 인덱스 (-1 = 렌더 fallback)
 };
 
 // 입자 상태 플래그

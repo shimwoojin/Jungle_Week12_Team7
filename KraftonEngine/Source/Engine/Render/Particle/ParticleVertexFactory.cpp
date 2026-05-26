@@ -136,13 +136,14 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		V.Rotation = P.Rotation;
 		V.Color    = P.Color;
 
-		// SubUV: SubImageIndex 미설정(<=0)이고 atlas가 여러 frame이면 lifetime 비례 fallback.
-		int32 RawIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
-		if (RawIdx <= 0 && FrameCount > 1)
+		// SubUV: SubImageIndex -1 is unset. Frame 0 is a valid module-selected frame.
+		int32 RawIdx = P.SubImageIndex;
+		if (RawIdx < 0 && FrameCount > 1)
 		{
 			RawIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
 			if (RawIdx < 0) RawIdx = 0;
 		}
+		RawIdx = std::clamp(RawIdx, 0, FrameCount - 1);
 		V.SubImageIndex = RawIdx;
 		V.Alignment = Alignment;
 	}
@@ -278,12 +279,13 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		V.Transform3 = FVector4{ M.M[3][0], M.M[3][1], M.M[3][2], M.M[3][3] };
 		V.Color = P.Color;
 
-		int32 SubIdx = P.SubImageIndex >= 0 ? P.SubImageIndex : 0;
-		if (SubIdx <= 0 && FrameCount > 1)
+		int32 SubIdx = P.SubImageIndex;
+		if (SubIdx < 0 && FrameCount > 1)
 		{
 			SubIdx = static_cast<int32>(P.RelativeTime * static_cast<float>(FrameCount));
 			if (SubIdx < 0) SubIdx = 0;
 		}
+		SubIdx = std::clamp(SubIdx, 0, FrameCount - 1);
 		V.SubImageIndex = SubIdx;
 	}
 

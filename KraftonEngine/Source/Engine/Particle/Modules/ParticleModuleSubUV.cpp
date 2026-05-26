@@ -45,7 +45,6 @@ namespace
 void UParticleModuleSubUV::Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	float SpawnTime, FBaseParticle* Particle)
 {
-	(void)Owner;
 	(void)SpawnTime;
 
 	if (!Particle)
@@ -57,8 +56,9 @@ void UParticleModuleSubUV::Spawn(FParticleEmitterInstance* Owner, uint32 ModuleO
 		PARTICLE_PAYLOAD(Particle, ModuleOffset, FSubUVParticlePayload);
 	Payload->RandomFrameOffset = 0;
 
-	if (!bRandomStartFrame || !Owner || !Owner->GetCurrentLOD() || !Owner->GetCurrentLOD()->RequiredModule)
+	if (!Owner || !Owner->GetCurrentLOD() || !Owner->GetCurrentLOD()->RequiredModule)
 	{
+		Particle->SubImageIndex = std::max(0, StartFrame);
 		return;
 	}
 
@@ -66,11 +66,12 @@ void UParticleModuleSubUV::Spawn(FParticleEmitterInstance* Owner, uint32 ModuleO
 	const int32 FrameCount = Required->SubImagesHorizontal * Required->SubImagesVertical;
 	if (FrameCount <= 0)
 	{
+		Particle->SubImageIndex = std::max(0, StartFrame);
 		return;
 	}
 
 	const FSubUVFrameRange Range = BuildFrameRange(*this, FrameCount);
-	Payload->RandomFrameOffset = PickRandomOffset(Range.Count);
+	Payload->RandomFrameOffset = bRandomStartFrame ? PickRandomOffset(Range.Count) : 0;
 	Particle->SubImageIndex = Range.Start + Payload->RandomFrameOffset;
 }
 
@@ -118,8 +119,12 @@ void UParticleModuleSubUV::Update(FParticleEmitterInstance* Owner, uint32 Module
 			SequenceFrame = static_cast<int32>(floor(Particle->RelativeTime * static_cast<float>(Range.Count)));
 		}
 
-		const int32 ClampedSequenceFrame = std::clamp(SequenceFrame, 0, Range.Count - 1);
-		const int32 Frame = Range.Start + ((RandomOffset + ClampedSequenceFrame) % Range.Count);
+		const int32 SequenceOffset = std::max(0, SequenceFrame) + RandomOffset;
+		const int32 FrameOffset =
+			bLooped
+			? (SequenceOffset % Range.Count)
+			: std::clamp(SequenceOffset, 0, Range.Count - 1);
+		const int32 Frame = Range.Start + FrameOffset;
 
 		Particle->SubImageIndex = Frame;
 	}
