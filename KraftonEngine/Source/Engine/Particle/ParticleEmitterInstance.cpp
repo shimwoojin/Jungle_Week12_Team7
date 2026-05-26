@@ -29,6 +29,45 @@ namespace
 	{
 		return Velocity - Normal * (2.0f * Velocity.Dot(Normal));
 	}
+
+	bool HasCollisionCountLimit(const UParticleModuleCollision& CollisionModule)
+	{
+		return CollisionModule.MaxCollisions > 0;
+	}
+
+	UParticleModuleCollision::ECollisionResponseMode ResolveImmediateCollisionResponseMode(
+		const UParticleModuleCollision& CollisionModule)
+	{
+		if (CollisionModule.bKillOnCollision)
+		{
+			return UParticleModuleCollision::ECollisionResponseMode::Kill;
+		}
+
+		return CollisionModule.ResponseMode;
+	}
+
+	void ApplyCollisionCompletionBehavior(
+		FBaseParticle& Particle,
+		UParticleModuleCollision::FCollisionParticlePayload& Payload,
+		const UParticleModuleCollision& CollisionModule)
+	{
+		switch (CollisionModule.CompletionMode)
+		{
+		case UParticleModuleCollision::ECollisionCompletionMode::Kill:
+			Particle.Flags |= static_cast<uint32>(EParticleStateFlags::Killed);
+			break;
+		case UParticleModuleCollision::ECollisionCompletionMode::IgnoreFurtherCollisions:
+			Payload.bIgnoreFurtherCollisions = true;
+			break;
+		case UParticleModuleCollision::ECollisionCompletionMode::Freeze:
+		default:
+			Payload.bIgnoreFurtherCollisions = true;
+			Payload.bFrozenAfterLimit = true;
+			Particle.Velocity = FVector::ZeroVector;
+			Particle.OldLocation = Particle.Location;
+			break;
+		}
+	}
 }
 
 static EParticleReplaySortMode ToReplaySortMode(UParticleModuleRequired::ESortMode InSortMode)
@@ -872,8 +911,26 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	}
 
 	Payload->NumCollisions = std::max(0, Payload->NumCollisions);
-	if (CollisionModule.MaxCollisions > 0 && Payload->NumCollisions >= CollisionModule.MaxCollisions)
+	if (Payload->bFrozenAfterLimit)
 	{
+		// Freeze is a post-limit state, not just a one-frame Stop response.
+		// Generic modules may have already touched the particle earlier in the tick,
+		// so the collision pass restores the resolved frozen state here.
+		Particle.Location = Particle.OldLocation;
+		Particle.Velocity = FVector::ZeroVector;
+		return false;
+	}
+
+	if (Payload->bIgnoreFurtherCollisions)
+	{
+		return false;
+	}
+
+	if (HasCollisionCountLimit(CollisionModule) && Payload->NumCollisions >= CollisionModule.MaxCollisions)
+	{
+		// If a particle arrives here already at the limit, enter the configured
+		// completion state instead of applying more ad hoc bounce behavior.
+		ApplyCollisionCompletionBehavior(Particle, *Payload, CollisionModule);
 		return false;
 	}
 
@@ -914,12 +971,16 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 
 	const FVector ImpactVelocityWorld =
 		ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
-	ApplyParticleCollisionResponse(Particle, CollisionModule, Hit, ImpactVelocityWorld);
+	const bool bKillImmediately =
+		ApplyImmediateParticleCollisionResponse(Particle, CollisionModule, Hit, ImpactVelocityWorld);
 
 	++Payload->NumCollisions;
 
 	if (CollisionModule.bGenerateCollisionEvents)
 	{
+		// Base collision events are emitted after we recognize the hit and update
+		// collision count, but before final kill/freeze/disable consequences are
+		// applied. This keeps event timing consistent across response modes.
 		FParticleEventCollideData CollisionEvent;
 		CollisionEvent.Type = EParticleEventType::Collision;
 		CollisionEvent.TimeSeconds = EmitterTimeSeconds + DeltaTime;
@@ -931,21 +992,24 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		EmitCollisionEvent(CollisionEvent);
 	}
 
-	if (CollisionModule.bKillOnCollision)
+	if (bKillImmediately)
 	{
 		Particle.Flags |= static_cast<uint32>(EParticleStateFlags::Killed);
 		return true;
 	}
 
-	if (CollisionModule.MaxCollisions > 0 && Payload->NumCollisions >= CollisionModule.MaxCollisions)
+	if (HasCollisionCountLimit(CollisionModule) && Payload->NumCollisions >= CollisionModule.MaxCollisions)
 	{
-		Particle.Velocity = FVector::ZeroVector;
+		// Completion semantics are separate from the immediate response. A particle
+		// may bounce/stop on this hit, then transition into Kill/Freeze/Ignore once
+		// the configured collision count has been exhausted.
+		ApplyCollisionCompletionBehavior(Particle, *Payload, CollisionModule);
 	}
 
 	return true;
 }
 
-void FParticleEmitterInstance::ApplyParticleCollisionResponse(
+bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 	FBaseParticle& Particle,
 	const UParticleModuleCollision& CollisionModule,
 	const FHitResult& Hit,
@@ -968,11 +1032,31 @@ void FParticleEmitterInstance::ApplyParticleCollisionResponse(
 	const FVector AdjustedWorldPosition =
 		Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
 
-	Particle.Location =
-		ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
-	Particle.OldLocation = Particle.Location;
-	Particle.Velocity =
-		ConvertVectorToSimulation(ReflectedVelocityWorld, EParticleValueSpace::World);
+	// Immediate response answers "what happens on this hit?" Completion semantics
+	// answer what to do only after the configured collision-count limit is reached.
+	switch (ResolveImmediateCollisionResponseMode(CollisionModule))
+	{
+	case UParticleModuleCollision::ECollisionResponseMode::Kill:
+		Particle.Location =
+			ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
+		Particle.OldLocation = Particle.Location;
+		Particle.Velocity = FVector::ZeroVector;
+		return true;
+	case UParticleModuleCollision::ECollisionResponseMode::Stop:
+		Particle.Location =
+			ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
+		Particle.OldLocation = Particle.Location;
+		Particle.Velocity = FVector::ZeroVector;
+		return false;
+	case UParticleModuleCollision::ECollisionResponseMode::Bounce:
+	default:
+		Particle.Location =
+			ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
+		Particle.OldLocation = Particle.Location;
+		Particle.Velocity =
+			ConvertVectorToSimulation(ReflectedVelocityWorld, EParticleValueSpace::World);
+		return false;
+	}
 }
 
 int32 FParticleEmitterInstance::GetCollisionCheckBudget() const

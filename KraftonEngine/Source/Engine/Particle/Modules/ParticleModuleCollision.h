@@ -22,6 +22,22 @@ public:
 	GENERATED_BODY()
 	UParticleModuleCollision() = default;
 
+	// Immediate response answers "what should happen on this hit?"
+	enum class ECollisionResponseMode : uint8
+	{
+		Bounce,
+		Stop,
+		Kill,
+	};
+
+	// Completion mode answers "what should happen once MaxCollisions is reached?"
+	enum class ECollisionCompletionMode : uint8
+	{
+		Kill,
+		Freeze,
+		IgnoreFurtherCollisions,
+	};
+
 	EModuleCategory GetCategory() const override { return EModuleCategory::Collision; }
 	const char*     GetDisplayName() const override { return "Collision"; }
 
@@ -36,11 +52,22 @@ public:
 	float DampingFactor = 0.5f;
 
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Max Collisions")
-	int32 MaxCollisions = 4;
+	int32 MaxCollisions = 4; // <= 0 means unlimited.
 
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Collision Channel", Enum=ECollisionChannel)
 	ECollisionChannel CollisionChannel = ECollisionChannel::WorldStatic;
 
+	// Immediate response for the current hit. This answers "what happens now?"
+	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Response Mode", Enum=ECollisionResponseMode)
+	ECollisionResponseMode ResponseMode = ECollisionResponseMode::Bounce;
+
+	// Completion behavior once MaxCollisions is reached. This answers
+	// "what happens after enough hits?"
+	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Completion Mode", Enum=ECollisionCompletionMode)
+	ECollisionCompletionMode CompletionMode = ECollisionCompletionMode::Freeze;
+
+	// Legacy compatibility path. If true, the immediate response is treated as Kill
+	// regardless of ResponseMode so existing assets keep their intent.
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Kill On Collision")
 	bool bKillOnCollision = false;
 
@@ -52,5 +79,7 @@ public:
 	struct FCollisionParticlePayload
 	{
 		int32 NumCollisions = 0;
+		bool bIgnoreFurtherCollisions = false;
+		bool bFrozenAfterLimit = false; // Persistently reverts post-update motion at collision pass.
 	};
 };

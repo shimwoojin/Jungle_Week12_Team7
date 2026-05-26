@@ -197,7 +197,7 @@ private:
 		const UParticleModuleCollision& CollisionModule,
 		uint32 ModuleOffset,
 		float DeltaTime);
-	void ApplyParticleCollisionResponse(
+	bool ApplyImmediateParticleCollisionResponse(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,
 		const FHitResult& Hit,
