@@ -191,10 +191,17 @@ void AppendReplayDrawSection(
 FParticleSystemSceneProxy::FParticleSystemSceneProxy(UParticleSystemComponent* InComponent)
 	: FPrimitiveSceneProxy(InComponent)
 {
-	// 빌보드라 카메라가 움직이면 매 프레임 갱신 필요. 프러스텀 컬링은 일단 패스 (Day 6 ShowFlag에서 정교화).
+	// 빌보드라 카메라가 움직이면 매 프레임 빌보드 재정렬 필요.
 	ProxyFlags |= EPrimitiveProxyFlags::PerViewportUpdate;
-	ProxyFlags |= EPrimitiveProxyFlags::NeverCull;
-	ProxyFlags |= EPrimitiveProxyFlags::Particle;       // ShowFlags.bParticles 토글 대상
+	// frustum 컬링 활성화: NeverCull 제거 → octree QueryFrustumAllProxies가 component의
+	// dynamic WorldAABB(ComputeDynamicBounds) 기준으로 view별 컬링. bounds는 TickComponent의
+	// MarkWorldBoundsDirty → UpdateActorInOctree로 매 프레임 갱신됨.
+	// occlusion 컬링은 RenderCollector에서 Particle 플래그로 별도 면제(반투명 빌보드 팝핑 방지).
+	ProxyFlags |= EPrimitiveProxyFlags::Particle;       // ShowFlags.bParticles 토글 + occlusion 면제 대상
+	// 반투명 빌보드는 그림자 캐스터 아님 — opaque shadow depth에 쓰면 잘못된 하드 섀도우 +
+	// emitter당 캐스케이드/라이트 수만큼 PrepareDrawBuffer 낭비 호출(드로우콜 4배의 원인).
+	// (이전엔 NeverCull이 ShadowMapPass 캐스터 루프에서 이 제외 역할을 겸했음)
+	bCastShadow = false;
 	ProxyFlags &= ~EPrimitiveProxyFlags::SupportsOutline;
 	ProxyFlags &= ~EPrimitiveProxyFlags::ShowAABB;
 

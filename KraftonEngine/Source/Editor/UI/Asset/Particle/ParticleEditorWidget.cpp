@@ -2298,12 +2298,8 @@ void FParticleEditorWidget::RenderEmitterColumn(UParticleEmitter* Emitter, int32
 	const ImVec2 HeaderSize(ColumnWidth, 76.0f);
 	const ImVec2 ToggleMin(HeaderPos.x + 6.0f, HeaderPos.y + 8.0f);
 	const ImVec2 ToggleMax(ToggleMin.x + 17.0f, ToggleMin.y + 17.0f);
-	const ImVec2 PreviewMin(HeaderPos.x + HeaderSize.x - 54.0f, HeaderPos.y + 8.0f);
-	const ImVec2 PreviewMax(HeaderPos.x + HeaderSize.x - 8.0f, HeaderPos.y + 54.0f);
 	DrawList->AddRectFilled(HeaderPos, ImVec2(HeaderPos.x + HeaderSize.x, HeaderPos.y + HeaderSize.y),
 		bSelectedEmitter ? IM_COL32(224, 119, 55, 255) : (Emitter && !Emitter->bEnabled ? IM_COL32(40, 40, 44, 255) : IM_COL32(58, 58, 62, 255)), 2.0f);
-	DrawList->AddRectFilled(PreviewMin, PreviewMax, IM_COL32(18, 18, 18, 255), 2.0f);
-	DrawList->AddRect(PreviewMin, PreviewMax, IM_COL32(78, 78, 82, 255), 2.0f);
 
 	ImGui::InvisibleButton("##EmitterHeader", HeaderSize);
 	const bool bToggleHovered = ImGui::IsMouseHoveringRect(ToggleMin, ToggleMax);
@@ -2516,21 +2512,10 @@ void FParticleEditorWidget::RenderEmitterColumn(UParticleEmitter* Emitter, int32
 		if (HeaderLOD && Cast<UParticleModuleTypeDataMesh>(HeaderLOD->TypeDataModule)) PreviewType = "Mesh";
 		else if (HeaderLOD && Cast<UParticleModuleTypeDataBeam>(HeaderLOD->TypeDataModule)) PreviewType = "Beam";
 		else if (HeaderLOD && Cast<UParticleModuleTypeDataRibbon>(HeaderLOD->TypeDataModule)) PreviewType = "Ribbon";
-		const char* MaterialText = "No Material";
-		if (HeaderLOD && HeaderLOD->RequiredModule)
-		{
-			const FString MaterialPath = HeaderLOD->RequiredModule->MaterialSlot.ToString();
-			if (!MaterialPath.empty() && MaterialPath != "None")
-			{
-				MaterialText = "Material";
-			}
-		}
-		DrawList->AddText(ImVec2(PreviewMin.x + 10.0f, PreviewMin.y + 15.0f), IM_COL32(180, 180, 180, 255), "MAT");
 		DrawList->AddText(ImVec2(HeaderPos.x + 8.0f, HeaderPos.y + 31.0f), Emitter->bEnabled ? IM_COL32(190, 220, 190, 255) : IM_COL32(150, 150, 150, 255), PreviewType);
-		DrawList->AddText(ImVec2(HeaderPos.x + 8.0f, HeaderPos.y + 50.0f), IM_COL32(180, 180, 180, 255), MaterialText);
 		char CountText[64] = {};
 		std::snprintf(CountText, sizeof(CountText), "LOD %d / %d", CurrentLODIndex, Emitter->GetLODCount());
-		DrawList->AddText(ImVec2(HeaderPos.x + 8.0f, HeaderPos.y + 64.0f), IM_COL32(165, 165, 165, 255), CountText);
+		DrawList->AddText(ImVec2(HeaderPos.x + 8.0f, HeaderPos.y + 50.0f), IM_COL32(165, 165, 165, 255), CountText);
 	}
 
 	if (!Emitter)
