@@ -49,6 +49,9 @@ public:
 	UPROPERTY(Edit, Save, Category="Beam", DisplayName="Interpolation Points", Min=0.0f, Max=128.0f)
 	int32 InterpolationPoints = 8;
 
+	UPROPERTY(Edit, Save, Category="Beam", DisplayName="Sheets", Min=1.0f, Max=16.0f)
+	int32 Sheets = 1;
+
 	// Evaluated with EmitterTime. Beam strip 전체 폭.
 	UPROPERTY(Edit, Save, Instanced, Category="Beam", DisplayName="Width", Type=ObjectRef, AllowedClass=UDistributionFloat)
 	UDistributionFloat* WidthDistribution = nullptr;

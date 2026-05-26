@@ -20,6 +20,7 @@ namespace
 	{
 		return Distribution ? Distribution->GetValue(Time, Data) : DefaultValue;
 	}
+
 }
 
 UParticleModuleTypeDataBeam::UParticleModuleTypeDataBeam()

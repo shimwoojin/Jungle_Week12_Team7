@@ -33,6 +33,7 @@ public:
 	FVector ResolveTarget(const FParticleEmitterInstance* Owner, float EmitterTime,
 	                      const FVector& Source, const FVector& DefaultTarget,
 	                      float Distance) const;
+	FVector ResolveTargetTangent(const FParticleEmitterInstance* Owner, float EmitterTime) const;
 
 	// Default: TypeData/기본 target을 사용한다. UserSet: TargetDistribution을 사용한다.
 	// Distance: source + local X * Distance를 target으로 사용한다.
@@ -42,6 +43,9 @@ public:
 	// Evaluated with EmitterTime. UserSet일 때 target 위치로 사용된다.
 	UPROPERTY(Edit, Save, Instanced, Category="Beam Target", DisplayName="Target", Type=ObjectRef, AllowedClass=UDistributionVector)
 	UDistributionVector* TargetDistribution = nullptr;
+
+	UPROPERTY(Edit, Save, Instanced, Category="Beam Target", DisplayName="Target Tangent", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* TargetTangentDistribution = nullptr;
 
 	// true면 TargetDistribution을 world position으로 보고 simulation space로 변환한다.
 	// false면 local position으로 보고 Required.bUseLocalSpace 정책에 맞춰 변환한다.

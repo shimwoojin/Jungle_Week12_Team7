@@ -415,8 +415,11 @@ struct FDynamicMeshEmitterData : FDynamicEmitterDataBase
 struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 {
 	int32 InterpolationPoints = 0;
+	int32 Sheets = 1;
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };
+	FVector SourceTangent = { 0, 0, 0 };
+	FVector TargetTangent = { 0, 0, 0 };
 	float Width = 10.0f;            // beam 띠 전체 폭
 	float NoiseAmount = 0.0f;       // 수직 변위 진폭 (0 = 직선)
 	float NoiseFrequency = 1.0f;    // beam 길이당 sin파 횟수

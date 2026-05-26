@@ -341,23 +341,31 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 
 	FVector Source = BeamReplay.SourcePoint;
 	FVector Target = BeamReplay.TargetPoint;
+	FVector SourceTangent = BeamReplay.SourceTangent;
+	FVector TargetTangent = BeamReplay.TargetTangent;
 	if (Replay.bUseLocalSpace)
 	{
 		Source = Replay.LocalToWorld.TransformPositionWithW(Source);
 		Target = Replay.LocalToWorld.TransformPositionWithW(Target);
+		SourceTangent = Replay.LocalToWorld.TransformVector(SourceTangent);
+		TargetTangent = Replay.LocalToWorld.TransformVector(TargetTangent);
 	}
 
 	if (!BeamReplay.bRenderGeometry) return false;
+	const FParticleDataView View = BeamReplay.GetParticleView();
+	const uint32 BeamCount = std::max(1u, View.ActiveParticleCount);
 
 	const FVector Axis = Target - Source;
 	const float BeamLen = Axis.Length();
 	if (BeamLen < 1e-4f) return false;
 	const FVector Dir = Axis * (1.0f / BeamLen);
+	const bool bUseCurve = SourceTangent.Dot(SourceTangent) > 1e-8f || TargetTangent.Dot(TargetTangent) > 1e-8f;
 
 	const int32 InterpPts = BeamReplay.InterpolationPoints > 0 ? BeamReplay.InterpolationPoints : 0;
 	const int32 NoiseSegments = BeamReplay.NoiseTessellation > 0 ? BeamReplay.NoiseTessellation : 0;
 	const int32 NumSegments = std::max(1, std::max(InterpPts + 1, NoiseSegments)); // source~target 분할 수
 	const int32 NumPoints = NumSegments + 1;
+	const uint32 SheetCount = static_cast<uint32>(std::clamp(BeamReplay.Sheets, 1, 16));
 	const float BaseHalfWidth = BeamReplay.Width * 0.5f;
 	const FVector4 BeamColor = { 1, 1, 1, 1 };
 
@@ -371,49 +379,96 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const float BeamTime   = BeamReplay.EmitterTime;
 	constexpr float Pi = 3.14159265358979323846f;
 
-	const uint32 VertCount = static_cast<uint32>(NumPoints * 2);
-	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6);
+	const uint32 VertCount = static_cast<uint32>(NumPoints * 2) * BeamCount * SheetCount;
+	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6) * BeamCount * SheetCount;
 
 	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
-	for (int32 i = 0; i < NumPoints; ++i)
+	for (uint32 BeamIndex = 0; BeamIndex < BeamCount; ++BeamIndex)
 	{
-		const float T = static_cast<float>(i) / static_cast<float>(NumSegments);
-		FVector P = Source + Axis * T;
-		if (NoiseAmt > 0.0f)
+		const float BeamPhaseOffset = static_cast<float>(BeamIndex) * 0.73f;
+		for (uint32 SheetIndex = 0; SheetIndex < SheetCount; ++SheetIndex)
 		{
-			// 양 끝(source/target)은 고정하고 중간만 sin파로 변위 — envelope sin(T·π)가 끝에서 0.
-			const float Envelope = std::sin(T * Pi);
-			// 시간 항(BeamTime*NoiseSpeed)을 phase에 더해 지그재그가 beam을 따라 흐르게 한다.
-			float Wave = std::sin(T * NoiseFreq * 2.0f * Pi + BeamTime * NoiseSpeed);
-			if (!BeamReplay.bSmoothNoise)
+			const float SheetAngle = SheetCount > 1
+				? (Pi * static_cast<float>(SheetIndex) / static_cast<float>(SheetCount))
+				: 0.0f;
+			const float SheetPhaseOffset = static_cast<float>(SheetIndex) * 0.31f;
+			for (int32 i = 0; i < NumPoints; ++i)
 			{
-				Wave = Wave >= 0.0f ? 1.0f : -1.0f;
-			}
-			P += NoiseAxis * (Wave * NoiseAmt * Envelope);
-		}
-		// beam 축에 수직 + 시선 방향과 직교 → 카메라facing 띠 폭.
-		const float TaperMultiplier = BeamReplay.bTaperFull
-			? (1.0f + (BeamReplay.TaperFactor - 1.0f) * T)
-			: 1.0f;
-		const float HalfWidth = BaseHalfWidth * std::max(0.0f, TaperMultiplier);
-		FVector Side = Dir.Cross(CameraPosition - P);
-		const float SideLen = Side.Length();
-		Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
+			const float T = static_cast<float>(i) / static_cast<float>(NumSegments);
+			const float T2 = T * T;
+			const float T3 = T2 * T;
+			FVector CurveDir = Dir;
+			FVector P = Source + Axis * T;
+			if (bUseCurve)
+			{
+				P =
+					Source * (2.0f * T3 - 3.0f * T2 + 1.0f) +
+					SourceTangent * (T3 - 2.0f * T2 + T) +
+					Target * (-2.0f * T3 + 3.0f * T2) +
+					TargetTangent * (T3 - T2);
 
-		const float U = BeamReplay.bTileUV ? (T * BeamLen) : T;
-		FParticleBeamTrailVertex& L = Vertices[i * 2 + 0];
-		FParticleBeamTrailVertex& R = Vertices[i * 2 + 1];
-		L.Position = P - Side; L.Color = BeamColor; L.UV = { U, 0.0f };
-		R.Position = P + Side; R.Color = BeamColor; R.UV = { U, 1.0f };
+				CurveDir =
+					Source * (6.0f * T2 - 6.0f * T) +
+					SourceTangent * (3.0f * T2 - 4.0f * T + 1.0f) +
+					Target * (-6.0f * T2 + 6.0f * T) +
+					TargetTangent * (3.0f * T2 - 2.0f * T);
+				const float CurveDirLen = CurveDir.Length();
+				CurveDir = CurveDirLen > 1e-4f ? CurveDir * (1.0f / CurveDirLen) : Dir;
+			}
+			if (NoiseAmt > 0.0f)
+			{
+				// 양 끝(source/target)은 고정하고 중간만 sin파로 변위 — envelope sin(T·π)가 끝에서 0.
+				const float Envelope = std::sin(T * Pi);
+				// 시간 항(BeamTime*NoiseSpeed)을 phase에 더해 지그재그가 beam을 따라 흐르게 한다.
+				float Wave = std::sin(T * NoiseFreq * 2.0f * Pi + BeamTime * NoiseSpeed + BeamPhaseOffset + SheetPhaseOffset);
+				if (!BeamReplay.bSmoothNoise)
+				{
+					Wave = Wave >= 0.0f ? 1.0f : -1.0f;
+				}
+				P += NoiseAxis * (Wave * NoiseAmt * Envelope);
+			}
+			// beam 축에 수직 + 시선 방향과 직교 → 카메라facing 띠 폭.
+			const float TaperMultiplier = BeamReplay.bTaperFull
+				? (1.0f + (BeamReplay.TaperFactor - 1.0f) * T)
+				: 1.0f;
+			const float HalfWidth = BaseHalfWidth * std::max(0.0f, TaperMultiplier);
+			FVector Side = CurveDir.Cross(CameraPosition - P);
+			const float SideLen = Side.Length();
+			Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
+			if (SheetCount > 1)
+			{
+				const float CosA = std::cos(SheetAngle);
+				const float SinA = std::sin(SheetAngle);
+				Side = Side * CosA
+					+ CurveDir.Cross(Side) * SinA
+					+ CurveDir * (CurveDir.Dot(Side) * (1.0f - CosA));
+			}
+
+			const float U = BeamReplay.bTileUV ? (T * BeamLen) : T;
+			const uint32 BeamSheetIndex = BeamIndex * SheetCount + SheetIndex;
+			const uint32 BaseVertex = (BeamSheetIndex * static_cast<uint32>(NumPoints) + static_cast<uint32>(i)) * 2;
+			FParticleBeamTrailVertex& L = Vertices[BaseVertex + 0];
+			FParticleBeamTrailVertex& R = Vertices[BaseVertex + 1];
+			L.Position = P - Side; L.Color = BeamColor; L.UV = { U, 0.0f };
+			R.Position = P + Side; R.Color = BeamColor; R.UV = { U, 1.0f };
+			}
+		}
 	}
 
 	std::vector<uint32> Indices(IndexCount);
-	for (int32 s = 0; s < NumSegments; ++s)
+	for (uint32 BeamIndex = 0; BeamIndex < BeamCount; ++BeamIndex)
 	{
-		const uint32 Base = static_cast<uint32>(s * 2);
-		uint32* Dst = Indices.data() + s * 6;
-		Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
-		Dst[3] = Base + 1; Dst[4] = Base + 3; Dst[5] = Base + 2;
+		for (uint32 SheetIndex = 0; SheetIndex < SheetCount; ++SheetIndex)
+		{
+			for (int32 s = 0; s < NumSegments; ++s)
+			{
+				const uint32 BeamSheetIndex = BeamIndex * SheetCount + SheetIndex;
+				const uint32 Base = (BeamSheetIndex * static_cast<uint32>(NumPoints) + static_cast<uint32>(s)) * 2;
+				uint32* Dst = Indices.data() + (BeamSheetIndex * static_cast<uint32>(NumSegments) + static_cast<uint32>(s)) * 6;
+				Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
+				Dst[3] = Base + 1; Dst[4] = Base + 3; Dst[5] = Base + 2;
+			}
+		}
 	}
 
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())

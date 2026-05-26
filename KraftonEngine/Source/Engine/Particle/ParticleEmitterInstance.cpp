@@ -999,6 +999,7 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 
 			BeamDistance = BeamTypeData->EvaluateDistance(EvalTime, Component);
 			Data->Source.InterpolationPoints = BeamTypeData->InterpolationPoints;
+			Data->Source.Sheets = BeamTypeData->Sheets;
 			Data->Source.Width = BeamTypeData->EvaluateWidth(EvalTime, Component);
 			Data->Source.bTileUV = BeamTypeData->bTileUV;
 			Data->Source.bRenderGeometry = BeamTypeData->bRenderGeometry;
@@ -1031,6 +1032,7 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 					bHasLockedSourcePoint = false;
 				}
 				ResolvedSource = ModuleSource;
+				Data->Source.SourceTangent = SourceModule->ResolveSourceTangent(this, EvalTime);
 			}
 		}
 		else
@@ -1064,6 +1066,7 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 					bHasLockedTargetPoint = false;
 				}
 				ResolvedTarget = ModuleTarget;
+				Data->Source.TargetTangent = TargetModule->ResolveTargetTangent(this, EvalTime);
 			}
 		}
 		else
@@ -1078,7 +1081,10 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 			const float VisibleLength = BeamTypeData->Speed * EvalTime;
 			if (FullLength > 1e-4f && VisibleLength < FullLength)
 			{
-				ResolvedTarget = ResolvedSource + FullAxis * (VisibleLength / FullLength);
+				const float VisibleRatio = VisibleLength / FullLength;
+				ResolvedTarget = ResolvedSource + FullAxis * VisibleRatio;
+				Data->Source.SourceTangent = Data->Source.SourceTangent * VisibleRatio;
+				Data->Source.TargetTangent = Data->Source.TargetTangent * VisibleRatio;
 			}
 		}
 

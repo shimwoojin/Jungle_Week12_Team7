@@ -13,6 +13,13 @@ UParticleModuleBeamTarget::UParticleModuleBeamTarget()
 		DefaultTarget->Constant = {1.0f, 0.0f, 0.0f};
 		TargetDistribution = DefaultTarget;
 	}
+
+	auto* DefaultTangent = UObjectManager::Get().CreateObject<UDistributionVectorConstant>(this);
+	if (DefaultTangent)
+	{
+		DefaultTangent->Constant = {0.0f, 0.0f, 0.0f};
+		TargetTangentDistribution = DefaultTangent;
+	}
 }
 
 FVector UParticleModuleBeamTarget::ResolveTarget(const FParticleEmitterInstance* Owner, float EmitterTime,
@@ -51,5 +58,21 @@ FVector UParticleModuleBeamTarget::ResolveTarget(const FParticleEmitterInstance*
 
 	return Owner->ConvertPositionToSimulation(
 		Target,
+		bTargetAbsolute ? EParticleValueSpace::World : EParticleValueSpace::Local);
+}
+
+FVector UParticleModuleBeamTarget::ResolveTargetTangent(const FParticleEmitterInstance* Owner, float EmitterTime) const
+{
+	const FVector Tangent = TargetTangentDistribution
+		? TargetTangentDistribution->GetValue(EmitterTime, Owner ? Owner->GetComponent() : nullptr)
+		: FVector(0.0f, 0.0f, 0.0f);
+
+	if (!Owner)
+	{
+		return Tangent;
+	}
+
+	return Owner->ConvertVectorToSimulation(
+		Tangent,
 		bTargetAbsolute ? EParticleValueSpace::World : EParticleValueSpace::Local);
 }

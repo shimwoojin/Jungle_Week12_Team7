@@ -30,6 +30,7 @@ public:
 	bool            IsUnique() const override { return true; }
 
 	FVector ResolveSource(const FParticleEmitterInstance* Owner, float EmitterTime, const FVector& DefaultSource) const;
+	FVector ResolveSourceTangent(const FParticleEmitterInstance* Owner, float EmitterTime) const;
 
 	// Default: TypeData/default endpoint를 사용한다. UserSet: SourceDistribution을 사용한다.
 	// Emitter: emitter/component origin을 source로 사용한다.
@@ -39,6 +40,9 @@ public:
 	// Evaluated with EmitterTime. UserSet일 때 source 위치로 사용된다.
 	UPROPERTY(Edit, Save, Instanced, Category="Beam Source", DisplayName="Source", Type=ObjectRef, AllowedClass=UDistributionVector)
 	UDistributionVector* SourceDistribution = nullptr;
+
+	UPROPERTY(Edit, Save, Instanced, Category="Beam Source", DisplayName="Source Tangent", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* SourceTangentDistribution = nullptr;
 
 	// true면 SourceDistribution을 world position으로 보고 simulation space로 변환한다.
 	// false면 local position으로 보고 Required.bUseLocalSpace 정책에 맞춰 변환한다.

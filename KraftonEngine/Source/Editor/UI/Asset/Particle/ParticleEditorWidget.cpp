@@ -85,6 +85,8 @@ namespace
 	constexpr int32 CurveSourceBeamNoiseRange = 18;
 	constexpr int32 CurveSourceBeamNoiseFrequency = 19;
 	constexpr int32 CurveSourceBeamNoiseSpeed = 20;
+	constexpr int32 CurveSourceBeamSourceTangent = 21;
+	constexpr int32 CurveSourceBeamTargetTangent = 22;
 
 	uint32 GNextParticleEditorInstanceId = 0;
 
@@ -3157,6 +3159,8 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					int32 Method = static_cast<int32>(BeamSource->SourceMethod);
 					if (ComboInt("Source Method", Method, SourceMethodNames, 3)) { BeamSource->SourceMethod = static_cast<UParticleModuleBeamSource::EBeam2SourceMethod>(Method); bChanged = true; }
 					bChanged |= DrawVectorDistributionEditor("Source", BeamSource->SourceDistribution, BeamSource, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("Source Tangent", BeamSource->SourceTangentDistribution, BeamSource, 0.1f, 0.0f, 0.0f, "EmitterTime");
 					bChanged |= ImGui::Checkbox("Source Absolute", &BeamSource->bSourceAbsolute);
 					bChanged |= ImGui::Checkbox("Lock Source", &BeamSource->bLockSource);
 				}
@@ -3169,6 +3173,8 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					int32 Method = static_cast<int32>(BeamTarget->TargetMethod);
 					if (ComboInt("Target Method", Method, TargetMethodNames, 4)) { BeamTarget->TargetMethod = static_cast<UParticleModuleBeamTarget::EBeam2TargetMethod>(Method); bChanged = true; }
 					bChanged |= DrawVectorDistributionEditor("Target", BeamTarget->TargetDistribution, BeamTarget, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("Target Tangent", BeamTarget->TargetTangentDistribution, BeamTarget, 0.1f, 0.0f, 0.0f, "EmitterTime");
 					bChanged |= ImGui::Checkbox("Target Absolute", &BeamTarget->bTargetAbsolute);
 					bChanged |= ImGui::Checkbox("Lock Target", &BeamTarget->bLockTarget);
 				}
@@ -3195,6 +3201,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					if (ComboInt("Beam Method", BeamMethod, BeamMethodNames, 2)) { Beam->BeamMethod = static_cast<UParticleModuleTypeDataBeam::EBeam2Method>(BeamMethod); bChanged = true; }
 					bChanged |= ImGui::DragFloat("Speed", &Beam->Speed, 0.1f, 0.0f, 100000.0f, "%.2f");
 					bChanged |= ImGui::DragInt("Interpolation Points", &Beam->InterpolationPoints, 1.0f, 0, 128);
+					bChanged |= ImGui::DragInt("Sheets", &Beam->Sheets, 1.0f, 1, 16);
 					EnsureFloatConstantDistribution(Beam->WidthDistribution, Beam, Beam->Width);
 					EnsureFloatConstantDistribution(Beam->DistanceDistribution, Beam, Beam->Distance);
 					bChanged |= DrawFloatDistributionEditor("Width", Beam->WidthDistribution, Beam, 0.01f, 0.0f, 10000.0f, "EmitterTime");
@@ -3572,11 +3579,17 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 		bHasCurve |= IsVectorCurveDistribution(BeamSource->SourceDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Beam Source", BeamSource->SourceDistribution, CurveSourceBeamSource,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsVectorCurveDistribution(BeamSource->SourceTangentDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Beam Source Tangent", BeamSource->SourceTangentDistribution, CurveSourceBeamSourceTangent,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
 	{
 		bHasCurve |= IsVectorCurveDistribution(BeamTarget->TargetDistribution);
 		bChanged |= DrawVectorCurveDistributionPanel("Beam Target", BeamTarget->TargetDistribution, CurveSourceBeamTarget,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsVectorCurveDistribution(BeamTarget->TargetTangentDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Beam Target Tangent", BeamTarget->TargetTangentDistribution, CurveSourceBeamTargetTangent,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
 	else if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
@@ -3908,11 +3921,13 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 	}
 	if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
 	{
-		return TryVectorCurve(BeamSource->SourceDistribution, CurveSourceBeamSource);
+		return TryVectorCurve(BeamSource->SourceDistribution, CurveSourceBeamSource) ||
+			TryVectorCurve(BeamSource->SourceTangentDistribution, CurveSourceBeamSourceTangent);
 	}
 	if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
 	{
-		return TryVectorCurve(BeamTarget->TargetDistribution, CurveSourceBeamTarget);
+		return TryVectorCurve(BeamTarget->TargetDistribution, CurveSourceBeamTarget) ||
+			TryVectorCurve(BeamTarget->TargetTangentDistribution, CurveSourceBeamTargetTangent);
 	}
 	if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
 	{
@@ -4224,10 +4239,22 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 			return SelectVectorChannel(BeamSource->SourceDistribution, "Beam Source");
 		}
 		break;
+	case CurveSourceBeamSourceTangent:
+		if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
+		{
+			return SelectVectorChannel(BeamSource->SourceTangentDistribution, "Beam Source Tangent");
+		}
+		break;
 	case CurveSourceBeamTarget:
 		if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
 		{
 			return SelectVectorChannel(BeamTarget->TargetDistribution, "Beam Target");
+		}
+		break;
+	case CurveSourceBeamTargetTangent:
+		if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
+		{
+			return SelectVectorChannel(BeamTarget->TargetTangentDistribution, "Beam Target Tangent");
 		}
 		break;
 	case CurveSourceBeamNoiseRange:
