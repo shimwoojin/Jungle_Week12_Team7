@@ -2,13 +2,15 @@
 
 #include "Particle/ParticleModule.h"
 #include "Math/Vector.h"
+#include "Engine/Particle/Distributions/DistributionFloat.h"
+#include "Engine/Particle/Distributions/DistributionVector.h"
 
 #include "Source/Engine/Particle/Modules/ParticleModuleColor.generated.h"
 
 // =============================================================================
 // UParticleModuleColor
-//   Spawn 시 초기 color, Update 시 lifetime 에 따른 color 변화 (선형).
-//   추후 FloatCurve / FColorCurve 로 대체 가능 (현재는 단순 lerp).
+//   Initial Color 전용 모듈. Spawn 시 한 번 적용된다.
+//   생존 시간에 따른 color/alpha 변화는 UParticleModuleColorOverLife가 담당한다.
 // =============================================================================
 UCLASS()
 class UParticleModuleColor : public UParticleModule
@@ -18,16 +20,18 @@ public:
 	UParticleModuleColor() = default;
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::Color; }
-	const char*     GetDisplayName() const override { return "Color"; }
+	const char*     GetDisplayName() const override { return "Initial Color"; }
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-	            float DeltaTime) override;
 
-	UPROPERTY(Edit, Save, Category="Color", DisplayName="Start Color")
+	// Legacy constant fallback for assets saved before Initial Color used distributions.
+	UPROPERTY(Edit, Save, Category="Color", DisplayName="Initial Color")
 	FVector4 StartColor = { 1, 1, 1, 1 };
 
-	UPROPERTY(Edit, Save, Category="Color", DisplayName="End Color")
-	FVector4 EndColor   = { 1, 1, 1, 0 };
+	UPROPERTY(Edit, Save, Instanced, Category="Color", DisplayName="Initial Color", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* StartColorDistribution = nullptr;
+
+	UPROPERTY(Edit, Save, Instanced, Category="Color", DisplayName="Initial Alpha", Type=ObjectRef, AllowedClass=UDistributionFloat)
+	UDistributionFloat* StartAlphaDistribution = nullptr;
 };

@@ -13,7 +13,7 @@
 //     - Spawn  : EmitterInstance::SpawnInternal 후 (생성된 갯수만큼)
 //     - Death  : EmitterInstance::UpdateParticles 의 kill 처리 분기
 //     - Collision : UParticleModuleCollision::Update 의 hit 분기
-//     - Burst  : UParticleModuleSpawn::GetSpawnAmount 의 burst hit 분기
+//     - Burst  : EmitterInstance::SpawnBurstParticles 의 burst hit 분기
 //   본 모듈은 "어떤 이벤트를 어떤 이름으로 발행할지" 설정 + 헬퍼 메서드만 제공.
 // =============================================================================
 UCLASS()

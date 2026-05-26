@@ -1,49 +1,44 @@
-#include "ParticleModuleSpawn.h"
+﻿#include "ParticleModuleSpawn.h"
 
+#include "Object/Object.h"
 #include "Particle/ParticleEmitterInstance.h"
+#include "Component/Particle/ParticleSystemComponent.h"
+#include "Engine/Particle/Distributions/DistributionFloatConstant.h"
 
 #include <algorithm>
 
-void UParticleModuleSpawn::GetSpawnAmount(FParticleEmitterInstance* Owner, float DeltaTime, float EmitterTime,
-                                          float& OutSpawnAmount, int32& OutBurstCount) const
+UParticleModuleSpawn::UParticleModuleSpawn()
+{
+	auto* DefaultRate = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(this);
+	if (DefaultRate)
+	{
+		DefaultRate->Constant = 20.0f;
+		RateDistribution = DefaultRate;
+	}
+
+	auto* DefaultRateScale = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(this);
+	if (DefaultRateScale)
+	{
+		DefaultRateScale->Constant = 1.0f;
+		RateScaleDistribution = DefaultRateScale;
+	}
+}
+
+void UParticleModuleSpawn::GetRateSpawnAmount(FParticleEmitterInstance* Owner, float DeltaTime, float EmitterTime,
+                                                float& OutSpawnAmount) const
 {
 	const float SafeDeltaTime = std::max(0.0f, DeltaTime);
-	const float SafeRate = std::max(0.0f, Rate);
-	const float SafeRateScale = std::max(0.0f, RateScale);
+	const float RateSampleTime = EmitterTime + SafeDeltaTime * 0.5f;
+
+	const float SampledRate = RateDistribution
+		? RateDistribution->GetValue(RateSampleTime, Owner ? Owner->GetComponent() : nullptr)
+		: 0.0f;
+	const float SampledRateScale = RateScaleDistribution
+		? RateScaleDistribution->GetValue(RateSampleTime, Owner ? Owner->GetComponent() : nullptr)
+		: 1.0f;
+
+	const float SafeRate = std::max(0.0f, SampledRate);
+	const float SafeRateScale = std::max(0.0f, SampledRateScale);
 
 	OutSpawnAmount = SafeRate * SafeRateScale * SafeDeltaTime;
-	OutBurstCount = 0;
-
-	const float CurrentTime = EmitterTime + SafeDeltaTime;
-	float PreviousTime = EmitterTime;
-
-	if (Owner)
-	{
-		// 모듈 자산을 직접 mutate하지 않고 emitter instance payload에
-		// "직전 처리 시각"을 저장해 burst trigger를 계산한다.
-		if (FSpawnModuleInstancePayload* Payload =
-			Owner->GetModuleInstancePayload<FSpawnModuleInstancePayload>(this))
-		{
-			PreviousTime = Payload->LastProcessedTime;
-			if (CurrentTime < PreviousTime)
-			{
-				PreviousTime = EmitterTime;
-			}
-
-			Payload->LastProcessedTime = CurrentTime;
-		}
-	}
-
-	for (const FBurstEntry& Entry : BurstList)
-	{
-		if (Entry.Count <= 0)
-		{
-			continue;
-		}
-
-		if (Entry.Time >= PreviousTime && Entry.Time < CurrentTime)
-		{
-			OutBurstCount += Entry.Count;
-		}
-	}
 }

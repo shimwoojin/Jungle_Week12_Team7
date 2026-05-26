@@ -20,6 +20,12 @@ UCLASS()
 class UParticleLODLevel : public UObject
 {
 public:
+	enum class ELODModuleSyncMode : uint8
+	{
+		InheritFromLOD0 = 0,
+		Override = 1,
+	};
+
 	GENERATED_BODY()
 	UParticleLODLevel() = default;
 	~UParticleLODLevel() override = default;
@@ -46,11 +52,56 @@ public:
 	UPROPERTY(Save, Instanced, Category="Modules", DisplayName="Modules", Type=Array, AllowedClass=UParticleModule)
 	TArray<UParticleModule*> Modules;
 
+	// Phase 4/5 keeps lightweight module-level sync metadata as a bridge toward
+	// a future Base + Override LOD model. Full property-level overrides and
+	// deeper reduction/scaling policy are still intentionally deferred.
+	// Authoring meaning:
+	// - true  : this slot is still inherited/materialized from LOD0
+	// - false : this derived LOD now owns the slot as an explicit override
+	// Future "Reset to Inherited" style actions should restore the sync flag and
+	// then let UpdateFromLOD0() rebuild the inherited slot from the LOD0 source.
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Required Module From LOD0")
+	bool bSyncRequiredModuleFromLOD0 = true;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Spawn Module From LOD0")
+	bool bSyncSpawnModuleFromLOD0 = true;
+
+	UPROPERTY(Edit, Save, Category="LOD", DisplayName="Sync Type Data From LOD0")
+	bool bSyncTypeDataModuleFromLOD0 = true;
+
+	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Sync Modes", Type=Array)
+	TArray<uint8> RegularModuleSyncModes;
+
+	// Internal authoring support metadata for inherited regular modules.
+	// Most authors only need to know whether a module is inherited or overridden;
+	// this source binding exists to keep inherited matching stable after LOD0
+	// changes and should not usually be treated as a primary editing control.
+	UPROPERTY(Save, Category="LOD", DisplayName="Regular Module Source LOD0 Indices", Type=Array)
+	TArray<int32> RegularModuleSourceLOD0Indices;
+
 	void PostDuplicate() override;
 
 	// --- API ---
+	// Derived LOD resync entry point. Inherited data follows LOD0 changes,
+	// explicit overrides stay local, deferred reduction reapplies afterward,
+	// and malformed metadata can fall back to a full-copy rebuild.
+	// This currently refreshes the stored materialized derived-LOD graph itself.
+	// A future runtime effective-LOD materialization step may consume a separate
+	// built result from the same source/override metadata, but that split is not
+	// active yet.
 	// LOD 변경 시 LOD 0 으로부터 본인 값을 재추출.
 	void UpdateFromLOD0(UParticleLODLevel* LOD0);
+	ELODModuleSyncMode GetRegularModuleSyncMode(int32 ModuleIndex) const;
+	void SetRegularModuleSyncMode(int32 ModuleIndex, ELODModuleSyncMode InMode);
+	int32 GetRegularModuleSourceLOD0Index(int32 ModuleIndex) const;
+	void SetRegularModuleSourceLOD0Index(int32 ModuleIndex, int32 SourceIndex);
+	bool HasRegularModuleOverrides() const;
+	// "Reset to Inherited" for regular modules conceptually means restoring
+	// inherited sync mode/source binding metadata and then resyncing from LOD0.
+	void ResetRegularModuleSyncModes(ELODModuleSyncMode DefaultMode = ELODModuleSyncMode::InheritFromLOD0);
+	void ResetRegularModuleSourceLOD0Indices(int32 DefaultSourceIndex = -1, bool bMapToCurrentIndex = false);
+	void NormalizeCoreSlotSyncMetadata();
+	void NormalizeRegularModuleSyncMetadata();
 
 	// 동일 카테고리 중복/required 충돌 등을 검증. true 면 정상.
 	bool ValidateModules() const;

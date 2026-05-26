@@ -8,6 +8,7 @@
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 
 class UParticleEmitter;
+class UParticleModuleSpawn;
 class UParticleSystemComponent;
 struct FBaseParticle;
 struct FDynamicEmitterDataBase;
@@ -140,6 +141,9 @@ public:
 	UParticleEmitter*           GetEmitter()       const { return Emitter; }
 	UParticleSystemComponent*   GetComponent()     const { return Component; }
 	UParticleLODLevel*          GetCurrentLOD()    const;
+	float                       GetEmitterTimeSeconds() const { return EmitterTimeSeconds; }
+	// 현재 loop 안에서의 emitter time(seconds). Initial Distribution의 SpawnTime 기준이다.
+	float                       GetCurrentLoopTimeSeconds() const { return CurrentLoopTimeSeconds; }
 	bool                        UsesLocalSpace()   const;
 	// simulation space는 Required.bUseLocalSpace에 따라 local/world 중 하나로 고정된다.
 	// 모듈은 입력 값이 어느 공간에서 왔는지만 선언하고, 실제 해석은 이 API가 맡는다.
@@ -155,10 +159,17 @@ protected:
 	// SpawnFraction 누적 → 정수 입자 수로 변환하여 SpawnInternal 호출.
 	virtual void SpawnParticles(float DeltaTime);
 
+	// BurstList를 emitter instance 시간 기준으로 처리한다.
+	// SpawnModule은 burst 설정만 보유하고, 실제 burst runtime state는 instance payload에 둔다.
+	int32 SpawnBurstParticles(UParticleModuleSpawn* SpawnModule, float DeltaTime, int32& InOutSpawnBudget);
+
 	// 새 입자 N 개를 만든다. 내부적으로 모듈의 Spawn() 을 차례로 호출.
-	virtual void SpawnInternal(int32 Count, float SpawnTimeBase);
+	// StartTime/Increment는 언리얼 Cascade의 SpawnParticles(Count, StartTime, Increment)처럼
+	// 각 particle의 emitter-loop spawn time을 계산하기 위한 값이다.
+	virtual int32 SpawnInternal(int32 Count, float StartTime, float Increment, float StepDeltaTime);
 
 	// 활성 입자 전체에 대해 모듈 Update + RelativeTime 적용 + Kill.
+	// Over-Life 모듈은 여기서 증가한 Particle->RelativeTime(0..1)을 기준으로 Distribution을 평가한다.
 	virtual void UpdateParticles(float DeltaTime);
 
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.

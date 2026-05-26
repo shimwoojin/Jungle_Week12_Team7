@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Intermediate">
@@ -1316,6 +1316,9 @@
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColor.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleEventGenerator.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
@@ -1329,6 +1332,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSize.cpp">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.cpp">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.cpp">
@@ -1677,6 +1683,17 @@
     <ClCompile Include="Intermediate\Generated\Reflection.generated.cpp">
       <Filter>Intermediate\Generated</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\Distribution.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFLoat.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVector.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Editor\EditorEngine.h">
@@ -2519,6 +2536,9 @@
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColor.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleEventGenerator.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
@@ -2532,6 +2552,9 @@
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSize.h">
+      <Filter>Source\Engine\Particle\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.h">
       <Filter>Source\Engine\Particle\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.h">
@@ -4613,6 +4636,17 @@
     <ClInclude Include="ThirdParty\sol2\include\sol\utility\to_string.hpp">
       <Filter>ThirdParty\sol2\include\sol\utility</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\Distribution.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloat.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVector.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.h" />
+    <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="KraftonEngine.rc" />

@@ -12,6 +12,9 @@
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleVelocity.h"
 #include "Particle/TypeData/ParticleModuleTypeDataMesh.h"
+#include "Particle/Distributions/DistributionFloatConstant.h"
+#include "Particle/Distributions/DistributionFloatUniform.h"
+#include "Particle/Distributions/DistributionVectorUniform.h"
 
 // ---------------------------------------------------------------------------
 // Runtime demo template builder — P1 자산 직렬화 / P2 에디터 완성 전까지의 우회용.
@@ -20,6 +23,59 @@
 // ---------------------------------------------------------------------------
 namespace
 {
+	UDistributionFloatConstant* SetFloatConstant(UDistributionFloat*& Distribution, UObject* Outer, float Value)
+	{
+		if (Distribution)
+		{
+			UObjectManager::Get().DestroyObject(Distribution);
+			Distribution = nullptr;
+		}
+
+		auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(Outer);
+		if (NewDistribution)
+		{
+			NewDistribution->Constant = Value;
+			Distribution = NewDistribution;
+		}
+		return NewDistribution;
+	}
+
+	UDistributionFloatUniform* SetFloatUniform(UDistributionFloat*& Distribution, UObject* Outer, float Min, float Max)
+	{
+		if (Distribution)
+		{
+			UObjectManager::Get().DestroyObject(Distribution);
+			Distribution = nullptr;
+		}
+
+		auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatUniform>(Outer);
+		if (NewDistribution)
+		{
+			NewDistribution->Min = Min;
+			NewDistribution->Max = Max;
+			Distribution = NewDistribution;
+		}
+		return NewDistribution;
+	}
+
+	UDistributionVectorUniform* SetVectorUniform(UDistributionVector*& Distribution, UObject* Outer, const FVector& Min, const FVector& Max)
+	{
+		if (Distribution)
+		{
+			UObjectManager::Get().DestroyObject(Distribution);
+			Distribution = nullptr;
+		}
+
+		auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorUniform>(Outer);
+		if (NewDistribution)
+		{
+			NewDistribution->Min = Min;
+			NewDistribution->Max = Max;
+			Distribution = NewDistribution;
+		}
+		return NewDistribution;
+	}
+
 	void ConfigureSpriteEmitter(UParticleEmitter* Emitter)
 	{
 		if (!Emitter) return;
@@ -40,7 +96,7 @@ namespace
 		// Spawn rate
 		if (UParticleModuleSpawn* Spawn = LOD->SpawnModule)
 		{
-			Spawn->Rate = 50.0f;
+			SetFloatConstant(Spawn->RateDistribution, Spawn, 50.0f);
 		}
 
 		// LOD0의 일반 모듈들 (Lifetime / Location / Velocity / Color / Size)
@@ -49,23 +105,19 @@ namespace
 		{
 			if (auto* Lifetime = Cast<UParticleModuleLifetime>(M))
 			{
-				Lifetime->MinLifetime = 1.5f;
-				Lifetime->MaxLifetime = 3.0f;
+				SetFloatUniform(Lifetime->LifetimeDistribution, Lifetime, 1.5f, 3.0f);
 			}
 			else if (auto* Loc = Cast<UParticleModuleLocation>(M))
 			{
-				Loc->StartLocationMin = { -0.3f, -0.3f, 0.0f };
-				Loc->StartLocationMax = {  0.3f,  0.3f, 0.0f };
+				SetVectorUniform(Loc->StartLocationDistribution, Loc, { -0.3f, -0.3f, 0.0f }, { 0.3f, 0.3f, 0.0f });
 			}
 			else if (auto* Vel = Cast<UParticleModuleVelocity>(M))
 			{
-				Vel->StartVelocityMin = { -0.5f, -0.5f, 1.0f };
-				Vel->StartVelocityMax = {  0.5f,  0.5f, 3.0f };
+				SetVectorUniform(Vel->StartVelocityDistribution, Vel, { -0.5f, -0.5f, 1.0f }, { 0.5f, 0.5f, 3.0f });
 			}
 			else if (auto* Sz = Cast<UParticleModuleSize>(M))
 			{
-				Sz->StartSizeMin = { 0.2f, 0.2f, 0.2f };
-				Sz->StartSizeMax = { 0.4f, 0.4f, 0.4f };
+				SetVectorUniform(Sz->StartSizeDistribution, Sz, { 0.2f, 0.2f, 0.2f }, { 0.4f, 0.4f, 0.4f });
 			}
 		}
 	}
@@ -102,30 +154,26 @@ namespace
 		// Spawn rate — mesh는 더 적게
 		if (UParticleModuleSpawn* Spawn = LOD->SpawnModule)
 		{
-			Spawn->Rate = 8.0f;
+			SetFloatConstant(Spawn->RateDistribution, Spawn, 8.0f);
 		}
 
 		for (UParticleModule* M : LOD->Modules)
 		{
 			if (auto* Lifetime = Cast<UParticleModuleLifetime>(M))
 			{
-				Lifetime->MinLifetime = 2.5f;
-				Lifetime->MaxLifetime = 5.0f;
+				SetFloatUniform(Lifetime->LifetimeDistribution, Lifetime, 2.5f, 5.0f);
 			}
 			else if (auto* Loc = Cast<UParticleModuleLocation>(M))
 			{
-				Loc->StartLocationMin = { -1.0f, -1.0f, 0.0f };
-				Loc->StartLocationMax = {  1.0f,  1.0f, 0.0f };
+				SetVectorUniform(Loc->StartLocationDistribution, Loc, { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 0.0f });
 			}
 			else if (auto* Vel = Cast<UParticleModuleVelocity>(M))
 			{
-				Vel->StartVelocityMin = { 0.0f, 0.0f, 0.5f };
-				Vel->StartVelocityMax = { 0.0f, 0.0f, 1.5f };
+				SetVectorUniform(Vel->StartVelocityDistribution, Vel, { 0.0f, 0.0f, 0.5f }, { 0.0f, 0.0f, 1.5f });
 			}
 			else if (auto* Sz = Cast<UParticleModuleSize>(M))
 			{
-				Sz->StartSizeMin = { 0.3f, 0.3f, 0.3f };
-				Sz->StartSizeMax = { 0.5f, 0.5f, 0.5f };
+				SetVectorUniform(Sz->StartSizeDistribution, Sz, { 0.3f, 0.3f, 0.3f }, { 0.5f, 0.5f, 0.5f });
 			}
 		}
 	}

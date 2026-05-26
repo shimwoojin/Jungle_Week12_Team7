@@ -1,39 +1,32 @@
-#pragma once
+﻿#pragma once
 
 #include "Particle/ParticleModule.h"
 #include "Math/Vector.h"
+#include "Engine/Particle/Distributions/DistributionVector.h"
 
 #include "Source/Engine/Particle/Modules/ParticleModuleSize.generated.h"
 
 // =============================================================================
 // UParticleModuleSize
-//   Spawn 시 BaseSize/Size 설정. Update 에서 size-over-life 적용은 별도 모듈로
-//   분리할 수도 있지만 학습용으로 본 클래스에서 함께 처리.
+//   Initial Size 전용 모듈.
+//   SpawnTime은 particle relative time이 아니라 emitter-loop 기준 시간이며,
+//   StartSizeDistribution 평가에만 사용한다.
+//   생존 시간에 따른 size 변화는 UParticleModuleSizeByLife가 담당한다.
 // =============================================================================
 UCLASS()
 class UParticleModuleSize : public UParticleModule
 {
 public:
 	GENERATED_BODY()
-	UParticleModuleSize() = default;
+	UParticleModuleSize();
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::Size; }
-	const char*     GetDisplayName() const override { return "Size"; }
+	const char*     GetDisplayName() const override { return "Initial Size"; }
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-	            float DeltaTime) override;
 
-	UPROPERTY(Edit, Save, Category="Size", DisplayName="Start Size Min")
-	FVector StartSizeMin = { 1, 1, 1 };
-
-	UPROPERTY(Edit, Save, Category="Size", DisplayName="Start Size Max")
-	FVector StartSizeMax = { 1, 1, 1 };
-
-	UPROPERTY(Edit, Save, Category="Size", DisplayName="End Size Scale")
-	FVector EndSizeScale = { 1, 1, 1 };
-
-	UPROPERTY(Edit, Save, Category="Size", DisplayName="Animate Over Life")
-	bool bAnimateOverLife = false;
+	// Evaluated with SpawnTime: emitter-loop seconds at which the particle is spawned.
+	UPROPERTY(Edit, Save, Instanced, Category="Size", DisplayName="Start Size Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)
+	UDistributionVector* StartSizeDistribution = nullptr;
 };

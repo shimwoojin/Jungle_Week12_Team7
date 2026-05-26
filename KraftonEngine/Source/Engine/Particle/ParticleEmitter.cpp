@@ -11,12 +11,40 @@
 #include "Modules/ParticleModuleLocation.h"
 #include "Modules/ParticleModuleVelocity.h"
 #include "Modules/ParticleModuleColor.h"
+#include "Modules/ParticleModuleColorOverLife.h"
 #include "Modules/ParticleModuleSize.h"
+#include "Modules/ParticleModuleSizeByLife.h"
 #include "Serialization/Archive.h"
+#include "Particle/Distributions/DistributionVectorUniform.h"
+
+#include <type_traits>
+
+namespace
+{
+	UDistributionVectorUniform* SetVectorUniform(UDistributionVector*& Distribution, UObject* Outer, const FVector& Min, const FVector& Max)
+	{
+		if (Distribution)
+		{
+			UObjectManager::Get().DestroyObject(Distribution);
+			Distribution = nullptr;
+		}
+
+		auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionVectorUniform>(Outer);
+		if (NewDistribution)
+		{
+			NewDistribution->Min = Min;
+			NewDistribution->Max = Max;
+			Distribution = NewDistribution;
+		}
+		return NewDistribution;
+	}
+}
 
 void UParticleEmitter::OnPostLoad(FArchive& /*Ar*/)
 {
-	EnsureLOD0CoreModules();
+	EnsureLODCoreModules();
+	// Current runtime setup still consumes the emitter's stored materialized LOD
+	// graphs directly, so payload/layout caches are rebuilt from those graphs on load.
 	CacheEmitterModuleInfo();
 }
 
@@ -35,13 +63,14 @@ void UParticleEmitter::PostDuplicate()
 		LODLevel->PostDuplicate();
 	}
 
-	EnsureLOD0CoreModules();
+	EnsureLODCoreModules();
+	// Duplicate also keeps the concrete stored LOD graph as the active runtime path.
 	CacheEmitterModuleInfo();
 }
 
 void UParticleEmitter::InitializeDefaultLODLevel()
 {
-	EnsureLOD0CoreModules();
+	EnsureLODCoreModules();
 
 	UParticleLODLevel* LOD0 = GetLODLevel(0);
 	if (!LOD0)
@@ -54,6 +83,19 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 			for (UParticleModule* Module : LOD0->Modules)
 			{
 				if (Module && Module->GetCategory() == Category)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+	auto HasModuleClass = [LOD0](auto* ClassTag) -> bool
+		{
+			using TModule = std::remove_pointer_t<decltype(ClassTag)>;
+			for (UParticleModule* Module : LOD0->Modules)
+			{
+				if (Cast<TModule>(Module))
 				{
 					return true;
 				}
@@ -88,14 +130,13 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		{
 			Velocity->SetToSensibleDefaults(this);
 
-			Velocity->StartVelocityMin = { -3.0f, -3.0f, 1.0f };
-			Velocity->StartVelocityMax = { 3.0f, 3.0f, 3.0f };
+			SetVectorUniform(Velocity->StartVelocityDistribution, Velocity, { -3.0f, -3.0f, 1.0f }, { 3.0f, 3.0f, 3.0f });
 
 			LOD0->AddModule(Velocity);
 		}
 	}
 
-	if (!HasModuleCategory(UParticleModule::EModuleCategory::Color))
+	if (!HasModuleClass(static_cast<UParticleModuleColor*>(nullptr)))
 	{
 		auto* Color = UObjectManager::Get().CreateObject<UParticleModuleColor>(LOD0);
 		if (Color)
@@ -105,56 +146,89 @@ void UParticleEmitter::InitializeDefaultLODLevel()
 		}
 	}
 
-	if (!HasModuleCategory(UParticleModule::EModuleCategory::Size))
+	if (!HasModuleClass(static_cast<UParticleModuleColorOverLife*>(nullptr)))
+	{
+		auto* ColorOverLife = UObjectManager::Get().CreateObject<UParticleModuleColorOverLife>(LOD0);
+		if (ColorOverLife)
+		{
+			ColorOverLife->SetToSensibleDefaults(this);
+			LOD0->AddModule(ColorOverLife);
+		}
+	}
+
+	if (!HasModuleClass(static_cast<UParticleModuleSize*>(nullptr)))
 	{
 		auto* Size = UObjectManager::Get().CreateObject<UParticleModuleSize>(LOD0);
 		if (Size)
 		{
 			Size->SetToSensibleDefaults(this);
 
-			// TODO: 추후 삭제 - 테스트용 기본값
-			Size->StartSizeMin = { 0.5f, 0.5f, 1.0f };
-			Size->StartSizeMax = { 1.0f, 1.0f, 1.0f };
+			SetVectorUniform(Size->StartSizeDistribution, Size, { 0.5f, 0.5f, 1.0f }, { 1.0f, 1.0f, 1.0f });
 
 			LOD0->AddModule(Size);
 		}
 	}
 }
 
-void UParticleEmitter::EnsureLOD0CoreModules()
+void UParticleEmitter::EnsureLODCoreModules()
 {
-	UParticleLODLevel* LOD0 = nullptr;
-
 	if (LODLevels.empty())
 	{
-		LOD0 = CreateLODLevel(0);
-	}
-	else
-	{
-		LOD0 = LODLevels[0];
+		CreateLODLevel(0);
 	}
 
-	if (!LOD0)
+	for (UParticleLODLevel* LOD : LODLevels)
+	{
+		if (!LOD)
+		{
+			continue;
+		}
+
+		if (!LOD->RequiredModule)
+		{
+			auto* Required = UObjectManager::Get().CreateObject<UParticleModuleRequired>(LOD);
+			if (Required)
+			{
+				Required->SetToSensibleDefaults(this);
+				LOD->RequiredModule = Required;
+			}
+		}
+
+		if (!LOD->SpawnModule)
+		{
+			auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(LOD);
+			if (Spawn)
+			{
+				LOD->SpawnModule = Spawn;
+			}
+		}
+	}
+}
+
+void UParticleEmitter::EnsureLOD0CoreModules()
+{
+	EnsureLODCoreModules();
+}
+
+void UParticleEmitter::SynchronizeDerivedLODFromLOD0(UParticleLODLevel* DerivedLOD)
+{
+	if (!DerivedLOD || DerivedLOD->Level <= 0)
 	{
 		return;
 	}
 
-	if (!LOD0->RequiredModule)
+	if (UParticleLODLevel* LOD0 = GetLODLevel(0))
 	{
-		auto* Required = UObjectManager::Get().CreateObject<UParticleModuleRequired>(LOD0);
-		if (Required)
+		if (LOD0 != DerivedLOD)
 		{
-			Required->SetToSensibleDefaults(this);
-			LOD0->RequiredModule = Required;
-		}
-	}
-
-	if (!LOD0->SpawnModule)
-	{
-		auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(LOD0);
-		if (Spawn)
-		{
-			LOD0->SpawnModule = Spawn;
+			// LOD0 is the master source for inherited derived-LOD data. The derived
+			// resync path keeps explicit overrides local, reapplies inherited
+			// reduction policy, and can still fall back to a materialized full-copy
+			// rebuild when metadata-driven sync is not trustworthy enough. Today this
+			// still refreshes the stored materialized derived LOD graph itself, not a
+			// separate runtime-only effective LOD object. This is the code path future
+			// editor actions like "Resync from LOD0" should map to.
+			DerivedLOD->UpdateFromLOD0(LOD0);
 		}
 	}
 }
@@ -162,6 +236,7 @@ void UParticleEmitter::EnsureLOD0CoreModules()
 UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)     
 { 
 	if (InLevel < 0) InLevel = 0;
+	const bool bIsDerivedLOD = InLevel > 0;
 
 	if (UParticleLODLevel* Existing = GetLODLevel(InLevel))
 	{
@@ -181,6 +256,15 @@ UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)
 	auto* Spawn = UObjectManager::Get().CreateObject<UParticleModuleSpawn>(NewLOD);
 	NewLOD->SpawnModule = Spawn;
 
+	if (InLevel > 0)
+	{
+		if (UParticleLODLevel* LOD0 = GetLODLevel(0))
+		{
+			NewLOD->UpdateFromLOD0(LOD0);
+			NewLOD->Level = InLevel;
+		}
+	}
+
 	if (InLevel >= static_cast<int32>(LODLevels.size()))
 	{
 		LODLevels.push_back(NewLOD);
@@ -188,6 +272,11 @@ UParticleLODLevel* UParticleEmitter::CreateLODLevel(int32 InLevel)
 	else
 	{
 		LODLevels.insert(LODLevels.begin() + InLevel, NewLOD);
+	}
+
+	if (bIsDerivedLOD)
+	{
+		SynchronizeDerivedLODFromLOD0(NewLOD);
 	}
 
 	return NewLOD;
@@ -230,39 +319,56 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 	CachedLayout.ModuleOffsets.clear();
 	CachedLayout.InstanceModuleOffsets.clear();
 
-	UParticleLODLevel* LOD0 = GetLODLevel(0);
-	if (!LOD0) return;
+	EnsureLODCoreModules();
 
-	auto CacheModule = [this, LOD0](UParticleModule* Module)
+	// Runtime payload layout is still built against the emitter's concrete stored
+	// UParticleLODLevel graphs. The offset maps use module object identity as the
+	// lookup key, so a future effective-runtime LOD materialization step cannot be
+	// swapped in casually without deciding how layout/cache ownership should move.
+	auto CacheModule = [this](UParticleLODLevel* LOD, UParticleModule* Module)
 		{
-			if (!Module) return;
+			if (!LOD || !Module) return;
 
-			const uint32 Bytes = Module->RequiredBytes(LOD0);
-			if (Bytes > 0)
+			if (CachedLayout.ModuleOffsets.find(Module) == CachedLayout.ModuleOffsets.end())
 			{
-				CachedLayout.ModuleOffsets[Module] = CachedLayout.ParticleStride;
-				CachedLayout.ParticleStride =
-					ParticleUtils::AlignParticleDataSize(CachedLayout.ParticleStride + Bytes);
+				const uint32 Bytes = Module->RequiredBytes(LOD);
+				if (Bytes > 0)
+				{
+					CachedLayout.ModuleOffsets[Module] = CachedLayout.ParticleStride;
+					CachedLayout.ParticleStride =
+						ParticleUtils::AlignParticleDataSize(CachedLayout.ParticleStride + Bytes);
+				}
 			}
 
-			const uint32 InstanceBytes = Module->RequiredBytesPerInstance();
-			if (InstanceBytes > 0)
+			if (CachedLayout.InstanceModuleOffsets.find(Module) == CachedLayout.InstanceModuleOffsets.end())
 			{
-				CachedLayout.InstancePayloadSize =
-					ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize);
-				CachedLayout.InstanceModuleOffsets[Module] = CachedLayout.InstancePayloadSize;
-				CachedLayout.InstancePayloadSize =
-					ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize + InstanceBytes);
+				const uint32 InstanceBytes = Module->RequiredBytesPerInstance();
+				if (InstanceBytes > 0)
+				{
+					CachedLayout.InstancePayloadSize =
+						ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize);
+					CachedLayout.InstanceModuleOffsets[Module] = CachedLayout.InstancePayloadSize;
+					CachedLayout.InstancePayloadSize =
+						ParticleUtils::AlignParticleDataSize(CachedLayout.InstancePayloadSize + InstanceBytes);
+				}
 			}
 		};
 
-	CacheModule(LOD0->RequiredModule);
-	CacheModule(LOD0->SpawnModule);
-	CacheModule(LOD0->TypeDataModule);
-
-	for (UParticleModule* Module : LOD0->Modules)
+	for (UParticleLODLevel* LOD : LODLevels)
 	{
-		CacheModule(Module);
+		if (!LOD) continue;
+
+		// Every stored LOD contributes to the compatibility/runtime cache today so
+		// that instance code can switch LODs while still resolving payload offsets
+		// from concrete module pointers on the active graph.
+		CacheModule(LOD, LOD->RequiredModule);
+		CacheModule(LOD, LOD->SpawnModule);
+		CacheModule(LOD, LOD->TypeDataModule);
+
+		for (UParticleModule* Module : LOD->Modules)
+		{
+			CacheModule(LOD, Module);
+		}
 	}
 }
 
@@ -275,11 +381,20 @@ uint32 UParticleEmitter::GetModuleOffset(const UParticleModule* M) const
 
 FParticleEmitterInstance* UParticleEmitter::CreateInstance(UParticleSystemComponent* InComponent)
 {
-	UParticleLODLevel* LOD0 = GetLODLevel(0);
-
-	if (LOD0 && LOD0->TypeDataModule)
+	// Instance subclass is chosen from TypeData. TypeData should usually be
+	// consistent across LODs, but do not hard-code LOD 0 here: use the first
+	// valid TypeData available in the emitter's LOD list. This still reads the
+	// stored materialized graph directly; a future effective-runtime LOD build
+	// step could eventually provide the same type decision from a runtime-only
+	// representation without changing the instance factory contract.
+	for (UParticleLODLevel* LOD : LODLevels)
 	{
-		if (FParticleEmitterInstance* Inst = LOD0->TypeDataModule->CreateInstance(InComponent))
+		if (!LOD || !LOD->TypeDataModule)
+		{
+			continue;
+		}
+
+		if (FParticleEmitterInstance* Inst = LOD->TypeDataModule->CreateInstance(InComponent))
 		{
 			return Inst;
 		}

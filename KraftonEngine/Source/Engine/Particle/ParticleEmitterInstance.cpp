@@ -466,75 +466,137 @@ void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 	if (!LOD->SpawnModule) return;
 	if (!IsSpawningAllowed()) return;
 
-	// 초당 생성되는 입자 개수
-	float SpawnAmount = 0.0f;
-	int32 BurstCount = 0;
+	UParticleModuleSpawn* SpawnModule = LOD->SpawnModule;
 
-	// SpawnModule은 "현재 loop 안에서의 상대 시간"만 알면 burst trigger를 계산할 수 있다.
-	LOD->SpawnModule->GetSpawnAmount(this, DeltaTime, CurrentLoopTimeSeconds, SpawnAmount, BurstCount);
+	float SpawnAmount = 0.0f;
+
+	// SpawnTime은 particle relative time이 아니라 현재 emitter loop 안의 시간이다.
+	// SpawnModule은 Rate/RateScale 계산만 맡고, BurstList의 실제 firing은 emitter instance가 처리한다.
+	SpawnModule->GetRateSpawnAmount(
+		this,
+		DeltaTime,
+		CurrentLoopTimeSeconds,
+		SpawnAmount);
 
 	SpawnAmount = std::max(0.0f, SpawnAmount);
-	BurstCount = std::max(0, BurstCount);
 
-	// Fraction - 이전 프레임에서 계산된 찌꺼기값
 	const float TotalSpawnFloat = SpawnFraction + SpawnAmount;
 	const int32 RateSpawnCount = static_cast<int32>(std::floor(TotalSpawnFloat));
-
 	SpawnFraction = TotalSpawnFloat - static_cast<float>(RateSpawnCount);
 
-	int32 SpawnCount = RateSpawnCount + BurstCount;
-	if (SpawnCount <= 0) return;
-
-	if (SpawnCount > static_cast<int32>(ParticleConstants::MaxBurstCountPerFrame))
-	{
-		SpawnCount = static_cast<int32>(ParticleConstants::MaxBurstCountPerFrame);
-	}
-
-	// 생성가능한 빈 자리 수
-	const uint32 FreeCount =
+	int32 SpawnBudget = static_cast<int32>(
 		ParticleConstants::MaxParticlesPerEmitter > ActiveParticles
 		? ParticleConstants::MaxParticlesPerEmitter - ActiveParticles
-		: 0;
+		: 0);
 
-	if (FreeCount == 0) return;
+	if (SpawnBudget <= 0) return;
 
-	if (static_cast<uint32>(SpawnCount) > FreeCount)
+	SpawnBudget = std::min(
+		SpawnBudget,
+		static_cast<int32>(ParticleConstants::MaxBurstCountPerFrame));
+
+	// Burst는 정해진 loop time에 터지는 이벤트성이 강하므로 Rate보다 먼저 처리한다.
+	SpawnBurstParticles(SpawnModule, DeltaTime, SpawnBudget);
+
+	if (RateSpawnCount > 0 && SpawnBudget > 0)
 	{
-		SpawnCount = static_cast<int32>(FreeCount);
+		const int32 Count = std::min(RateSpawnCount, SpawnBudget);
+
+		const float Increment =
+			Count > 0
+			? DeltaTime / static_cast<float>(Count)
+			: 0.0f;
+
+		// 각 spawn 구간의 중앙점에 배치한다.
+		// 예: Count=4, Delta=0.016 -> 0.002, 0.006, 0.010, 0.014초 지점.
+		const float StartTime = CurrentLoopTimeSeconds + Increment * 0.5f;
+
+		SpawnInternal(Count, StartTime, Increment, DeltaTime);
 	}
-
-	const int32 ActualBurstCount = std::min(BurstCount, SpawnCount);
-	if (ActualBurstCount > 0)
-	{
-		FParticleEventBurstData BurstEvent;
-		BurstEvent.Type = EParticleEventType::Burst;
-		BurstEvent.TimeSeconds = EmitterTimeSeconds;
-		BurstEvent.ParticleCount = ActualBurstCount;
-
-		if (Component)
-		{
-			BurstEvent.Location = Component->GetWorldLocation();
-		}
-
-		EmitBurstEvent(BurstEvent);
-	}
-
-	// Spawn 진행
-	SpawnInternal(SpawnCount, 0.0f);
 }
 
-void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
+int32 FParticleEmitterInstance::SpawnBurstParticles(UParticleModuleSpawn* SpawnModule, float DeltaTime, int32& InOutSpawnBudget)
 {
-	if (Count <= 0) return;
+	if (!SpawnModule || InOutSpawnBudget <= 0)
+	{
+		return 0;
+	}
+
+	int32 TotalSpawned = 0;
+
+	const float SafeDeltaTime = std::max(0.0f, DeltaTime);
+	const float CurrentTime = CurrentLoopTimeSeconds + SafeDeltaTime;
+	float PreviousTime = CurrentLoopTimeSeconds;
+
+	if (UParticleModuleSpawn::FSpawnModuleInstancePayload* Payload =
+		GetModuleInstancePayload<UParticleModuleSpawn::FSpawnModuleInstancePayload>(SpawnModule))
+	{
+		PreviousTime = Payload->LastProcessedBurstTime;
+		if (CurrentTime < PreviousTime)
+		{
+			PreviousTime = CurrentLoopTimeSeconds;
+		}
+
+		Payload->LastProcessedBurstTime = CurrentTime;
+	}
+
+	for (const UParticleModuleSpawn::FBurstEntry& Entry : SpawnModule->BurstList)
+	{
+		if (InOutSpawnBudget <= 0) break;
+
+		if (Entry.Count <= 0)
+		{
+			continue;
+		}
+
+		if (Entry.Time < PreviousTime || Entry.Time >= CurrentTime)
+		{
+			continue;
+		}
+
+		const int32 Count = std::min(Entry.Count, InOutSpawnBudget);
+		if (Count <= 0) continue;
+
+		const int32 SpawnedCount = SpawnInternal(Count, Entry.Time, 0.0f, SafeDeltaTime);
+		InOutSpawnBudget -= SpawnedCount;
+		TotalSpawned += SpawnedCount;
+
+		if (SpawnedCount > 0)
+		{
+			const float BurstOffsetSeconds = std::clamp(
+				Entry.Time - CurrentLoopTimeSeconds,
+				0.0f,
+				SafeDeltaTime);
+
+			FParticleEventBurstData BurstEvent;
+			BurstEvent.Type = EParticleEventType::Burst;
+			BurstEvent.TimeSeconds = EmitterTimeSeconds + BurstOffsetSeconds;
+			BurstEvent.ParticleCount = SpawnedCount;
+
+			if (Component)
+			{
+				BurstEvent.Location = Component->GetWorldLocation();
+			}
+
+			EmitBurstEvent(BurstEvent);
+		}
+	}
+
+	return TotalSpawned;
+}
+
+int32 FParticleEmitterInstance::SpawnInternal(int32 Count, float StartTime, float Increment, float StepDeltaTime)
+{
+	if (Count <= 0) return 0;
 
 	UParticleLODLevel* LOD = GetCurrentLOD();
-	if (!LOD || !LOD->bEnabled) return;
+	if (!LOD || !LOD->bEnabled) return 0;
 
 	const uint32 RequiredActiveCount = ActiveParticles + static_cast<uint32>(Count);
 	if (RequiredActiveCount > MaxActiveParticles)
 	{
 		const uint32 NewCapacity = GrowParticleCapacity(MaxActiveParticles, RequiredActiveCount);
-		if (NewCapacity <= MaxActiveParticles) return;
+		if (NewCapacity <= MaxActiveParticles) return 0;
 
 		ResizeParticleData(NewCapacity);
 	}
@@ -542,9 +604,18 @@ void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
 	const uint32 ActiveFlag = static_cast<uint32>(EParticleStateFlags::Active);
 	const uint32 SpawnedFlag = static_cast<uint32>(EParticleStateFlags::Spawned);
 
+	int32 SpawnedCount = 0;
+
 	for (int32 SpawnIndex = 0; SpawnIndex < Count; ++SpawnIndex)
 	{
 		if (ActiveParticles >= MaxActiveParticles) break;
+
+		const float SpawnTime = StartTime + Increment * static_cast<float>(SpawnIndex);
+		const float SpawnOffsetSeconds = std::clamp(
+			SpawnTime - CurrentLoopTimeSeconds,
+			0.0f,
+			StepDeltaTime);
+		const float AbsoluteSpawnTime = EmitterTimeSeconds + SpawnOffsetSeconds;
 
 		const uint32 Slot = ActiveParticles;
 		uint8* ParticleBytes = RuntimeStorage.ParticleData + Slot * ParticleStride;
@@ -573,23 +644,36 @@ void FParticleEmitterInstance::SpawnInternal(int32 Count, float SpawnTimeBase)
 
 		RuntimeStorage.ParticleIndices[ActiveParticles] = static_cast<uint16>(Slot);
 		++ActiveParticles;
+		++SpawnedCount;
 
 		for (UParticleModule* Module : LOD->Modules)
 		{
 			if (!Module || !Module->IsEnabled()) continue;
 
 			const uint32 ModuleOffset = GetModuleDataOffset(Module);
-			Module->Spawn(this, ModuleOffset, SpawnTimeBase, Particle);
+			// SpawnTime은 emitter-loop 기준 seconds이다.
+			// Initial Distribution은 이 값을 쓰고, Over-Life 모듈은 Particle->RelativeTime을 쓴다.
+			Module->Spawn(this, ModuleOffset, SpawnTime, Particle);
 		}
 
 		FParticleEventSpawnData SpawnEvent;
 		SpawnEvent.Type = EParticleEventType::Spawn;
-		SpawnEvent.TimeSeconds = EmitterTimeSeconds;
+		SpawnEvent.TimeSeconds = AbsoluteSpawnTime;
 		SpawnEvent.Location = Particle->Location;
 		SpawnEvent.Velocity = Particle->Velocity;
 		SpawnEvent.ParticleCount = 1;
 		EmitSpawnEvent(SpawnEvent);
+
+		// 현재 tick 순서는 Spawn -> Update다.
+		// sub-frame spawn을 흉내 내기 위해 spawn 이전 시간만큼 위치를 뒤로 보정한다.
+		if (SpawnOffsetSeconds > 0.0f)
+		{
+			Particle->Location = Particle->Location - Particle->Velocity * SpawnOffsetSeconds;
+			Particle->OldLocation = Particle->Location;
+		}
 	}
+
+	return SpawnedCount;
 }
 
 void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
@@ -832,7 +916,7 @@ void FParticleEmitterInstance::AdvanceLoopState(float DeltaTime)
 			if (auto* Payload =
 				GetModuleInstancePayload<UParticleModuleSpawn::FSpawnModuleInstancePayload>(LOD->SpawnModule))
 			{
-				Payload->LastProcessedTime = 0.0f;
+				Payload->LastProcessedBurstTime = 0.0f;
 			}
 		}
 

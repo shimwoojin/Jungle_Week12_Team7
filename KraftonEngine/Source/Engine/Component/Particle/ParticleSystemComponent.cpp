@@ -5,8 +5,10 @@
 #include "Particle/ParticleEmitterInstance.h"
 #include "Particle/ParticleEventManager.h"
 #include "Particle/ParticleSystemManager.h"
+#include "GameFramework/World.h"
 #include "Render/Proxy/Particle/ParticleSystemSceneProxy.h"
 #include "Serialization/Archive.h"
+#include "Core/Logging/Log.h"
 
 #include <algorithm>
 
@@ -31,10 +33,14 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	}
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+	bHasWarnedMissingEventManager = false;
+	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 
 	if (Template)
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 
@@ -62,10 +68,13 @@ void UParticleSystemComponent::LoadTemplateFromPath()
 void UParticleSystemComponent::Activate(bool bReset)
 {
 	bActive = true;
+	RefreshEventManagerBinding();
+	ResetAutomaticLODTransitionState();
 
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 
@@ -81,6 +90,8 @@ void UParticleSystemComponent::Activate(bool bReset)
 void UParticleSystemComponent::Deactivate()
 {
 	bActive = false;
+	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 }
 
 void UParticleSystemComponent::ResetParticles()
@@ -91,6 +102,9 @@ void UParticleSystemComponent::ResetParticles()
 	}
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+	bHasWarnedMissingEventManager = false;
+	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 
 	PushDynamicDataToProxy();
 	MarkWorldBoundsDirty();
@@ -99,10 +113,12 @@ void UParticleSystemComponent::ResetParticles()
 void UParticleSystemComponent::BeginPlay()
 {
 	UPrimitiveComponent::BeginPlay();
+	RefreshEventManagerBinding();
 
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 	}
 
 	if (bAutoActivate) Activate(bResetOnActivate);
@@ -121,13 +137,33 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	UPrimitiveComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	if (!EventManager)
+	{
+		// BeginPlay ordering can leave PSC briefly unbound even though a manager registers
+		// later in the same runtime startup path. Re-query the provider, but do not do
+		// any discovery or spawning here.
+		RefreshEventManagerBinding();
+	}
+
 	if (!bActive) return;
 	if (!Template) return;
 
 	if (EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
+	}
+
+	if (Template->bUseAutomaticLOD)
+	{
+		// Phase 3 keeps automatic mode authoritative during runtime ticking, but
+		// now stabilizes raw distance-based selection with hysteresis and delay.
+		UpdateAutomaticLODSelection(DeltaTime);
+	}
+	else
+	{
+		ResetAutomaticLODTransitionState();
 	}
 
 	// PSC가 현재 선택한 LOD를 source of truth로 들고 있고, instance는 매 tick 그 값을 따른다.
@@ -148,6 +184,15 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 		StepDeltaTime = AccumulatedTime;
 		AccumulatedTime = 0.0f;
+	}
+
+	if (!EventManager)
+	{
+		MissingEventManagerTimeSeconds += StepDeltaTime;
+	}
+	else
+	{
+		MissingEventManagerTimeSeconds = 0.0f;
 	}
 
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
@@ -189,6 +234,7 @@ void UParticleSystemComponent::CreateRenderState()
 	if (Template && EmitterInstances.empty())
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 	UPrimitiveComponent::CreateRenderState();
@@ -228,10 +274,7 @@ void UParticleSystemComponent::PostEditProperty(const char* PropertyName)
 	if (std::strcmp(PropertyName, "CurrentLODIndex") == 0 ||
 		std::strcmp(PropertyName, "LOD Level") == 0)
 	{
-		if (CurrentLODIndex < 0)
-		{
-			CurrentLODIndex = 0;
-		}
+		ClampCurrentLODIndex();
 
 		ApplyCurrentLODToEmitterInstances();
 
@@ -271,11 +314,11 @@ void UParticleSystemComponent::PostDuplicate()
 	DestroyEmitterInstances();
 	AccumulatedTime = 0.0f;
 	PendingEvents = {};
+	bHasWarnedMissingEventManager = false;
+	MissingEventManagerTimeSeconds = 0.0f;
+	ResetAutomaticLODTransitionState();
 
-	if (CurrentLODIndex < 0)
-	{
-		CurrentLODIndex = 0;
-	}
+	ClampCurrentLODIndex();
 
 	LoadTemplateFromPath();
 
@@ -299,11 +342,11 @@ void UParticleSystemComponent::Serialize(FArchive& Ar)
 		DestroyEmitterInstances();
 		AccumulatedTime = 0.0f;
 		PendingEvents = {};
+		bHasWarnedMissingEventManager = false;
+		MissingEventManagerTimeSeconds = 0.0f;
+		ResetAutomaticLODTransitionState();
 
-		if (CurrentLODIndex < 0)
-		{
-			CurrentLODIndex = 0;
-		}
+		ClampCurrentLODIndex();
 
 		LoadTemplateFromPath();
 
@@ -380,6 +423,7 @@ void UParticleSystemComponent::RebuildInstances(bool bReset)
 	if (Template)
 	{
 		Template->BuildEmitters();
+		ClampCurrentLODIndex();
 		CreateEmitterInstances();
 	}
 	else
@@ -416,10 +460,13 @@ UParticleSystemComponent::FDynamicData* UParticleSystemComponent::BuildDynamicDa
 void UParticleSystemComponent::CreateEmitterInstances()
 {
 	DestroyEmitterInstances();
+	RefreshEventManagerBinding();
+	ResetAutomaticLODTransitionState();
 
 	if (!Template) return;
 
 	Template->BuildEmitters();
+	ClampCurrentLODIndex();
 
 	for (UParticleEmitter* Emitter : Template->Emitters)
 	{
@@ -434,16 +481,141 @@ void UParticleSystemComponent::CreateEmitterInstances()
 		EmitterInstances.push_back(Inst);
 	}
 }
+
+void UParticleSystemComponent::RefreshEventManagerBinding()
+{
+	SetEventManager(FParticleSystemManager::Get().GetDefaultEventManager());
+	if (EventManager)
+	{
+		MissingEventManagerTimeSeconds = 0.0f;
+	}
+}
+
+void UParticleSystemComponent::ResetAutomaticLODTransitionState()
+{
+	PendingAutomaticLODIndex = -1;
+	PendingAutomaticLODTimeSeconds = 0.0f;
+}
+
+void UParticleSystemComponent::UpdateAutomaticLODSelection(float DeltaTime)
+{
+	if (!Template || !Template->bUseAutomaticLOD)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FMinimalViewInfo ActivePOV;
+	if (!World->GetActivePOV(ActivePOV))
+	{
+		// Preview/tool or partial-runtime contexts may not have an active POV yet.
+		// Keep the current manual/runtime-selected index unchanged in that case,
+		// and drop any pending transition because the source view is unavailable.
+		ResetAutomaticLODTransitionState();
+		return;
+	}
+
+	const float DistanceToView = FVector::Distance(ActivePOV.Location, GetWorldLocation());
+	const int32 RawTargetLODIndex = Template->GetLODIndexForDistance(DistanceToView);
+	int32 StabilizedTargetLODIndex = CurrentLODIndex;
+	const float Hysteresis = std::max(0.0f, Template->LODDistanceHysteresis);
+
+	if (RawTargetLODIndex > CurrentLODIndex)
+	{
+		while (StabilizedTargetLODIndex < RawTargetLODIndex)
+		{
+			const int32 NextLODIndex = StabilizedTargetLODIndex + 1;
+			const float EnterDistance = Template->GetLODDistance(NextLODIndex) + Hysteresis;
+			if (DistanceToView < EnterDistance)
+			{
+				break;
+			}
+
+			StabilizedTargetLODIndex = NextLODIndex;
+		}
+	}
+	else if (RawTargetLODIndex < CurrentLODIndex)
+	{
+		while (StabilizedTargetLODIndex > RawTargetLODIndex)
+		{
+			const float ReturnDistance = std::max(
+				0.0f,
+				Template->GetLODDistance(StabilizedTargetLODIndex) - Hysteresis);
+			if (DistanceToView >= ReturnDistance)
+			{
+				break;
+			}
+
+			--StabilizedTargetLODIndex;
+		}
+	}
+
+	if (StabilizedTargetLODIndex == CurrentLODIndex)
+	{
+		ResetAutomaticLODTransitionState();
+		return;
+	}
+
+	const float SwitchDelay = std::max(0.0f, Template->LODSwitchDelay);
+	if (SwitchDelay <= 0.0f)
+	{
+		CurrentLODIndex = StabilizedTargetLODIndex;
+		ClampCurrentLODIndex();
+		ResetAutomaticLODTransitionState();
+		return;
+	}
+
+	if (PendingAutomaticLODIndex != StabilizedTargetLODIndex)
+	{
+		PendingAutomaticLODIndex = StabilizedTargetLODIndex;
+		PendingAutomaticLODTimeSeconds = 0.0f;
+		return;
+	}
+
+	PendingAutomaticLODTimeSeconds += std::max(0.0f, DeltaTime);
+	if (PendingAutomaticLODTimeSeconds < SwitchDelay)
+	{
+		return;
+	}
+
+	CurrentLODIndex = PendingAutomaticLODIndex;
+	ClampCurrentLODIndex();
+	ResetAutomaticLODTransitionState();
+}
+
 void UParticleSystemComponent::DestroyEmitterInstances()
 {
 	for (FParticleEmitterInstance* Inst : EmitterInstances) delete Inst;
 	EmitterInstances.clear();
 	PendingEvents = {};
+	ResetAutomaticLODTransitionState();
 }
 
 void UParticleSystemComponent::DispatchEventsToManager()
 {
-	if (!EventManager) { PendingEvents = {}; return; }
+	if (!EventManager)
+	{
+		const float WarningDelaySeconds = 0.5f;
+		if (!bHasWarnedMissingEventManager &&
+			MissingEventManagerTimeSeconds >= WarningDelaySeconds)
+		{
+			UE_LOG("[ParticleSystemComponent] No default ParticleEventManager is registered for this PSC. Particle playback/rendering can continue without it, but persistent missing-manager state means external particle events will not be delivered. This can be valid in preview/tool contexts; runtime gameplay that expects event delivery should register a manager.");
+			bHasWarnedMissingEventManager = true;
+		}
+
+		// EventManager is optional for basic particle playback/rendering, but external
+		// gameplay/event-delivery use cases expect runtime registration. We still drain
+		// undelivered events in this phase instead of buffering or falling back locally.
+		PendingEvents = {};
+		return;
+	}
+
+	MissingEventManagerTimeSeconds = 0.0f;
 	EventManager->HandleParticleSpawnEvents    (this, PendingEvents.Spawn);
 	EventManager->HandleParticleDeathEvents    (this, PendingEvents.Death);
 	EventManager->HandleParticleCollisionEvents(this, PendingEvents.Collision);
@@ -451,14 +623,47 @@ void UParticleSystemComponent::DispatchEventsToManager()
 	PendingEvents = {};
 }
 
-void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
+void UParticleSystemComponent::SetCurrentLODIndex(int32 InLODIndex)
+{
+	CurrentLODIndex = InLODIndex;
+	ClampCurrentLODIndex();
+	ResetAutomaticLODTransitionState();
+	ApplyCurrentLODToEmitterInstances();
+
+	PushDynamicDataToProxy();
+	MarkWorldBoundsDirty();
+}
+
+void UParticleSystemComponent::ClampCurrentLODIndex()
 {
 	if (CurrentLODIndex < 0)
 	{
 		CurrentLODIndex = 0;
 	}
 
-	// distance 기반 자동 선택은 아직 없으므로, 현재는 PSC의 수동 LOD index를 그대로 전달한다.
+	if (!Template)
+	{
+		return;
+	}
+
+	Template->EnsureLODDistances();
+
+	const int32 MaxLODCount = Template->GetMaxLODCount();
+	if (MaxLODCount <= 0)
+	{
+		CurrentLODIndex = 0;
+		return;
+	}
+
+	CurrentLODIndex = std::clamp(CurrentLODIndex, 0, MaxLODCount - 1);
+}
+
+void UParticleSystemComponent::ApplyCurrentLODToEmitterInstances()
+{
+	ClampCurrentLODIndex();
+
+	// LOD selection is computed elsewhere (manual setter or stabilized automatic
+	// selection), and this function only propagates the already-chosen index.
 	for (FParticleEmitterInstance* Inst : EmitterInstances)
 	{
 		if (!Inst)

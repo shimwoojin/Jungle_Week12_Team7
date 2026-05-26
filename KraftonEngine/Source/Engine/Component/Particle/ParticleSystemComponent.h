@@ -66,6 +66,9 @@ public:
 	int32 GetEmitterInstanceCount() const { return static_cast<int32>(EmitterInstances.size()); }
 	FParticleEmitterInstance* GetEmitterInstance(int32 Index) const;
 
+	int32 GetCurrentLODIndex() const { return CurrentLODIndex; }
+	void  SetCurrentLODIndex(int32 InLODIndex);
+
 	void RebuildInstances(bool bReset = true);
 	const FString& GetTemplatePath() const { return TemplatePath.ToString(); }
 
@@ -85,6 +88,16 @@ protected:
 	void CreateEmitterInstances();
 	void DestroyEmitterInstances();
 	void DispatchEventsToManager();
+	// PSC는 EventManager를 직접 탐색/생성하지 않고, 상위 particle runtime provider가
+	// 등록한 default manager를 이 helper로 주입받는다. EventManager는 basic playback/rendering에는
+	// 필수가 아니지만, runtime gameplay가 외부 particle event delivery를 기대한다면 soft requirement다.
+	// nullptr도 유효한 미주입 상태이며, 이 경우 PSC는 provider 상태를 다시 동기화할 수 있다.
+	void RefreshEventManagerBinding();
+	// Automatic LOD selection now includes stabilization. Raw distance still drives
+	// the choice, but hysteresis and switch delay suppress boundary chatter.
+	void UpdateAutomaticLODSelection(float DeltaTime);
+	void ResetAutomaticLODTransitionState();
+	void ClampCurrentLODIndex();
 	void ApplyCurrentLODToEmitterInstances();
 	bool IsSystemFinished() const;
 	void LoadTemplateFromPath();
@@ -116,8 +129,18 @@ protected:
 	// emitter 인스턴스 — PSC 가 owning.
 	TArray<FParticleEmitterInstance*> EmitterInstances;
 
-	// EventManager (level scope). nullptr 이면 PSC 가 자체 처리만.
+	// Higher-level particle runtime system이 주입하는 non-owning dependency.
+	// PSC는 이 manager를 직접 찾거나 만들지 않는다.
+	// EventManager가 없어도 particle playback/rendering은 계속 가능하지만,
+	// 외부 gameplay/event-delivery use case는 manager registration을 기대한다.
 	AParticleEventManager* EventManager = nullptr;
+	bool bHasWarnedMissingEventManager = false;
+	float MissingEventManagerTimeSeconds = 0.0f;
+
+	// Automatic LOD stabilization state. A candidate LOD must remain valid long
+	// enough before it replaces CurrentLODIndex.
+	int32 PendingAutomaticLODIndex = -1;
+	float PendingAutomaticLODTimeSeconds = 0.0f;
 
 	// PSC 가 매 프레임 누적한 이벤트 (모든 emitter merge).
 	struct FPendingEvents
