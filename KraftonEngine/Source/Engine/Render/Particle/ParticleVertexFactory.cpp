@@ -1,4 +1,4 @@
-#include "ParticleVertexFactory.h"
+﻿#include "ParticleVertexFactory.h"
 
 #include "Render/Resource/Buffer.h"
 #include "Render/Shader/ShaderManager.h"
@@ -504,6 +504,16 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	if (Replay.EmitterType != EDynamicEmitterType::Ribbon)
+	{
+		return false;
+	}
+
+	const auto& RibbonReplay = static_cast<const FDynamicRibbonEmitterReplayData&>(Replay);
+	const int32 MaxTessellation = std::clamp(RibbonReplay.MaxTessellation, 1, 64);
+	const float TangentTension = std::clamp(RibbonReplay.TangentTension, 0.0f, 1.0f);
+	const float TilesPerTrail = std::max(0.0f, RibbonReplay.TilesPerTrail);
+
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N < 2 || View.ParticleStride == 0 || !View.ParticleData) return false; // trail은 최소 2점
@@ -531,34 +541,130 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		return PA.RelativeTime > PB.RelativeTime;
 	});
 
-	const uint32 NumPoints = N;
-	const uint32 NumSegments = N - 1;
+	struct FRibbonControlPoint
+	{
+		FVector Position;
+		FVector Tangent;
+		FVector4 Color;
+		FVector Size;
+	};
+
+	struct FRibbonSamplePoint
+	{
+		FVector Position;
+		FVector4 Color;
+		FVector Size;
+		float TrailAlpha = 0.0f;
+	};
+
+	auto HermiteInterpolate = [](const FVector& P0, const FVector& T0,
+	                             const FVector& P1, const FVector& T1,
+	                             float T) -> FVector
+	{
+		const float T2 = T * T;
+		const float T3 = T2 * T;
+
+		return
+			P0 * (2.0f * T3 - 3.0f * T2 + 1.0f) +
+			T0 * (T3 - 2.0f * T2 + T) +
+			P1 * (-2.0f * T3 + 3.0f * T2) +
+			T1 * (T3 - T2);
+	};
+
+	std::vector<FRibbonControlPoint> ControlPoints;
+	ControlPoints.reserve(N);
+	for (uint32 i = 0; i < N; ++i)
+	{
+		const uint32 Idx = Order[i];
+		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + Idx * Stride);
+
+		FRibbonControlPoint CP;
+		CP.Position = GetWorldPos(Idx);
+		CP.Tangent = FVector::ZeroVector;
+		CP.Color = P.Color;
+		CP.Size = P.Size;
+		ControlPoints.push_back(CP);
+	}
+
+	// 각 control point의 tangent를 계산한다. TangentTension은 곡선 보간 강도다.
+	for (uint32 i = 0; i < N; ++i)
+	{
+		const FVector Prev = (i > 0) ? ControlPoints[i - 1].Position : ControlPoints[i].Position;
+		const FVector Next = (i + 1 < N) ? ControlPoints[i + 1].Position : ControlPoints[i].Position;
+		ControlPoints[i].Tangent = (Next - Prev) * (0.5f * TangentTension);
+	}
+
+	const uint32 ControlSegmentCount = N - 1;
+	const uint32 TessellationPerSegment = static_cast<uint32>(MaxTessellation);
+
+	std::vector<FRibbonSamplePoint> Samples;
+	Samples.reserve(1 + ControlSegmentCount * TessellationPerSegment);
+
+	for (uint32 Segment = 0; Segment < ControlSegmentCount; ++Segment)
+	{
+		const FRibbonControlPoint& A = ControlPoints[Segment];
+		const FRibbonControlPoint& B = ControlPoints[Segment + 1];
+
+		for (uint32 Step = 0; Step < TessellationPerSegment; ++Step)
+		{
+			const float LocalT = static_cast<float>(Step) / static_cast<float>(TessellationPerSegment);
+			const float GlobalT = static_cast<float>(Segment) + LocalT;
+
+			FRibbonSamplePoint S;
+			S.Position = HermiteInterpolate(A.Position, A.Tangent, B.Position, B.Tangent, LocalT);
+			S.Color = A.Color + (B.Color - A.Color) * LocalT;
+			S.Size = A.Size + (B.Size - A.Size) * LocalT;
+			S.TrailAlpha = GlobalT / static_cast<float>(ControlSegmentCount);
+			Samples.push_back(S);
+		}
+	}
+
+	// 마지막 control point는 위 루프에서 중복 생성을 피하려고 별도로 추가한다.
+	{
+		const FRibbonControlPoint& Last = ControlPoints.back();
+
+		FRibbonSamplePoint S;
+		S.Position = Last.Position;
+		S.Color = Last.Color;
+		S.Size = Last.Size;
+		S.TrailAlpha = 1.0f;
+		Samples.push_back(S);
+	}
+
+	const uint32 NumPoints = static_cast<uint32>(Samples.size());
+	const uint32 NumSegments = NumPoints - 1;
 	const uint32 VertCount = NumPoints * 2;
 	const uint32 IndexCount = NumSegments * 6;
 
 	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
 	for (uint32 i = 0; i < NumPoints; ++i)
 	{
-		const uint32 Idx = Order[i];
-		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + Idx * Stride);
-		const FVector Pos = GetWorldPos(Idx);
+		const FRibbonSamplePoint& S = Samples[i];
+		const FVector Pos = S.Position;
 
-		// segment 방향: 다음 point로 (마지막은 직전 방향 재사용).
-		FVector Dir = (i + 1 < NumPoints) ? (GetWorldPos(Order[i + 1]) - Pos)
-		                                  : (Pos - GetWorldPos(Order[i - 1]));
+		// segment 방향: 다음 sample로 (마지막은 직전 방향 재사용).
+		FVector Dir = (i + 1 < NumPoints) ? (Samples[i + 1].Position - Pos)
+		                                  : (Pos - Samples[i - 1].Position);
 		const float DirLen = Dir.Length();
-		if (DirLen > 1e-4f) Dir = Dir * (1.0f / DirLen);
+		if (DirLen > 1e-4f)
+		{
+			Dir = Dir * (1.0f / DirLen);
+		}
+		else
+		{
+			Dir = FVector::ForwardVector;
+		}
 
 		FVector Side = Dir.Cross(CameraPosition - Pos);
 		const float SideLen = Side.Length();
-		const float HalfWidth = P.Size.X * 0.5f;
+		const float HalfWidth = S.Size.X * 0.5f;
 		Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
 
-		const float U = static_cast<float>(i) / static_cast<float>(NumSegments);
+		const float U = S.TrailAlpha * TilesPerTrail;
 		FParticleBeamTrailVertex& L = Vertices[i * 2 + 0];
 		FParticleBeamTrailVertex& R = Vertices[i * 2 + 1];
-		L.Position = Pos - Side; L.Color = P.Color; L.UV = { U, 0.0f };
-		R.Position = Pos + Side; R.Color = P.Color; R.UV = { U, 1.0f };
+		L.Position = Pos - Side; L.Color = S.Color; L.UV = { U, 0.0f };
+		R.Position = Pos + Side; R.Color = S.Color; R.UV = { U, 1.0f };
 	}
 
 	std::vector<uint32> Indices(IndexCount);

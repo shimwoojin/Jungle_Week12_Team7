@@ -447,7 +447,7 @@ struct FDynamicBeamEmitterData : FDynamicEmitterDataBase
 // -- Ribbon ----
 struct FDynamicRibbonEmitterReplayData : FDynamicEmitterReplayDataBase
 {
-	int32 MaxTessellation = 1;
+	int32 MaxTessellation = 8;
 	float TangentTension = 0.5f;    // ribbon tangent 보간 강도 (0 = 느슨함, 1 = 강함)
 	float TilesPerTrail = 1.0f;     // trail 전체 UV 반복 수
 };

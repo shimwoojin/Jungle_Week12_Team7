@@ -2632,9 +2632,11 @@ FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 	{
 		if (auto* RibbonTypeData = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule))
 		{
-			Data->Source.MaxTessellation = RibbonTypeData->MaxTessellation;
-			Data->Source.TangentTension = RibbonTypeData->TangentTension;
-			Data->Source.TilesPerTrail = RibbonTypeData->TilesPerTrail;
+			// TypeData Ribbon 설정을 RenderThread용 ReplayData로 넘긴다.
+			// UI/로드/직접 코드 수정으로 범위를 벗어난 값이 들어와도 렌더 쪽에서는 안전한 값만 사용하게 한다.
+			Data->Source.MaxTessellation = std::clamp(RibbonTypeData->MaxTessellation, 1, 64);
+			Data->Source.TangentTension = std::clamp(RibbonTypeData->TangentTension, 0.0f, 1.0f);
+			Data->Source.TilesPerTrail = std::max(0.0f, RibbonTypeData->TilesPerTrail);
 		}
 	}
 
