@@ -1716,18 +1716,7 @@
     <ClCompile Include="Intermediate\Generated\Reflection.generated.cpp">
       <Filter>Intermediate\Generated</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\Distribution.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFLoat.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatConstant.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatCurve.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionFloatUniform.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVector.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorConstant.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorCurve.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Editor\EditorEngine.h">

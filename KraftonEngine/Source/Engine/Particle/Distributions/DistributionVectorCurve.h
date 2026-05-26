@@ -22,6 +22,7 @@ public:
 	FVector GetValue(float Time, UObject* Data = nullptr) const override;
 	void GetInRange(float& OutMin, float& OutMax) const override;
 	void GetRange(FVector& OutMin, FVector& OutMax) const override;
+	const char* GetDistributionDisplayName() const override;
 
 	FFloatCurve& GetXCurve() { return XCurve; }
 	FFloatCurve& GetYCurve() { return YCurve; }

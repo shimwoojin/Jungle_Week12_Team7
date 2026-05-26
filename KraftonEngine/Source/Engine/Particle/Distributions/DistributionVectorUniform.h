@@ -10,6 +10,7 @@ public:
 
 	FVector GetValue(float Time, UObject* Data = nullptr) const override;
 	void GetRange(FVector& OutMin, FVector& OutMax) const override;
+	const char* GetDistributionDisplayName() const override;
 
 	UPROPERTY(Edit, Save, Category="Distribution", DisplayName="Min")
 	FVector Min = {0.0f, 0.0f, 0.0f};

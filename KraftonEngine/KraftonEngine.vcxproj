@@ -641,13 +641,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleEmitter.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleEmitterInstance.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleEventManager.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleLODLevel.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleModule.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleSystem.cpp" />
-    <ClCompile Include="Source\Engine\Particle\ParticleSystemManager.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColor.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.cpp" />
@@ -658,7 +651,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSize.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSizeByLife.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSpawn.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleVelocity.cpp" />
     <ClCompile Include="Source\Engine\Particle\TypeData\ParticleModuleTypeDataBase.cpp" />
     <ClCompile Include="Source\Engine\Particle\TypeData\ParticleModuleTypeDataBeam.cpp" />

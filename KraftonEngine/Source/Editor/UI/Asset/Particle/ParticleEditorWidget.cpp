@@ -428,6 +428,11 @@ namespace
 		return bChanged;
 	}
 
+	const char* GetDistributionDisplayName(const UDistribution* Distribution)
+	{
+		return Distribution ? Distribution->GetDistributionDisplayName() : "None";
+	}
+
 
 	int32 FloatDistributionType(UDistributionFloat* Distribution)
 	{
@@ -664,8 +669,8 @@ namespace
 		EnsureCurveKeyCount(YCurve, KeyCount);
 		EnsureCurveKeyCount(ZCurve, KeyCount);
 
-		ImGui::PushID("VectorConstantCurve");
-		if (ImGui::TreeNodeEx("Constant Curve", ImGuiTreeNodeFlags_DefaultOpen))
+		ImGui::PushID("DistributionVectorConstantCurve");
+		if (ImGui::TreeNodeEx("Distribution Vector Constant Curve", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			ImGui::TextUnformatted("Points");
 			ImGui::SameLine(160.0f);
@@ -843,8 +848,13 @@ namespace
 		ImGui::TextUnformatted(Label);
 		EnsureFloatDistribution(Distribution, Outer);
 
-		static const char* TypeNames[] = { "Constant", "Uniform", "Curve" };
+		static const char* TypeNames[] = {
+			"Distribution Float Constant",
+			"Distribution Float Uniform",
+			"Distribution Float Constant Curve"
+		};
 		int32 Type = FloatDistributionType(Distribution);
+		ImGui::Text("Current: %s", GetDistributionDisplayName(Distribution));
 		if (ComboInt("Distribution Type", Type, TypeNames, 3))
 		{
 			float PrevMin = 0.0f;
@@ -904,7 +914,7 @@ namespace
 		}
 		else if (auto* Curve = Cast<UDistributionFloatCurve>(Distribution))
 		{
-			bChanged |= DrawFloatCurveKeyArrayEditor("Constant Curve", Curve->GetCurve(), Speed);
+			bChanged |= DrawFloatCurveKeyArrayEditor("Distribution Float Constant Curve", Curve->GetCurve(), Speed);
 		}
 
 		ImGui::PopID();
@@ -921,8 +931,13 @@ namespace
 		ImGui::TextUnformatted(Label);
 		EnsureVectorDistribution(Distribution, Outer);
 
-		static const char* TypeNames[] = { "Constant", "Uniform", "Curve" };
+		static const char* TypeNames[] = {
+			"Distribution Vector Constant",
+			"Distribution Vector Uniform",
+			"Distribution Vector Constant Curve"
+		};
 		int32 Type = VectorDistributionType(Distribution);
+		ImGui::Text("Current: %s", GetDistributionDisplayName(Distribution));
 		if (ComboInt("Distribution Type", Type, TypeNames, 3))
 		{
 			FVector PrevMin(0.0f, 0.0f, 0.0f);
@@ -3309,7 +3324,7 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 	if (!bHasCurve)
 	{
 		ImGui::TextDisabled("Selected module has no Curve distribution yet.");
-		ImGui::TextWrapped("In the Details panel, change a Distribution Type to Curve. Initial modules evaluate curves with SpawnTime. Over-Life modules evaluate curves with Particle RelativeTime.");
+		ImGui::TextWrapped("In the Details panel, change Distribution Type to Distribution Float Constant Curve or Distribution Vector Constant Curve. Initial modules evaluate curves with SpawnTime. Over-Life modules evaluate curves with Particle RelativeTime.");
 	}
 
 	if (bChanged)

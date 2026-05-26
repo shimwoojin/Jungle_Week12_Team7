@@ -20,6 +20,11 @@ namespace
 	}
 }
 
+const char* UDistributionVectorUniform::GetDistributionDisplayName() const
+{
+	return "Distribution Vector Uniform";
+}
+
 FVector UDistributionVectorUniform::GetValue(float Time, UObject* Data) const
 {
 	(void)Time;

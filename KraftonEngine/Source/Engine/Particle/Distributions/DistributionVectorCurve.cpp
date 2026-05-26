@@ -65,6 +65,11 @@ UDistributionVectorCurve::UDistributionVectorCurve()
 	SetConstant(FVector(0.0f, 0.0f, 0.0f));
 }
 
+const char* UDistributionVectorCurve::GetDistributionDisplayName() const
+{
+	return "Distribution Vector Constant Curve";
+}
+
 FVector UDistributionVectorCurve::GetValue(float Time, UObject* Data) const
 {
 	(void)Data;

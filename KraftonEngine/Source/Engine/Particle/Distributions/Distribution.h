@@ -10,4 +10,8 @@ public:
 	GENERATED_BODY()
 
 	virtual void GetInRange(float& OutMin, float& OutMax) const;
+
+	// Unreal Cascade 스타일 표시 이름.
+	// 예: Distribution Float Constant, Distribution Vector Uniform.
+	virtual const char* GetDistributionDisplayName() const;
 };
