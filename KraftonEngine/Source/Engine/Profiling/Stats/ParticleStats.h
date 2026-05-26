@@ -38,6 +38,18 @@ struct FParticleStats
 	static uint64 ReservedDataBytes;   // 예약 입자 데이터 (MaxActiveParticles * stride 합)
 
 	// --- Ribbon RT geometry (per-frame aggregate) ---
+	// Sprite/Mesh/Beam도 같은 "RT가 실제로 얼마나 geometry를 냈는가?" 관점으로 본다.
+	// Sprite/Mesh는 instance-driven, Beam/Ribbon은 strip/vertex/index aggregate다.
+	static uint32 SpriteRTInstances;
+	static uint32 SpriteRTVertices;
+	static uint32 SpriteRTIndices;
+	static uint32 MeshRTInstances;
+	static uint32 MeshRTVertices;
+	static uint32 MeshRTIndices;
+	static uint32 BeamRTStrips;
+	static uint32 BeamRTVertices;
+	static uint32 BeamRTIndices;
+
 	// RibbonTrailBuilds            : ribbon trail build attempts that reached RT geometry emission
 	// RibbonRuntimeCappedBuilds    : builds where requested tessellation was reduced by sample budget
 	// RibbonMaxEffectiveTessellation : max post-budget tessellation actually used this frame
@@ -94,6 +106,24 @@ struct FParticleStats
 		RibbonVertices += VertexCount;
 		RibbonIndices += IndexCount;
 	}
+	static void AddSpriteRTGeometry(uint32 InstanceCount, uint32 VertexCount, uint32 IndexCount)
+	{
+		SpriteRTInstances += InstanceCount;
+		SpriteRTVertices += VertexCount;
+		SpriteRTIndices += IndexCount;
+	}
+	static void AddMeshRTGeometry(uint32 InstanceCount, uint32 VertexCount, uint32 IndexCount)
+	{
+		MeshRTInstances += InstanceCount;
+		MeshRTVertices += VertexCount;
+		MeshRTIndices += IndexCount;
+	}
+	static void AddBeamRTGeometry(uint32 StripCount, uint32 VertexCount, uint32 IndexCount)
+	{
+		BeamRTStrips += StripCount;
+		BeamRTVertices += VertexCount;
+		BeamRTIndices += IndexCount;
+	}
 
 	static void Reset()
 	{
@@ -109,6 +139,15 @@ struct FParticleStats
 		GTMemoryBytes = 0;
 		ActiveDataBytes = 0;
 		ReservedDataBytes = 0;
+		SpriteRTInstances = 0;
+		SpriteRTVertices = 0;
+		SpriteRTIndices = 0;
+		MeshRTInstances = 0;
+		MeshRTVertices = 0;
+		MeshRTIndices = 0;
+		BeamRTStrips = 0;
+		BeamRTVertices = 0;
+		BeamRTIndices = 0;
 		RibbonTrailBuilds = 0;
 		RibbonRuntimeCappedBuilds = 0;
 		RibbonMaxEffectiveTessellation = 0;
@@ -130,6 +169,12 @@ struct FParticleStats
 #define PARTICLE_STATS_ADD_MEMORY(Total, Active, Reserved)  FParticleStats::AddMemory((Total), (Active), (Reserved))
 #define PARTICLE_STATS_ADD_DRAW_CALL()                      (FParticleStats::DrawCalls++)
 #define PARTICLE_STATS_ADD_DRAW_CALLS(Count)                (FParticleStats::DrawCalls += (Count))
+#define PARTICLE_STATS_ADD_SPRITE_RT_GEOMETRY(InstanceCount, VertexCount, IndexCount) \
+	FParticleStats::AddSpriteRTGeometry((InstanceCount), (VertexCount), (IndexCount))
+#define PARTICLE_STATS_ADD_MESH_RT_GEOMETRY(InstanceCount, VertexCount, IndexCount) \
+	FParticleStats::AddMeshRTGeometry((InstanceCount), (VertexCount), (IndexCount))
+#define PARTICLE_STATS_ADD_BEAM_RT_GEOMETRY(StripCount, VertexCount, IndexCount) \
+	FParticleStats::AddBeamRTGeometry((StripCount), (VertexCount), (IndexCount))
 #define PARTICLE_STATS_ADD_RIBBON_GEOMETRY(EffectiveTessellation, ControlSegmentCount, SamplePointCount, VertexCount, IndexCount, bRuntimeCapped) \
 	FParticleStats::AddRibbonGeometry((EffectiveTessellation), (ControlSegmentCount), (SamplePointCount), (VertexCount), (IndexCount), (bRuntimeCapped))
 #else
@@ -144,5 +189,8 @@ struct FParticleStats
 #define PARTICLE_STATS_ADD_MEMORY(Total, Active, Reserved)  ((void)0)
 #define PARTICLE_STATS_ADD_DRAW_CALL()                      ((void)0)
 #define PARTICLE_STATS_ADD_DRAW_CALLS(Count)                ((void)0)
+#define PARTICLE_STATS_ADD_SPRITE_RT_GEOMETRY(InstanceCount, VertexCount, IndexCount) ((void)0)
+#define PARTICLE_STATS_ADD_MESH_RT_GEOMETRY(InstanceCount, VertexCount, IndexCount) ((void)0)
+#define PARTICLE_STATS_ADD_BEAM_RT_GEOMETRY(StripCount, VertexCount, IndexCount) ((void)0)
 #define PARTICLE_STATS_ADD_RIBBON_GEOMETRY(EffectiveTessellation, ControlSegmentCount, SamplePointCount, VertexCount, IndexCount, bRuntimeCapped) ((void)0)
 #endif

@@ -392,6 +392,31 @@ void FOverlayStatSystem::BuildParticleLines(TArray<FString>& OutLines) const
 	// --- 드로우콜: PrepareDrawBuffer에서 제출된 파티클 섹션 수 (emitter당 1 draw) ---
 	snprintf(Buffer, sizeof(Buffer), "Draw Calls : %u (submitted)", FParticleStats::DrawCalls);
 	OutLines.push_back(FString(Buffer));
+	if (FParticleStats::SpriteRTInstances > 0 || FParticleStats::MeshRTInstances > 0)
+	{
+		snprintf(
+			Buffer,
+			sizeof(Buffer),
+			"Sprite RT : inst %u  verts %u  idx %u   Mesh RT : inst %u  verts %u  idx %u",
+			FParticleStats::SpriteRTInstances,
+			FParticleStats::SpriteRTVertices,
+			FParticleStats::SpriteRTIndices,
+			FParticleStats::MeshRTInstances,
+			FParticleStats::MeshRTVertices,
+			FParticleStats::MeshRTIndices);
+		OutLines.push_back(FString(Buffer));
+	}
+	if (FParticleStats::BeamRTStrips > 0)
+	{
+		snprintf(
+			Buffer,
+			sizeof(Buffer),
+			"Beam RT : strips %u  verts %u  idx %u",
+			FParticleStats::BeamRTStrips,
+			FParticleStats::BeamRTVertices,
+			FParticleStats::BeamRTIndices);
+		OutLines.push_back(FString(Buffer));
+	}
 	if (FParticleStats::RibbonTrailBuilds > 0)
 	{
 		snprintf(

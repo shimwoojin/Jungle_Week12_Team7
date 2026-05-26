@@ -438,6 +438,11 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	OutDraw.VertexCount    = QuadVB.GetVertexCount();
 	OutDraw.IndexCount     = QuadIB.GetIndexCount();
 	OutDraw.InstanceCount  = N;
+#if STATS
+	// Sprite RT geometry is instance-driven: 1 particle -> 1 emitted instance,
+	// while the shared static quad contributes the per-instance vertex/index shape.
+	PARTICLE_STATS_ADD_SPRITE_RT_GEOMETRY(N, OutDraw.VertexCount * N, OutDraw.IndexCount * N);
+#endif
 	return true;
 }
 
@@ -588,6 +593,11 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	OutDraw.VertexCount = MB->GetVertexBuffer().GetVertexCount();
 	OutDraw.IndexCount = MB->GetIndexBuffer().GetIndexCount();
 	OutDraw.InstanceCount = N;
+#if STATS
+	// Mesh RT geometry is also instance-driven: the mesh VB/IB is reused, while
+	// emitted instance count reflects how many particle instances hit the RT path.
+	PARTICLE_STATS_ADD_MESH_RT_GEOMETRY(N, OutDraw.VertexCount * N, OutDraw.IndexCount * N);
+#endif
 	return true;
 }
 
@@ -772,6 +782,10 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	OutDraw.VertexCount  = VertCount;
 	OutDraw.IndexCount   = IndexCount;
 	OutDraw.InstanceCount = 0;
+#if STATS
+	// Beam RT geometry is strip-driven rather than instance-driven.
+	PARTICLE_STATS_ADD_BEAM_RT_GEOMETRY(BeamStripCount, VertCount, IndexCount);
+#endif
 	return true;
 }
 
