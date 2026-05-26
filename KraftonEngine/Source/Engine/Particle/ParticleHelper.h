@@ -343,6 +343,8 @@ struct FDynamicEmitterReplayDataBase
 	FParticleStorage SnapshotStorage;
 
 	// Material이 BlendState/DepthStencilState 등 렌더 상태의 single source of truth.
+	// RT는 이 값을 section material의 primary source로 우선 사용하고, 없을 때만
+	// SceneProxy cached material / type fallback으로 내려간다.
 	// 별도 BlendState 필드를 두지 않음 — Material->GetBlendState() 사용.
 	UMaterial* Material = nullptr;
 	bool bUseLocalSpace = false;

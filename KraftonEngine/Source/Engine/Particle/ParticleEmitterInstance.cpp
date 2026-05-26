@@ -2331,6 +2331,8 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	UParticleModuleRequired* Required = LOD->RequiredModule;
 
 	OutData.Material = Required->ResolveMaterial();
+	// Replay.Material은 SceneProxy가 section material을 고를 때 우선 사용하는 primary source다.
+	// cached emitter material은 이 값이 비었을 때만 fallback으로 사용된다.
 	// SortMode는 material blend와 별개로 "어떤 기준으로 particle를 재배치할지"를 RT에 알려준다.
 	OutData.SortMode = ToReplaySortMode(Required->SortMode);
 	// NOTE: Replay에 BlendState 필드 없음 — Material.GetBlendState()가 single source of truth.

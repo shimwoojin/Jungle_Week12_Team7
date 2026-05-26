@@ -19,6 +19,52 @@
 #include <vector>
 #include <cmath>
 
+namespace
+{
+UMaterial* ResolveParticleTypeFallbackMaterial(
+	EDynamicEmitterType EmitterType,
+	UMaterial* SpriteFallback,
+	UMaterial* MeshFallback,
+	UMaterial* BeamTrailFallback)
+{
+	switch (EmitterType)
+	{
+	case EDynamicEmitterType::Mesh:
+		return MeshFallback;
+	case EDynamicEmitterType::Beam:
+	case EDynamicEmitterType::Ribbon:
+		return BeamTrailFallback;
+	case EDynamicEmitterType::Sprite:
+	default:
+		return SpriteFallback;
+	}
+}
+
+UMaterial* ResolveReplaySectionMaterial(
+	const FDynamicEmitterReplayDataBase& Replay,
+	UMaterial* CachedEmitterMaterial,
+	UMaterial* TypeFallbackMaterial)
+{
+	// Shared RT material authority chain:
+	//   1) Replay.Material   : GT가 current render replay LOD 기준으로 해석해 넘긴 material
+	//   2) CachedEmitterMat  : SceneProxy가 template/emitter index 기준으로 들고 있는 fallback
+	//   3) TypeFallbackMat   : sprite/mesh/beamtrail 기본 material
+	//
+	// 즉 Replay.Material은 advisory가 아니라 현재 particle RT path의 primary source다.
+	if (Replay.Material)
+	{
+		return Replay.Material;
+	}
+
+	if (CachedEmitterMaterial)
+	{
+		return CachedEmitterMaterial;
+	}
+
+	return TypeFallbackMaterial;
+}
+}
+
 // =============================================================================
 // FParticleSystemSceneProxy
 //   Day 3 마일스톤: 단색 빌보드 먼지 첫 DrawCall.
@@ -148,7 +194,9 @@ void FParticleSystemSceneProxy::UpdateMesh()
 	}
 
 	// Template이 있으면 emitter index별 RequiredModule.Material 캐싱.
-	// 없으면 EmitterMaterials는 비고 PrepareDrawBuffer가 fallback 사용.
+	// 없으면 EmitterMaterials는 비고 PrepareDrawBuffer가 replay/type fallback을 사용.
+	// 이 캐시는 RT material authority의 primary source가 아니라, replay에 material이
+	// 없을 때 emitter index 기준으로 복구하는 shared fallback 용도다.
 	EmitterMaterials.clear();
 	UParticleSystemComponent* PSC = GetPSC();
 	if (UParticleSystem* Template = PSC ? PSC->GetTemplate() : nullptr)
@@ -161,7 +209,9 @@ void FParticleSystemSceneProxy::UpdateMesh()
 			UParticleModuleRequired* Required = nullptr;
 			if (UParticleEmitter* Emitter = Template->GetEmitter(i))
 			{
-				// LOD 0 기준 — LOD 시스템 도입 시 CurrentLOD 사용.
+				// Template cache는 여전히 static/emitter-level fallback 성격이라 LOD 0 기준이다.
+				// 실제 draw 우선순위는 PrepareDrawBuffer의 Replay.Material -> cached material ->
+				// type fallback chain이 결정한다.
 				if (UParticleLODLevel* LOD = Emitter->GetCurrentLODLevel(0))
 				{
 					Required = LOD->RequiredModule;
@@ -251,38 +301,15 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 		}
 
 		// Material 먼저 결정 — sort 조건 산출 위해 BuildDraw 호출 전에 BlendState 확인.
-		// Most particle paths still lean on the proxy's cached emitter material when
-		// available. Ribbon is called out explicitly below because its current GT->RT
-		// contract now carries real shaping data and should prefer the replay-supplied
-		// material first so readers can answer "what material does this ribbon draw
-		// with?" without reverse-engineering the broader shared fallback path.
+		// 현재 전 타입 공통 RT material authority는
+		//   Replay.Material -> cached emitter material -> type fallback
+		// 순서다. Replay.Material은 GT replay contract가 RT까지 들고 온 primary source이고,
+		// SceneProxy cache는 emitter index 기반 복구용 fallback이다.
 		UMaterial* RequiredMat = (EmitterIdx < EmitterMaterials.size())
 			? EmitterMaterials[EmitterIdx] : nullptr;
-		UMaterial* FallbackMat = SpriteMaterial;
-		switch (Replay->EmitterType)
-		{
-		case EDynamicEmitterType::Mesh:   FallbackMat = MeshMaterial;      break;
-		case EDynamicEmitterType::Beam:
-		case EDynamicEmitterType::Ribbon: FallbackMat = BeamTrailMaterial; break;
-		default: break;
-		}
-
-		UMaterial* SectionMat = nullptr;
-		if (Replay->EmitterType == EDynamicEmitterType::Ribbon)
-		{
-			// Current Ribbon material authority:
-			//   1) Replay.Material      : GT-resolved material that traveled with this
-			//                              emitter's ribbon snapshot
-			//   2) RequiredMat cache    : shared scene-proxy emitter cache fallback
-			//   3) BeamTrailMaterial    : type fallback when neither source is present
-			SectionMat = Replay->Material
-				? Replay->Material
-				: (RequiredMat ? RequiredMat : FallbackMat);
-		}
-		else
-		{
-			SectionMat = RequiredMat ? RequiredMat : FallbackMat;
-		}
+		UMaterial* FallbackMat = ResolveParticleTypeFallbackMaterial(
+			Replay->EmitterType, SpriteMaterial, MeshMaterial, BeamTrailMaterial);
+		UMaterial* SectionMat = ResolveReplaySectionMaterial(*Replay, RequiredMat, FallbackMat);
 
 		// 정렬 필요 여부는 이제 material blend가 아니라 replay 계약의 SortMode가 결정한다.
 		const bool bRequiresSort = Replay->SortMode != EParticleReplaySortMode::None;
