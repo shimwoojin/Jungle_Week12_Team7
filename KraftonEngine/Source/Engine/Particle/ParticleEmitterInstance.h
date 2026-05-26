@@ -2,6 +2,8 @@
 
 #include "Particle/ParticleHelper.h"
 #include "Particle/ParticleEvents.h"
+#include "Core/Types/CollisionTypes.h"
+#include "Core/Types/EngineTypes.h"
 #include "Math/Transform.h"
 #include "ParticleModule.h"
 #include "ParticleLODLevel.h"
@@ -11,6 +13,7 @@ class UParticleEmitter;
 class UParticleModuleCollision;
 class UParticleModuleSpawn;
 class UParticleSystemComponent;
+class AActor;
 struct FBaseParticle;
 struct FDynamicEmitterDataBase;
 struct FHitResult;
@@ -186,6 +189,31 @@ protected:
 	void FillReplayData(FDynamicEmitterReplayDataBase& OutData) const;
 
 private:
+	struct FParticleCollisionDebugStats
+	{
+		int32 ActiveParticles = 0;
+		int32 CurrentLODIndex = 0;
+		int32 EffectiveBudget = 0;
+		int32 CandidateCount = 0;
+		int32 HighPriorityCandidateCount = 0;
+		int32 FallbackCandidateCount = 0;
+		int32 QueriedCount = 0;
+		int32 SkippedByState = 0;
+		int32 SkippedByEarlyOut = 0;
+		int32 SkippedByBudget = 0;
+		int32 NoHitCount = 0;
+		int32 AcceptedHitCount = 0;
+		int32 SuppressedAsNoiseCount = 0;
+		int32 EmittedEventCount = 0;
+		int32 EventGatedCount = 0;
+		int32 StopLikeLowSpeedCount = 0;
+		int32 KilledImmediateCount = 0;
+		int32 FrozenAfterLimitCount = 0;
+		int32 IgnoredFurtherCollisionsCount = 0;
+		bool bCollisionFullyDisabledForLOD = false;
+		bool bCollisionEventGatedForLOD = false;
+	};
+
 	uint32 GetInitialParticleCapacity() const;
 	uint32 GrowParticleCapacity(uint32 Current, uint32 Required) const;
 	bool IsParticleKilled(const FBaseParticle* Particle) const;
@@ -229,16 +257,29 @@ private:
 		float TravelDistance,
 		const UParticleModuleCollision& CollisionModule,
 		FHitResult& OutHit) const;
+	bool ShouldDebugParticleCollisions() const;
+	void DebugDrawParticleCollisionQuery(
+		const FVector& StartWorld,
+		const FVector& EndWorld,
+		const FColor& Color) const;
+	void DebugDrawParticleCollisionHit(
+		const FHitResult& Hit,
+		const FVector& CollisionNormal,
+		const FColor& PointColor,
+		const FColor& NormalColor) const;
+	void DebugLogParticleCollisionStats(const FParticleCollisionDebugStats& Stats) const;
 	bool ResolveSingleParticleCollision(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,
 		uint32 ModuleOffset,
-		float DeltaTime);
+		float DeltaTime,
+		FParticleCollisionDebugStats* DebugStats);
 	bool ApplyImmediateParticleCollisionResponse(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,
 		const FHitResult& Hit,
-		const FVector& ImpactVelocity) const;
+		const FVector& ImpactVelocity,
+		FParticleCollisionDebugStats* DebugStats) const;
 	bool ShouldProcessCollisionsForCurrentLOD() const;
 	bool IsCollisionFullyDisabledForCurrentLOD() const;
 	bool ShouldEmitCollisionEventsForCurrentLOD() const;

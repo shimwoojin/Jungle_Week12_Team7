@@ -11,12 +11,14 @@
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
 #include "Component/Particle/ParticleSystemComponent.h"
+#include "Debug/DrawDebugHelpers.h"
 #include "GameFramework/World.h"
 #include "Math/Transform.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <string>
 
 namespace
 {
@@ -33,6 +35,12 @@ namespace
 	constexpr int32 ParticleCollisionBudgetLOD0 = 512;
 	constexpr int32 ParticleCollisionBudgetLOD1 = 128;
 	constexpr int32 ParticleCollisionBudgetLOD2OrLower = 0;
+	// Narrow runtime gate for collision observability. Leave false by default so
+	// normal gameplay stays quiet; flip during focused collision investigation.
+	bool GParticleCollisionDebugEnabled = false;
+	constexpr float ParticleCollisionDebugDrawDuration = 0.05f;
+	constexpr float ParticleCollisionDebugPointSize = 0.1f;
+	constexpr float ParticleCollisionDebugNormalLength = 10.0f;
 
 	void DecomposeVelocityAgainstSurfaceNormal(
 		const FVector& Velocity,
@@ -900,6 +908,12 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 
 	if (!ShouldProcessCollisionsForCurrentLOD())
 	{
+		FParticleCollisionDebugStats DebugStats;
+		DebugStats.ActiveParticles = static_cast<int32>(ActiveParticles);
+		DebugStats.CurrentLODIndex = CurrentLODIndex;
+		DebugStats.bCollisionFullyDisabledForLOD = true;
+		DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
+		DebugLogParticleCollisionStats(DebugStats);
 		return;
 	}
 
@@ -919,26 +933,42 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 	const int32 CollisionBudget = GetCollisionCheckBudgetForCurrentLOD();
 	if (CollisionBudget <= 0)
 	{
+		FParticleCollisionDebugStats DebugStats;
+		DebugStats.ActiveParticles = static_cast<int32>(ActiveParticles);
+		DebugStats.CurrentLODIndex = CurrentLODIndex;
+		DebugStats.EffectiveBudget = CollisionBudget;
+		DebugStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
+		DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
+		DebugLogParticleCollisionStats(DebugStats);
 		return;
 	}
+
+	FParticleCollisionDebugStats DebugStats;
+	DebugStats.ActiveParticles = static_cast<int32>(ActiveParticles);
+	DebugStats.CurrentLODIndex = CurrentLODIndex;
+	DebugStats.EffectiveBudget = CollisionBudget;
+	DebugStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
+	DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
 
 	TArray<uint32> HighPriorityCandidates;
 	TArray<uint32> FallbackCandidates;
 	HighPriorityCandidates.reserve(ActiveParticles);
 	FallbackCandidates.reserve(ActiveParticles);
 
-	ForEachActiveParticle([this, CollisionModule, CollisionModuleOffset, DeltaTime, &HighPriorityCandidates, &FallbackCandidates](uint32 ActiveIndex, FBaseParticle& Particle)
+	ForEachActiveParticle([this, CollisionModule, CollisionModuleOffset, DeltaTime, &HighPriorityCandidates, &FallbackCandidates, &DebugStats](uint32 ActiveIndex, FBaseParticle& Particle)
 		{
 			// Budget is no longer "first N particles win". We first remove obvious
 			// no-query cases, then spend the limited collision work on the more
 			// meaningful movers before falling back to lower-value candidates.
 			if (FinalizeParticleCollisionWithoutQuery(Particle, *CollisionModule, CollisionModuleOffset))
 			{
+				++DebugStats.SkippedByState;
 				return;
 			}
 
 			if (ShouldSkipParticleCollisionForBudget(Particle, *CollisionModule, CollisionModuleOffset, DeltaTime))
 			{
+				++DebugStats.SkippedByEarlyOut;
 				return;
 			}
 
@@ -948,14 +978,16 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 			if (IsHighPriorityCollisionCandidate(PriorityScore))
 			{
 				HighPriorityCandidates.push_back(ActiveIndex);
+				++DebugStats.HighPriorityCandidateCount;
 				return;
 			}
 
 			FallbackCandidates.push_back(ActiveIndex);
+			++DebugStats.FallbackCandidateCount;
 		});
 
 	int32 CollisionChecksRemaining = CollisionBudget;
-	auto ProcessCollisionCandidates = [this, CollisionModule, CollisionModuleOffset, DeltaTime, &CollisionChecksRemaining](const TArray<uint32>& CandidateIndices)
+	auto ProcessCollisionCandidates = [this, CollisionModule, CollisionModuleOffset, DeltaTime, &CollisionChecksRemaining, &DebugStats](const TArray<uint32>& CandidateIndices)
 		{
 			for (uint32 ActiveIndex : CandidateIndices)
 			{
@@ -972,11 +1004,18 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 
 				if (FinalizeParticleCollisionWithoutQuery(*Particle, *CollisionModule, CollisionModuleOffset))
 				{
+					++DebugStats.SkippedByState;
 					continue;
 				}
 
 				--CollisionChecksRemaining;
-				ResolveSingleParticleCollision(*Particle, *CollisionModule, CollisionModuleOffset, DeltaTime);
+				++DebugStats.QueriedCount;
+				ResolveSingleParticleCollision(
+					*Particle,
+					*CollisionModule,
+					CollisionModuleOffset,
+					DeltaTime,
+					&DebugStats);
 			}
 		};
 
@@ -985,6 +1024,13 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 	// tick" because of budget policy. That is distinct from processing a hit and
 	// then suppressing its event as repeated-contact noise or lower-LOD gating.
 	ProcessCollisionCandidates(FallbackCandidates);
+
+	DebugStats.CandidateCount =
+		DebugStats.HighPriorityCandidateCount + DebugStats.FallbackCandidateCount;
+	DebugStats.SkippedByBudget =
+		std::max(0, DebugStats.CandidateCount - DebugStats.QueriedCount);
+
+	DebugLogParticleCollisionStats(DebugStats);
 }
 
 const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule() const
@@ -1243,11 +1289,96 @@ bool FParticleEmitterInstance::PerformParticleCollisionQuery(
 		GetParticleCollisionQueryIgnoreActor());
 }
 
+bool FParticleEmitterInstance::ShouldDebugParticleCollisions() const
+{
+	return GParticleCollisionDebugEnabled && Component && Component->GetWorld();
+}
+
+void FParticleEmitterInstance::DebugDrawParticleCollisionQuery(
+	const FVector& StartWorld,
+	const FVector& EndWorld,
+	const FColor& Color) const
+{
+	if (!ShouldDebugParticleCollisions())
+	{
+		return;
+	}
+
+	DrawDebugLine(
+		Component->GetWorld(),
+		StartWorld,
+		EndWorld,
+		Color,
+		ParticleCollisionDebugDrawDuration);
+}
+
+void FParticleEmitterInstance::DebugDrawParticleCollisionHit(
+	const FHitResult& Hit,
+	const FVector& CollisionNormal,
+	const FColor& PointColor,
+	const FColor& NormalColor) const
+{
+	if (!ShouldDebugParticleCollisions())
+	{
+		return;
+	}
+
+	UWorld* World = Component->GetWorld();
+	DrawDebugPoint(
+		World,
+		Hit.WorldHitLocation,
+		ParticleCollisionDebugPointSize,
+		PointColor,
+		ParticleCollisionDebugDrawDuration);
+	DrawDebugLine(
+		World,
+		Hit.WorldHitLocation,
+		Hit.WorldHitLocation + CollisionNormal * ParticleCollisionDebugNormalLength,
+		NormalColor,
+		ParticleCollisionDebugDrawDuration);
+}
+
+void FParticleEmitterInstance::DebugLogParticleCollisionStats(
+	const FParticleCollisionDebugStats& Stats) const
+{
+	if (!ShouldDebugParticleCollisions())
+	{
+		return;
+	}
+
+	const std::string EmitterName = Emitter ? Emitter->GetName() : "<null>";
+	UE_LOG(
+		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
+		EmitterName.c_str(),
+		Stats.CurrentLODIndex,
+		Stats.ActiveParticles,
+		Stats.EffectiveBudget,
+		Stats.bCollisionFullyDisabledForLOD ? 1 : 0,
+		Stats.bCollisionEventGatedForLOD ? 1 : 0,
+		Stats.CandidateCount,
+		Stats.HighPriorityCandidateCount,
+		Stats.FallbackCandidateCount,
+		Stats.QueriedCount,
+		Stats.SkippedByState,
+		Stats.SkippedByEarlyOut,
+		Stats.SkippedByBudget,
+		Stats.NoHitCount,
+		Stats.AcceptedHitCount,
+		Stats.SuppressedAsNoiseCount,
+		Stats.EmittedEventCount,
+		Stats.EventGatedCount,
+		Stats.StopLikeLowSpeedCount,
+		Stats.KilledImmediateCount,
+		Stats.FrozenAfterLimitCount,
+		Stats.IgnoredFurtherCollisionsCount);
+}
+
 bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	FBaseParticle& Particle,
 	const UParticleModuleCollision& CollisionModule,
 	uint32 ModuleOffset,
-	float DeltaTime)
+	float DeltaTime,
+	FParticleCollisionDebugStats* DebugStats)
 {
 	if (FinalizeParticleCollisionWithoutQuery(Particle, CollisionModule, ModuleOffset))
 	{
@@ -1274,6 +1405,8 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	}
 
 	FHitResult Hit;
+	const FVector EndWorld =
+		ConvertPositionFromSimulation(Particle.Location, EParticleValueSpace::World);
 	if (!PerformParticleCollisionQuery(
 		StartWorld,
 		TravelDirection,
@@ -1281,6 +1414,11 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		CollisionModule,
 		Hit))
 	{
+		if (DebugStats)
+		{
+			++DebugStats->NoHitCount;
+		}
+		DebugDrawParticleCollisionQuery(StartWorld, EndWorld, FColor::Gray());
 		return false;
 	}
 
@@ -1307,6 +1445,12 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		// time window. Calm the contact without incrementing collision count or
 		// emitting a normal collision event. This is "noise suppressed", not an
 		// accepted collision report.
+		if (DebugStats)
+		{
+			++DebugStats->SuppressedAsNoiseCount;
+		}
+		DebugDrawParticleCollisionQuery(StartWorld, EndWorld, FColor::Yellow());
+		DebugDrawParticleCollisionHit(Hit, CollisionNormal, FColor::Yellow(), FColor(255, 180, 0));
 		const FVector AdjustedWorldPosition =
 			Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
 		const float NormalSpeed = ImpactVelocityWorld.Dot(CollisionNormal);
@@ -1328,19 +1472,34 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 	}
 
 	const bool bKillImmediately =
-		ApplyImmediateParticleCollisionResponse(Particle, CollisionModule, Hit, ImpactVelocityWorld);
+		ApplyImmediateParticleCollisionResponse(
+			Particle,
+			CollisionModule,
+			Hit,
+			ImpactVelocityWorld,
+			DebugStats);
 	UpdateRecentCollisionState(*Payload, CollisionTimeSeconds, CollisionNormal);
 
 	// From this point on the hit is treated as an accepted / meaningful collision:
 	// it passed raw hit detection, budget processing, and repeated-contact noise
 	// suppression. Reporting remains a separate policy decision.
 	++Payload->NumCollisions;
+	if (DebugStats)
+	{
+		++DebugStats->AcceptedHitCount;
+	}
 
 	if (ShouldEmitCollisionEventForAcceptedHit(CollisionModule))
 	{
 		// Base collision events represent accepted collision reports, not just any
 		// raw raycast hit. They are emitted before final kill/freeze/ignore
 		// completion consequences so response-mode timing stays predictable.
+		if (DebugStats)
+		{
+			++DebugStats->EmittedEventCount;
+		}
+		DebugDrawParticleCollisionQuery(StartWorld, EndWorld, FColor::Green());
+		DebugDrawParticleCollisionHit(Hit, CollisionNormal, FColor::Green(), FColor::Green());
 		EmitCollisionEventForAcceptedHit(
 			Particle,
 			CollisionNormal,
@@ -1348,9 +1507,22 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 			Hit,
 			CollisionTimeSeconds);
 	}
+	else
+	{
+		if (DebugStats)
+		{
+			++DebugStats->EventGatedCount;
+		}
+		DebugDrawParticleCollisionQuery(StartWorld, EndWorld, FColor(0, 180, 255));
+		DebugDrawParticleCollisionHit(Hit, CollisionNormal, FColor(0, 180, 255), FColor(0, 180, 255));
+	}
 
 	if (bKillImmediately)
 	{
+		if (DebugStats)
+		{
+			++DebugStats->KilledImmediateCount;
+		}
 		Particle.Flags |= static_cast<uint32>(EParticleStateFlags::Killed);
 		return true;
 	}
@@ -1361,6 +1533,17 @@ bool FParticleEmitterInstance::ResolveSingleParticleCollision(
 		// may bounce/stop on this hit, then transition into Kill/Freeze/Ignore once
 		// the configured collision count has been exhausted.
 		ApplyCollisionCompletionBehavior(Particle, *Payload, CollisionModule);
+		if (DebugStats)
+		{
+			if (Payload->bFrozenAfterLimit)
+			{
+				++DebugStats->FrozenAfterLimitCount;
+			}
+			if (Payload->bIgnoreFurtherCollisions)
+			{
+				++DebugStats->IgnoredFurtherCollisionsCount;
+			}
+		}
 	}
 
 	return true;
@@ -1370,7 +1553,8 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 	FBaseParticle& Particle,
 	const UParticleModuleCollision& CollisionModule,
 	const FHitResult& Hit,
-	const FVector& ImpactVelocity) const
+	const FVector& ImpactVelocity,
+	FParticleCollisionDebugStats* DebugStats) const
 {
 	FVector CollisionNormal = Hit.ImpactNormal;
 	if (CollisionNormal.IsNearlyZero())
@@ -1435,6 +1619,10 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 		// - TangentialDamping: retained surface-parallel sliding energy
 		// Very low-speed contacts are still calmed into a stop-like response so the
 		// richer tangential model does not reintroduce jitter.
+		if (bLowSpeedImpact && DebugStats)
+		{
+			++DebugStats->StopLikeLowSpeedCount;
+		}
 		Particle.Velocity = bLowSpeedImpact
 			? FVector::ZeroVector
 			: ConvertVectorToSimulation(BouncedVelocityWorld, EParticleValueSpace::World);
