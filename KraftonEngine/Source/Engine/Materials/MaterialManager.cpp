@@ -1,4 +1,4 @@
-#include "MaterialManager.h"
+﻿#include "MaterialManager.h"
 #include <filesystem>
 #include <fstream>
 #include "Materials/Material.h"
@@ -242,6 +242,7 @@ UMaterial* FMaterialManager::CreateImportedMaterialAsset(const FString& UassetPa
 	Material->SetShaderPathForSerialize(DefaultShaderPath);
 	Material->SetVector4Parameter("SectionColor", SectionColor);
 	Material->SetScalarParameter("HasNormalMap", NormalTexturePath.empty() ? 0.0f : 1.0f);
+	Material->SetScalarParameter("Opacity", 1.0f); // CB zero-init=0(투명) 방지 — 신규 머티리얼 기본 불투명
 
 	if (!DiffuseTexturePath.empty())
 		if (UTexture2D* Tex = UTexture2D::LoadFromFile(DiffuseTexturePath, Device, ETextureColorSpace::SRGB))
