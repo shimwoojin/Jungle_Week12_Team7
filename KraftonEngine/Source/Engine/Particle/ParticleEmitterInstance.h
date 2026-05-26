@@ -228,6 +228,7 @@ private:
 
 	struct FParticleCollisionDebugStats
 	{
+		// ---- outer collision policy / workload gating ----
 		int32 ActiveParticles = 0;
 		int32 CurrentLODIndex = 0;
 		int32 EffectiveBudget = 0;
@@ -238,6 +239,8 @@ private:
 		int32 SkippedByState = 0;
 		int32 SkippedByEarlyOut = 0;
 		int32 SkippedByBudget = 0;
+
+		// ---- simulation-contract interpretation / accepted-hit outcomes ----
 		int32 NoHitCount = 0;
 		int32 AcceptedHitCount = 0;
 		int32 SuppressedAsNoiseCount = 0;
@@ -266,8 +269,16 @@ private:
 	bool IsParticleKilled(const FBaseParticle* Particle) const;
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
 	const class UParticleModuleRequired* GetRequiredModule() const;
+	// Convenience lookup for the emitter's current-LOD collision authoring.
+	// This is useful for outer policy defaults, not a replacement for
+	// per-particle simulation-LOD collision module resolution.
 	const UParticleModuleCollision* GetCollisionModule() const;
 	const UParticleModuleCollision* GetCollisionModule(const UParticleLODLevel* LOD) const;
+	const UParticleModuleCollision* ResolveCollisionOuterPolicyModule(
+		const TArray<TArray<uint32>>& ActiveParticleBuckets) const;
+	void InitializeCollisionOuterPolicyDebugStats(
+		FParticleCollisionDebugStats& OutStats,
+		int32 CollisionBudget) const;
 	void BuildActiveParticleSimulationLODBuckets(TArray<TArray<uint32>>& OutBuckets) const;
 	bool FinalizeParticleCollisionWithoutQuery(
 		FBaseParticle& Particle,

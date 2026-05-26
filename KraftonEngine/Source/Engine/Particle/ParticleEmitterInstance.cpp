@@ -1003,6 +1003,15 @@ void FParticleEmitterInstance::ResolveParticleCollisions(
 	float DeltaTime,
 	const TArray<TArray<uint32>>& ActiveParticleBuckets)
 {
+	// Collision has two layers that intentionally coexist:
+	//   1) outer policy        : current-emitter-LOD workload decisions
+	//                            (budget / pruning / nearby context / event gating)
+	//   2) simulation contract : particle spawn-time collision module identity,
+	//                            payload offset, accepted-hit response/completion
+	//
+	// This function first resolves the outer policy for "how much collision work
+	// should this emitter spend this tick?", then uses each particle's simulation
+	// LOD contract to decide what a collision means when that work is actually done.
 	UWorld* World = Component ? Component->GetWorld() : nullptr;
 	if (!World || ActiveParticles == 0)
 	{
@@ -1012,10 +1021,8 @@ void FParticleEmitterInstance::ResolveParticleCollisions(
 	if (!ShouldProcessCollisionsForCurrentLOD())
 	{
 		FParticleCollisionDebugStats DebugStats;
-		DebugStats.ActiveParticles = static_cast<int32>(ActiveParticles);
-		DebugStats.CurrentLODIndex = CurrentLODIndex;
+		InitializeCollisionOuterPolicyDebugStats(DebugStats, /*CollisionBudget*/ 0);
 		DebugStats.bCollisionFullyDisabledForLOD = true;
-		DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
 		DebugLogParticleCollisionStats(DebugStats);
 		return;
 	}
@@ -1029,38 +1036,20 @@ void FParticleEmitterInstance::ResolveParticleCollisions(
 	if (CollisionBudget <= 0)
 	{
 		FParticleCollisionDebugStats DebugStats;
-		DebugStats.ActiveParticles = static_cast<int32>(ActiveParticles);
-		DebugStats.CurrentLODIndex = CurrentLODIndex;
-		DebugStats.EffectiveBudget = CollisionBudget;
-		DebugStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
-		DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
+		InitializeCollisionOuterPolicyDebugStats(DebugStats, CollisionBudget);
 		DebugLogParticleCollisionStats(DebugStats);
 		return;
 	}
 
 	FParticleCollisionDebugStats DebugStats;
-	DebugStats.ActiveParticles = static_cast<int32>(ActiveParticles);
-	DebugStats.CurrentLODIndex = CurrentLODIndex;
-	DebugStats.EffectiveBudget = CollisionBudget;
-	DebugStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
-	DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
+	InitializeCollisionOuterPolicyDebugStats(DebugStats, CollisionBudget);
 
-	const UParticleModuleCollision* OuterCollisionModule = GetCollisionModule();
-	if (!OuterCollisionModule)
-	{
-		for (int32 SimulationLODIndex = 0;
-			SimulationLODIndex < static_cast<int32>(ActiveParticleBuckets.size()) && !OuterCollisionModule;
-			++SimulationLODIndex)
-		{
-			if (ActiveParticleBuckets[SimulationLODIndex].empty())
-			{
-				continue;
-			}
-
-			UParticleLODLevel* SimulationLOD = Emitter ? Emitter->GetCurrentLODLevel(SimulationLODIndex) : nullptr;
-			OuterCollisionModule = GetCollisionModule(SimulationLOD);
-		}
-	}
+	// Outer policy needs some collision settings even before it starts spending
+	// per-particle query budget. We prefer the current-emitter-LOD module, but
+	// can fall back to an active simulation-LOD module when the current policy LOD
+	// itself does not carry collision authoring.
+	const UParticleModuleCollision* OuterCollisionModule =
+		ResolveCollisionOuterPolicyModule(ActiveParticleBuckets);
 
 	if (!OuterCollisionModule)
 	{
@@ -1105,6 +1094,10 @@ void FParticleEmitterInstance::ResolveParticleCollisions(
 			continue;
 		}
 
+		// From this point on we are no longer deciding "should this emitter spend
+		// collision work at all?" That policy step is already done above. Here we
+		// are interpreting each particle under its simulation-LOD collision module
+		// identity and payload layout.
 		const auto OffsetIt = ModuleOffsetMap->find(CollisionModule);
 		if (OffsetIt == ModuleOffsetMap->end())
 		{
@@ -1236,6 +1229,50 @@ const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule(con
 	}
 
 	return nullptr;
+}
+
+const UParticleModuleCollision* FParticleEmitterInstance::ResolveCollisionOuterPolicyModule(
+	const TArray<TArray<uint32>>& ActiveParticleBuckets) const
+{
+	// Outer collision policy is keyed off the emitter's current LOD view first,
+	// because budget/pruning/event gating are current-emitter-level concerns.
+	if (const UParticleModuleCollision* CurrentLODModule = GetCollisionModule())
+	{
+		return CurrentLODModule;
+	}
+
+	// If the current LOD does not define collision authoring, policy still needs a
+	// conservative collision settings source for emitter-level pruning/nearby-cache
+	// decisions. Fall back to the first active simulation-LOD module rather than
+	// pretending collision policy has no module context at all.
+	for (int32 SimulationLODIndex = 0;
+		SimulationLODIndex < static_cast<int32>(ActiveParticleBuckets.size());
+		++SimulationLODIndex)
+	{
+		if (ActiveParticleBuckets[SimulationLODIndex].empty())
+		{
+			continue;
+		}
+
+		UParticleLODLevel* SimulationLOD = Emitter ? Emitter->GetCurrentLODLevel(SimulationLODIndex) : nullptr;
+		if (const UParticleModuleCollision* SimulationModule = GetCollisionModule(SimulationLOD))
+		{
+			return SimulationModule;
+		}
+	}
+
+	return nullptr;
+}
+
+void FParticleEmitterInstance::InitializeCollisionOuterPolicyDebugStats(
+	FParticleCollisionDebugStats& OutStats,
+	int32 CollisionBudget) const
+{
+	OutStats.ActiveParticles = static_cast<int32>(ActiveParticles);
+	OutStats.CurrentLODIndex = CurrentLODIndex;
+	OutStats.EffectiveBudget = CollisionBudget;
+	OutStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
+	OutStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
 }
 
 bool FParticleEmitterInstance::FinalizeParticleCollisionWithoutQuery(
@@ -2206,6 +2243,8 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 
 bool FParticleEmitterInstance::ShouldProcessCollisionsForCurrentLOD() const
 {
+	// Current-emitter-LOD outer policy gate: should this emitter spend any
+	// collision work this tick before per-particle simulation contracts matter?
 	return !IsCollisionFullyDisabledForCurrentLOD();
 }
 
@@ -2219,7 +2258,8 @@ bool FParticleEmitterInstance::IsCollisionFullyDisabledForCurrentLOD() const
 
 bool FParticleEmitterInstance::ShouldEmitCollisionEventsForCurrentLOD() const
 {
-	// Collision queries and collision-event fidelity are distinct reduction axes.
+	// Current-emitter-LOD outer policy: collision queries and collision-event
+	// fidelity are distinct reduction axes.
 	// Lower LODs may keep some collision behavior while choosing not to preserve
 	// gameplay/event-facing collision reporting.
 	return CurrentLODIndex <= 0;
@@ -2227,8 +2267,10 @@ bool FParticleEmitterInstance::ShouldEmitCollisionEventsForCurrentLOD() const
 
 int32 FParticleEmitterInstance::GetCollisionCheckBudgetForCurrentLOD() const
 {
-	// Collision is now a lower-LOD runtime cost target. Budget scaling is one
-	// reduction axis; full disable and event gating are handled separately.
+	// Current-emitter-LOD outer policy: budget answers "how many collision queries
+	// may this emitter spend?", not "what collision payload/module meaning applies?"
+	// Budget scaling is one reduction axis; full disable and event gating are
+	// handled separately.
 	if (CurrentLODIndex <= 0)
 	{
 		return ParticleCollisionBudgetLOD0;
