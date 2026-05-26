@@ -19,7 +19,7 @@ public:
 	UParticleModuleVelocity();
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::Velocity; }
-	const char*     GetDisplayName() const override { return "Velocity"; }
+	const char*     GetDisplayName() const override { return "Initial Velocity"; }
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;

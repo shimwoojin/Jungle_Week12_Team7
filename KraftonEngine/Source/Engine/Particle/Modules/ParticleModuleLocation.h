@@ -19,7 +19,7 @@ public:
 	UParticleModuleLocation();
 
 	EModuleCategory GetCategory() const override { return EModuleCategory::Location; }
-	const char*     GetDisplayName() const override { return "Location"; }
+	const char*     GetDisplayName() const override { return "Initial Location"; }
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
