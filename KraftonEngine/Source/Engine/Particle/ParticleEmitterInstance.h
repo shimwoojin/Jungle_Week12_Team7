@@ -8,10 +8,12 @@
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 
 class UParticleEmitter;
+class UParticleModuleCollision;
 class UParticleModuleSpawn;
 class UParticleSystemComponent;
 struct FBaseParticle;
 struct FDynamicEmitterDataBase;
+struct FHitResult;
 
 enum class EParticleValueSpace : uint8
 {
@@ -150,6 +152,7 @@ public:
 	FVector                     ConvertVectorToSimulation(const FVector& V, EParticleValueSpace SourceSpace) const;
 	FVector                     ConvertVectorFromSimulation(const FVector& V, EParticleValueSpace TargetSpace) const;
 	FVector                     ConvertPositionToSimulation(const FVector& P, EParticleValueSpace SourceSpace) const;
+	FVector                     ConvertPositionFromSimulation(const FVector& P, EParticleValueSpace TargetSpace) const;
 
 	// World ↔ Local 헬퍼 (Required.bUseLocalSpace 따라 분기).
 	FTransform GetComponentToWorld() const;
@@ -172,6 +175,11 @@ protected:
 	// Over-Life 모듈은 여기서 증가한 Particle->RelativeTime(0..1)을 기준으로 Distribution을 평가한다.
 	virtual void UpdateParticles(float DeltaTime);
 
+	// Collision은 일반 module Update가 아니라 explicit simulation phase에서 해결한다.
+	// Module은 authoring/settings와 payload init을 맡고, 실제 world hit query와 response는
+	// emitter instance가 담당한다.
+	virtual void ResolveParticleCollisions(float DeltaTime);
+
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.
 	void ResizeParticleData(uint32 NewMax);
 
@@ -183,6 +191,18 @@ private:
 	bool IsParticleKilled(const FBaseParticle* Particle) const;
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
 	const class UParticleModuleRequired* GetRequiredModule() const;
+	const UParticleModuleCollision* GetCollisionModule() const;
+	bool ResolveSingleParticleCollision(
+		FBaseParticle& Particle,
+		const UParticleModuleCollision& CollisionModule,
+		uint32 ModuleOffset,
+		float DeltaTime);
+	void ApplyParticleCollisionResponse(
+		FBaseParticle& Particle,
+		const UParticleModuleCollision& CollisionModule,
+		const FHitResult& Hit,
+		const FVector& ImpactVelocity) const;
+	int32 GetCollisionCheckBudget() const;
 	bool IsSpawningAllowed() const;
 	void AdvanceLoopState(float DeltaTime);
 

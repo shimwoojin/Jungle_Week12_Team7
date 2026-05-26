@@ -8,11 +8,12 @@
 
 // =============================================================================
 // UParticleModuleCollision
-//   매 프레임 활성 입자의 이전 위치 → 현재 위치 segment 를 LineTrace 로 검사.
-//   충돌 시:
-//     - Velocity 를 반사 (DampingFactor 만큼 감쇠)
-//     - EventGenerator 모듈이 등록되어 있으면 CollisionEvent 큐에 push
-//   payload (RequiredBytes) 로 충돌 횟수 카운터를 입자별로 보관.
+//   Collision authoring/settings module.
+//   - Stores collision policy (damping, max collisions, trace channel,
+//     kill-on-collision, collision-event intent).
+//   - Initializes lightweight per-particle collision payload at spawn time.
+//   - Actual world hit query and runtime collision response are executed by the
+//     explicit FParticleEmitterInstance collision pass.
 // =============================================================================
 UCLASS()
 class UParticleModuleCollision : public UParticleModule
@@ -43,11 +44,11 @@ public:
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Kill On Collision")
 	bool bKillOnCollision = false;
 
-	// EventGenerator 모듈이 등록되어 있을 때만 의미 있음.
+	// Base collision events flow through the existing EventGenerator / PSC path.
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Generate Collision Events")
 	bool bGenerateCollisionEvents = false;
 
-	// 입자별 payload 구조 (RequiredBytes 가 sizeof 와 일치).
+	// Per-particle runtime collision state used by the emitter-instance pass.
 	struct FCollisionParticlePayload
 	{
 		int32 NumCollisions = 0;

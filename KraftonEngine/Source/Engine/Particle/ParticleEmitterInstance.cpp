@@ -3,6 +3,7 @@
 #include "Particle/ParticleEmitter.h"
 #include "Particle/ParticleLODLevel.h"
 #include "Particle/ParticleModule.h"
+#include "Particle/Modules/ParticleModuleCollision.h"
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
@@ -10,11 +11,25 @@
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
 #include "Component/Particle/ParticleSystemComponent.h"
+#include "GameFramework/World.h"
 #include "Math/Transform.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+
+namespace
+{
+	constexpr float ParticleCollisionMinTravelDistance = 1.0e-3f;
+	constexpr float ParticleCollisionSurfaceOffset = 1.0e-2f;
+	constexpr int32 ParticleCollisionBudgetLOD0 = 512;
+	constexpr int32 ParticleCollisionBudgetLowerLOD = 128;
+
+	FVector ReflectVelocityAboutNormal(const FVector& Velocity, const FVector& Normal)
+	{
+		return Velocity - Normal * (2.0f * Velocity.Dot(Normal));
+	}
+}
 
 static EParticleReplaySortMode ToReplaySortMode(UParticleModuleRequired::ESortMode InSortMode)
 {
@@ -298,6 +313,33 @@ FVector FParticleEmitterInstance::ConvertPositionToSimulation(
 		}
 
 		return Component->GetWorldInverseMatrix().TransformPositionWithW(P);
+	default:
+		return P;
+	}
+}
+
+FVector FParticleEmitterInstance::ConvertPositionFromSimulation(
+	const FVector& P,
+	EParticleValueSpace TargetSpace) const
+{
+	switch (TargetSpace)
+	{
+	case EParticleValueSpace::Simulation:
+		return P;
+	case EParticleValueSpace::Local:
+		if (UsesLocalSpace() || !Component)
+		{
+			return P;
+		}
+
+		return Component->GetWorldInverseMatrix().TransformPositionWithW(P);
+	case EParticleValueSpace::World:
+		if (!UsesLocalSpace() || !Component)
+		{
+			return P;
+		}
+
+		return Component->GetWorldMatrix().TransformPositionWithW(P);
 	default:
 		return P;
 	}
@@ -699,6 +741,8 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 		Module->Update(this, ModuleOffset, DeltaTime);
 	}
 
+	ResolveParticleCollisions(DeltaTime);
+
 	uint32 WriteIndex = 0;
 
 	for (uint32 ReadIndex = 0; ReadIndex < ActiveParticles; ++ReadIndex)
@@ -734,6 +778,209 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 	}
 
 	ActiveParticles = WriteIndex;
+}
+
+void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
+{
+	const UParticleModuleCollision* CollisionModule = GetCollisionModule();
+	if (!CollisionModule)
+	{
+		return;
+	}
+
+	UWorld* World = Component ? Component->GetWorld() : nullptr;
+	if (!World || ActiveParticles == 0)
+	{
+		return;
+	}
+
+	if (!ModuleOffsetMap)
+	{
+		return;
+	}
+
+	const auto OffsetIt = ModuleOffsetMap->find(CollisionModule);
+	if (OffsetIt == ModuleOffsetMap->end())
+	{
+		return;
+	}
+
+	const uint32 CollisionModuleOffset = OffsetIt->second;
+
+	const int32 CollisionBudget = GetCollisionCheckBudget();
+	if (CollisionBudget <= 0)
+	{
+		return;
+	}
+
+	int32 CollisionChecksRemaining = CollisionBudget;
+	ForEachActiveParticle([this, CollisionModule, CollisionModuleOffset, DeltaTime, &CollisionChecksRemaining](uint32 ActiveIndex, FBaseParticle& Particle)
+		{
+			(void)ActiveIndex;
+
+			if (CollisionChecksRemaining <= 0)
+			{
+				return;
+			}
+
+			const uint32 KilledFlag = static_cast<uint32>(EParticleStateFlags::Killed);
+			if ((Particle.Flags & KilledFlag) != 0)
+			{
+				return;
+			}
+
+			--CollisionChecksRemaining;
+			ResolveSingleParticleCollision(Particle, *CollisionModule, CollisionModuleOffset, DeltaTime);
+		});
+}
+
+const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule() const
+{
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD)
+	{
+		return nullptr;
+	}
+
+	for (UParticleModule* Module : LOD->Modules)
+	{
+		if (!Module || !Module->IsEnabled())
+		{
+			continue;
+		}
+
+		if (const auto* CollisionModule = Cast<UParticleModuleCollision>(Module))
+		{
+			return CollisionModule;
+		}
+	}
+
+	return nullptr;
+}
+
+bool FParticleEmitterInstance::ResolveSingleParticleCollision(
+	FBaseParticle& Particle,
+	const UParticleModuleCollision& CollisionModule,
+	uint32 ModuleOffset,
+	float DeltaTime)
+{
+	auto* Payload =
+		PARTICLE_PAYLOAD(&Particle, ModuleOffset, UParticleModuleCollision::FCollisionParticlePayload);
+	if (!Payload)
+	{
+		return false;
+	}
+
+	Payload->NumCollisions = std::max(0, Payload->NumCollisions);
+	if (CollisionModule.MaxCollisions > 0 && Payload->NumCollisions >= CollisionModule.MaxCollisions)
+	{
+		return false;
+	}
+
+	const FVector StartWorld = ConvertPositionFromSimulation(Particle.OldLocation, EParticleValueSpace::World);
+	const FVector EndWorld = ConvertPositionFromSimulation(Particle.Location, EParticleValueSpace::World);
+	const FVector Travel = EndWorld - StartWorld;
+	const float TravelDistance = Travel.Length();
+
+	if (TravelDistance <= ParticleCollisionMinTravelDistance)
+	{
+		return false;
+	}
+
+	FVector TravelDirection = Travel / TravelDistance;
+	if (TravelDirection.IsNearlyZero())
+	{
+		return false;
+	}
+
+	UWorld* World = Component ? Component->GetWorld() : nullptr;
+	if (!World)
+	{
+		return false;
+	}
+
+	FHitResult Hit;
+	const AActor* IgnoreActor = Component ? Component->GetOwner() : nullptr;
+	if (!World->PhysicsRaycast(
+		StartWorld,
+		TravelDirection,
+		TravelDistance,
+		Hit,
+		CollisionModule.CollisionChannel,
+		IgnoreActor))
+	{
+		return false;
+	}
+
+	const FVector ImpactVelocityWorld =
+		ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
+	ApplyParticleCollisionResponse(Particle, CollisionModule, Hit, ImpactVelocityWorld);
+
+	++Payload->NumCollisions;
+
+	if (CollisionModule.bGenerateCollisionEvents)
+	{
+		FParticleEventCollideData CollisionEvent;
+		CollisionEvent.Type = EParticleEventType::Collision;
+		CollisionEvent.TimeSeconds = EmitterTimeSeconds + DeltaTime;
+		CollisionEvent.Location = Hit.WorldHitLocation;
+		CollisionEvent.Velocity = ConvertVectorFromSimulation(Particle.Velocity, EParticleValueSpace::World);
+		CollisionEvent.Normal = Hit.ImpactNormal;
+		CollisionEvent.ImpactVelocity = ImpactVelocityWorld;
+		CollisionEvent.Item = Hit.FaceIndex;
+		EmitCollisionEvent(CollisionEvent);
+	}
+
+	if (CollisionModule.bKillOnCollision)
+	{
+		Particle.Flags |= static_cast<uint32>(EParticleStateFlags::Killed);
+		return true;
+	}
+
+	if (CollisionModule.MaxCollisions > 0 && Payload->NumCollisions >= CollisionModule.MaxCollisions)
+	{
+		Particle.Velocity = FVector::ZeroVector;
+	}
+
+	return true;
+}
+
+void FParticleEmitterInstance::ApplyParticleCollisionResponse(
+	FBaseParticle& Particle,
+	const UParticleModuleCollision& CollisionModule,
+	const FHitResult& Hit,
+	const FVector& ImpactVelocity) const
+{
+	FVector CollisionNormal = Hit.ImpactNormal;
+	if (CollisionNormal.IsNearlyZero())
+	{
+		CollisionNormal = FVector::UpVector;
+	}
+	else
+	{
+		CollisionNormal.Normalize();
+	}
+
+	const FVector ReflectedVelocityWorld =
+		ReflectVelocityAboutNormal(ImpactVelocity, CollisionNormal) *
+		std::max(0.0f, CollisionModule.DampingFactor);
+
+	const FVector AdjustedWorldPosition =
+		Hit.WorldHitLocation + CollisionNormal * ParticleCollisionSurfaceOffset;
+
+	Particle.Location =
+		ConvertPositionToSimulation(AdjustedWorldPosition, EParticleValueSpace::World);
+	Particle.OldLocation = Particle.Location;
+	Particle.Velocity =
+		ConvertVectorToSimulation(ReflectedVelocityWorld, EParticleValueSpace::World);
+}
+
+int32 FParticleEmitterInstance::GetCollisionCheckBudget() const
+{
+	// Lower automatic LODs are expected to become more collision-conservative over time.
+	// First pass keeps collision enabled everywhere, but narrows the per-frame budget once
+	// the emitter is no longer rendering at LOD0.
+	return (CurrentLODIndex <= 0) ? ParticleCollisionBudgetLOD0 : ParticleCollisionBudgetLowerLOD;
 }
 
 void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)

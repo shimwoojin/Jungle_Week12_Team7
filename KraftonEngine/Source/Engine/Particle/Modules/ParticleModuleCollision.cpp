@@ -2,10 +2,11 @@
 
 #include "Particle/ParticleEmitterInstance.h"
 
-#include <algorithm>
-
-void UParticleModuleCollision::Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-                                     float SpawnTime, FBaseParticle* Particle)
+void UParticleModuleCollision::Spawn(
+	FParticleEmitterInstance* Owner,
+	uint32 ModuleOffset,
+	float SpawnTime,
+	FBaseParticle* Particle)
 {
 	(void)Owner;
 	(void)SpawnTime;
@@ -18,43 +19,25 @@ void UParticleModuleCollision::Spawn(FParticleEmitterInstance* Owner, uint32 Mod
 	if (FCollisionParticlePayload* Payload =
 		PARTICLE_PAYLOAD(Particle, ModuleOffset, FCollisionParticlePayload))
 	{
-		// collision 카운터는 particle payload에 붙어 있으므로 spawn 시점에 명시적으로 초기화.
+		// Collision runtime state is still per-particle payload, but the actual
+		// hit query / response execution now lives in FParticleEmitterInstance.
 		*Payload = {};
 	}
 }
 
-void UParticleModuleCollision::Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-                                      float DeltaTime)
+void UParticleModuleCollision::Update(
+	FParticleEmitterInstance* Owner,
+	uint32 ModuleOffset,
+	float DeltaTime)
 {
+	(void)Owner;
+	(void)ModuleOffset;
 	(void)DeltaTime;
 
-	if (!Owner)
-	{
-		return;
-	}
-
-	Owner->ForEachActiveParticle([this, ModuleOffset](uint32 ActiveIndex, FBaseParticle& Particle)
-		{
-			(void)ActiveIndex;
-
-			// particle payload 접근은 module offset 기반의 공식 경로만 사용한다.
-			FCollisionParticlePayload* Payload =
-				PARTICLE_PAYLOAD(&Particle, ModuleOffset, FCollisionParticlePayload);
-			if (!Payload)
-			{
-				return;
-			}
-
-			Payload->NumCollisions = std::max(0, Payload->NumCollisions);
-
-			if (bKillOnCollision && MaxCollisions > 0 && Payload->NumCollisions >= MaxCollisions)
-			{
-				Particle.Flags |= static_cast<uint32>(EParticleStateFlags::Killed);
-			}
-
-			// TODO: 활성 입자의 OldLocation -> Location segment를 실제 LineTrace로 검사하고
-			//       hit 시 Velocity 반사, Payload.NumCollisions 증가, CollisionEvent 생성을 연결.
-		});
+	// Intentional no-op.
+	// Collision remains a regular module for authoring/LOD/payload layout, but
+	// runtime collision solving is handled by the explicit emitter-instance
+	// collision pass after generic module updates.
 }
 
 uint32 UParticleModuleCollision::RequiredBytes(UParticleLODLevel* LODLevel) const
