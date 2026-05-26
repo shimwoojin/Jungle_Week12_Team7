@@ -513,6 +513,13 @@ void FDrawCommandBuilder::BuildMeshCommands(FScene& Scene, const FPrimitiveScene
 		if (P == ERenderPass::Opaque) bAnyOpaque = true;
 	}
 
+	// 동적/lazy 프록시(파티클 등)는 PrepareDrawBuffer 전까지 실제 섹션이 placeholder(IndexCount=0)뿐이라
+	// 위 사전스캔에서 안 잡힌다. 프록시 단위 GetRenderPass()로 보강 — 기존 per-proxy 라우팅을 복원해
+	// BuildCommandForProxy 안에서 PrepareDrawBuffer 가 실제 섹션을 채우게 한다(정적 멀티슬롯엔 무영향: 중복 표시).
+	const ERenderPass ProxyPass = Proxy->GetRenderPass();
+	if ((int)ProxyPass < (int)ERenderPass::MAX) bPassSeen[(int)ProxyPass] = true;
+	if (ProxyPass == ERenderPass::Opaque) bAnyOpaque = true;
+
 	// Opaque 섹션이 있으면 PreDepth 선행 (BuildCommandForProxy 가 Opaque 섹션만 필터).
 	if (bAnyOpaque)
 		BuildCommandForProxy(Scene, *Proxy, ERenderPass::PreDepth);
