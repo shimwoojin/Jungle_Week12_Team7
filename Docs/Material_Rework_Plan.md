@@ -1,8 +1,9 @@
 # 머티리얼 시스템 개편 설계/계획 (Material Rework Plan)
 
-> 작업 브랜치: `feature/material-rework`
+> 작업 브랜치: `feature/material-rework` (main 머지 완료)
 > 담당: P3 (렌더)
-> 상태: **Phase 1·2 구현 완료(빌드 통과) · Phase 3~5 설계 / 리뷰 대기** — P1(직렬화·마샬링) / P2(에디터·모듈) 검토 요청
+> 상태: **Phase 1~5 전부 구현 완료(빌드 통과) + 코드리뷰 수정 + 에디터 아이콘 오버레이 패스. main 머지 완료.** — 남은 것은 **에디터 런타임 시각 검증**(아이콘/반투명/정렬 회귀).
+> 최종 갱신: 2026-05-26
 > 관련: 머지된 `feature/serialize-template-method` (UObject::Serialize Template Method)
 
 이 문서는 머티리얼 시스템의 문제들 — 반투명 블렌드 처리, **저수준 렌더상태 커플링**, **셰이더↔지오메트리 커플링**, JSON 직렬화, 에디터 — 를 진단하고, **"머티리얼은 의도(intent)만 선언하고 엔진이 렌더상태와 셰이더를 모두 도출"** 하는 하나의 일관된 개편으로 해결하는 설계와 작업 순서를 정리한다.
@@ -76,7 +77,7 @@ enum class EBlendMode      : uint8 { Opaque, Masked, Translucent, Additive, Modu
 > **depth 결정**: Translucent는 depth-write 안 하는 게 일반적으로 올바르므로 `DepthReadOnly`로 도출(파티클 .mat 명시값과 일치). 기존 에디터 반투명(라이트/포그 6종)은 Default→DepthReadOnly로 **의도된 동작 변경**(런타임 시각 확인 대상).
 > **사용자 결정**: depth는 사용자 필드에서 도려내 도출. `.mat`의 `DepthStencilState`는 권위 아님.
 
-### 3.3 셰이더 도출 (Phase 3 설계)
+### 3.3 셰이더 도출 (Phase 3 — 구현 완료)
 - 머티리얼은 셰이더를 **모름**(shader-agnostic 기본). 셰이더 = `ResolveShader(Domain, EVertexFactoryType, Pass, ViewMode)`.
 - `EVertexFactoryType`(StaticMesh/SkeletalMesh/ParticleSprite/Mesh/Beam/...)를 지오메트리(Proxy/Section/Factory)가 제공 → **셰이더 퍼뮤테이션의 축**. 기존 `SelectEffectiveShader`의 UberLit 특례를 **모든 표준 머티리얼의 기본 경로로 일반화**.
 - **Custom shader override**: `bUseCustomShader` + `CustomShaderPath`. 설정 시 그 셰이더 강제(현재 통과 동작) — 작성자가 정점 레이아웃 락을 인지하는 특수 케이스(사용자 결정).
@@ -92,11 +93,21 @@ enum class EBlendMode      : uint8 { Opaque, Masked, Translucent, Additive, Modu
 
 각 Phase는 독립 빌드/검증 가능하도록 쪼갠다.
 
-1. **Phase 1 ✅ — 의도 enum + 도출 함수** (`MaterialDomain.h`, dormant). 빌드 통과.
-2. **Phase 2 ✅ — 렌더상태 도출**: `UMaterial`이 `Domain`+`BlendMode` 단일 소스로 Pass/Blend/Depth/Raster 도출. 도출 불가는 override(.mat=raster, CreateTransient=4개). `MaterialManager`는 기존 (RenderPass,BlendState) 문자열을 `DeriveDomainBlend`로 역매핑(전환). 빌드 통과. **런타임 검증(파티클 깊이/컬링, 에디터 반투명 depth) 진행 예정.**
-3. **Phase 3 — 셰이더 디커플링**: `ShaderPath` 제거(shader-agnostic), `ResolveShader(Domain, VertexFactory, Pass, ViewMode)`, `EVertexFactoryType` 도입/일반화, custom shader override, 파티클 흡수. **가장 리스크 큰 영역 — 별도 설계 라운드.**
-4. **Phase 4 — 바이너리(.uasset) 직렬화**: `UMaterial::Serialize(FArchive)`를 디스크에 연결 + JSON 제거. 저장 항목 = Domain/BlendMode/custom-shader/params/텍스처경로/CB blob. 직전 Serialize 리팩터의 `ShouldReflectProperties()=true` + `SerializeExtra()` 훅 활용. `.mat`→`.uasset` 마이그레이션.
-5. **Phase 5 — 에디터 재구축**: 객체 기반 + Domain/Blend 드롭다운 + custom-shader 토글 + Create 팩토리. (UENUM/UPROPERTY + codegen은 이때.)
+1. **Phase 1 ✅ — 의도 enum + 도출 함수** (`MaterialDomain.h`). 빌드 통과.
+2. **Phase 2 ✅ — 렌더상태 도출**: `UMaterial`이 `Domain`+`BlendMode` 단일 소스로 Pass/Blend/Depth/Raster 도출. 도출 불가는 override(.mat=raster, CreateTransient=4개). 빌드 통과.
+3. **Phase 3 ✅ — 셰이더 디커플링**: shader-agnostic 도출 `ResolveSectionShader(Mat, EVertexFactoryType, ViewMode, bGPUSkinning, bWeightBoneHeatMap)`(`DrawCommandBuilder.cpp`). `EVertexFactoryType`(StaticMesh/Skeletal/ParticleSprite/Mesh/Beam/Ribbon) 도입, custom shader override, 파티클 VF 전용 셰이더 흡수. 빌드 통과.
+4. **Phase 4 ✅ — 바이너리(.uasset) 직렬화**: `UMaterial::Serialize`를 디스크에 연결, `FMaterialManager` Save/Load 바이너리화(`FWindowsBinWriter`+`FAssetPackageHeader`), **JSON(.mat)·SimpleJSON 의존 전부 제거**, 임포터 바이너리 출력, 하드코딩 경로·컨텐트브라우저·인스펙터 `.uasset`화. `.mat`→`.uasset` lazy 마이그레이션(경로 정규화 shim). 빌드 통과.
+5. **Phase 5 ✅ — 에디터 재구축**: 객체 기반 인스펙터, Domain/BlendMode 드롭다운, custom-shader 토글 + **셰이더 선택 드롭다운(非UberLit 선택 시 자동 custom ON)**, **Two Sided 토글**, **Save 버튼**, **Create Material 팩토리**. 수기 ImGui 콤보라 UENUM/codegen 불필요. 빌드 통과.
+
+---
+
+## 4b. 계획 외 추가 구현 / 수정 (진행 중 발견)
+
+- **텍스처 t0~t7 셰이더 리플렉션**: `FShader::ExtractTextureBindings`(D3D `D3D_SIT_TEXTURE`, register t0~t7) → `FMaterialTemplate`/`UMaterial::GetTextureBindings`. 인스펙터가 셰이더 선언 텍스처 슬롯을 노출. `RebuildCachedSRVs`는 리플렉션 바인딩(이름→register, 없으면 슬롯 규칙명 폴백) 기반 — Billboard 셰이더의 `BillboardTex@t0` 처럼 셰이더 변수명과 저장 파라미터명(`DiffuseTexture`)이 달라도 정확히 바인딩.
+- **인스펙터 텍스처 피커**: `Content/` 전체 재귀 스캔(아이콘 PNG가 `Content/Editor/Icons`에 위치) + 확장자 대소문자 무관(`.PNG` 등) + 드롭다운 hover 썸네일(`FEditorTextureManager`).
+- **코드 리뷰 수정**: 리플렉션 `FMaterialParameterInfo` 누수 → `shared_ptr` 소유; `~FMaterialManager` 가드 정정(`if(Device)`); `MaterialTextureSlot::ToString`의 `throw` 제거; 죽은 `UMaterial::Bind()` 제거; sRGB 휴리스틱 단일화(`IsSRGBTextureSlot`); CB 업로드 이중 경로 제거(`FlushDirtyBuffers`에 위임); `SetTextureParameter`를 리플렉션 규칙과 일치.
+- **에디터 아이콘 오버레이 패스 (`ERenderPass::EditorIcon`)**: 라이트/포그/데칼 아이콘 빌보드가 Translucent(DepthReadOnly, 불투명 이후)에서 깊이를 안 써 풀스크린 포그/합성에 덮여 **빈 배경에서 사라지던 회귀** 해결. 포스트프로세스/FXAA 이후 **NoDepth + AlphaBlend** 오버레이 패스 신설(`FEditorIconPass`, OverlayFont 미러). `FBillboardSceneProxy::GetRenderPass()`가 `EditorIcon` 반환(`PrimitiveSceneProxy::GetRenderPass()` virtual화)으로 라우팅. → 깊이/포그 분리, 소프트 엣지 유지.
+- **SortKey Pass 필드 4→5비트 확장**(`DrawCommand.h`의 `ComputeSortKey`/`ComputeTranslucentSortKey`, UserBits 1비트 차용): `ERenderPass`가 16개로 꽉 차 17번째(EditorIcon) 추가가 불가하던 한도 해소(최대 32패스). GammaCorrection(16)도 안전 인코딩.
 
 ---
 
@@ -104,16 +115,23 @@ enum class EBlendMode      : uint8 { Opaque, Masked, Translucent, Additive, Modu
 
 - 초기안의 "`Pass == Mat->GetRenderPass()` 조건 제거"는 **오판정**. 이 조건은 PreDepth/SelectionMask 등 유틸 패스에서 머티리얼 블렌드/뎁스를 적용하지 않기 위한 **올바른 게이트**(`DrawCommandBuilder.cpp:248`)이므로 **유지**한다. `GetRenderPass()`가 도출 Pass를 반환하게 해서 라우팅이 그대로 맞는다. (`FPrimitiveSceneProxy::GetRenderPass()`가 `SectionDraws[0].Material->GetRenderPass()`를 반환 = 머티리얼이 라우팅 권위, `PrimitiveSceneProxy.cpp:28`.)
 - 초기안에 없던 **셰이더↔지오메트리 커플링**(§2.3)을 핵심 문제로 추가.
+- **에디터 아이콘 = home-pass 게이트 의도적 우회**(§4b): 빌보드를 `EditorIcon` 패스로 라우팅하면 머티리얼 home pass(Translucent) ≠ EditorIcon 이라 `ApplyMaterialRenderState` 게이트가 **실패** → 패스의 `NoDepth/AlphaBlend`가 그대로 적용되고 머티리얼은 셰이더/텍스처/파라미터만 제공. 오버레이엔 의도된 동작(머티리얼별 blend/depth는 이 패스에서 비적용).
 
 ---
 
 ## 6. 리스크 / 오픈 이슈
 
-- **에디터 반투명 depth 변경(Phase 2)**: 6종 DepthReadOnly 전환 — 시각 회귀 가능성(낮음, 개선 쪽). 런타임 확인 필요.
-- **Rasterizer 잔존**: 스프라이트 NoCull은 지오메트리성 → Phase 3에서 vertex factory로 이동 후보.
-- **Phase 3 셰이더 디커플링**: `ShaderPath`/`Template` 의미 변경 → `MaterialManager`, FBX import(`FbxMaterialImporter.cpp:237`), 모든 `GetShader()` 소비자 영향. `EVertexFactoryType` 정의·파티클 흡수·custom override API 확정 필요. **별도 설계 라운드.**
-- **`.mat` 마이그레이션(Phase 4)**: JSON→바이너리 일괄 변환 또는 한시적 양쪽 로드.
-- **셰이더/텍스처 참조**: 문자열 경로 유지 권장. GUID/AssetRegistry화는 범위 분리.
+### 남은 검증 (런타임 시각 확인 — 미완)
+- **아이콘 오버레이 패스**: 라이트/포그/데칼 아이콘이 빈 배경에서도 보이고 소프트 엣지 정상인지.
+- **SortKey 5비트 회귀**: 반투명 back-to-front 정렬, 파티클/데칼/기즈모/포그/감마 패스 순서가 정상인지 (Pass 비트 폭 변경 영향).
+- **인스펙터**: 텍스처 드롭다운 Content/ 전체 PNG(대문자 포함)·hover 썸네일, Domain/Blend/Two Sided/custom-shader 토글 + Save round-trip.
+
+### 잔존 이슈 / 후속 후보
+- **Rasterizer override**: 스프라이트 NoCull은 지오메트리성 → 장기적으로 vertex factory로 이동 후보(현재 override 슬롯·Two Sided 토글로 처리).
+- **Masked 미연결**: `BlendMode::Masked`는 렌더상태(Opaque)만 맞고 UberLit에 clip 퍼뮤테이션이 없어 실제 마스킹 미동작. 필요 시 `MASKED` define 퍼뮤테이션 + 알파 컷오프 파라미터 추가.
+- **라이팅 모델이 ViewMode 종속**: 머티리얼이 셰이딩 모델(Unlit/Lit)을 고정 못 함(뷰가 결정). UE Shading Model과 차이 — custom 셰이더로 우회.
+- **셰이더/텍스처 참조**: 문자열 경로 유지. GUID/AssetRegistry화는 범위 밖.
+- **포맷 버전**: `FAssetPackageHeader::IsValid`가 버전 정확 일치 요구 → 직렬화 필드 추가 시 기존 `.uasset` 일괄 재저장 필요(graceful 다운그레이드 없음).
 
 ---
 
