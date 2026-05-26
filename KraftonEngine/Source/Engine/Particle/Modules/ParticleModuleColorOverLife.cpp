@@ -25,37 +25,36 @@ UParticleModuleColorOverLife::UParticleModuleColorOverLife()
 	}
 }
 
-void UParticleModuleColorOverLife::Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-                                          float DeltaTime)
+void UParticleModuleColorOverLife::UpdateParticle(
+	FParticleEmitterInstance* Owner,
+	UParticleLODLevel* SimulationLOD,
+	uint32 ModuleOffset,
+	float DeltaTime,
+	FBaseParticle* Particle)
 {
+	(void)SimulationLOD;
 	(void)ModuleOffset;
 	(void)DeltaTime;
 
-	if (!Owner) return;
+	if (!Owner || !Particle) return;
 
-	for (uint32 i = 0; i < Owner->GetActiveParticleCount(); ++i)
+	const float T = std::clamp(Particle->RelativeTime, 0.0f, 1.0f);
+	const FVector LifeRGB = ColorOverLifeDistribution
+		? ColorOverLifeDistribution->GetValue(T, Owner->GetComponent())
+		: FVector(1.0f, 1.0f, 1.0f);
+	const float LifeAlpha = AlphaOverLifeDistribution
+		? AlphaOverLifeDistribution->GetValue(T, Owner->GetComponent())
+		: 1.0f;
+
+	if (bMultiplyBaseColor)
 	{
-		FBaseParticle* Particle = Owner->GetParticleAt(i);
-		if (!Particle) continue;
-
-		const float T = std::clamp(Particle->RelativeTime, 0.0f, 1.0f);
-		const FVector LifeRGB = ColorOverLifeDistribution
-			? ColorOverLifeDistribution->GetValue(T, Owner->GetComponent())
-			: FVector(1.0f, 1.0f, 1.0f);
-		const float LifeAlpha = AlphaOverLifeDistribution
-			? AlphaOverLifeDistribution->GetValue(T, Owner->GetComponent())
-			: 1.0f;
-
-		if (bMultiplyBaseColor)
-		{
-			Particle->Color.X = Particle->BaseColor.X * LifeRGB.X;
-			Particle->Color.Y = Particle->BaseColor.Y * LifeRGB.Y;
-			Particle->Color.Z = Particle->BaseColor.Z * LifeRGB.Z;
-			Particle->Color.W = Particle->BaseColor.W * LifeAlpha;
-		}
-		else
-		{
-			Particle->Color = FVector4(LifeRGB.X, LifeRGB.Y, LifeRGB.Z, LifeAlpha);
-		}
+		Particle->Color.X = Particle->BaseColor.X * LifeRGB.X;
+		Particle->Color.Y = Particle->BaseColor.Y * LifeRGB.Y;
+		Particle->Color.Z = Particle->BaseColor.Z * LifeRGB.Z;
+		Particle->Color.W = Particle->BaseColor.W * LifeAlpha;
+	}
+	else
+	{
+		Particle->Color = FVector4(LifeRGB.X, LifeRGB.Y, LifeRGB.Z, LifeAlpha);
 	}
 }

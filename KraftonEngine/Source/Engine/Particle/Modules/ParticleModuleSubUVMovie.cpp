@@ -20,14 +20,14 @@ namespace
 		int32 Count = 1;
 	};
 
-	int32 GetSubUVFrameCount(const FParticleEmitterInstance* Owner)
+	int32 GetSubUVFrameCount(const UParticleLODLevel* SimulationLOD)
 	{
-		if (!Owner || !Owner->GetCurrentLOD() || !Owner->GetCurrentLOD()->RequiredModule)
+		if (!SimulationLOD || !SimulationLOD->RequiredModule)
 		{
 			return 0;
 		}
 
-		const UParticleModuleRequired* Required = Owner->GetCurrentLOD()->RequiredModule;
+		const UParticleModuleRequired* Required = SimulationLOD->RequiredModule;
 		return Required->SubImagesHorizontal * Required->SubImagesVertical;
 	}
 
@@ -112,7 +112,7 @@ void UParticleModuleSubUVMovie::Spawn(FParticleEmitterInstance* Owner, uint32 Mo
 		PARTICLE_PAYLOAD(Particle, ModuleOffset, FSubUVMovieParticlePayload);
 	Payload->RandomFrameOffset = 0;
 
-	const int32 FrameCount = GetSubUVFrameCount(Owner);
+	const int32 FrameCount = GetSubUVFrameCount(Owner ? Owner->GetParticleSimulationLOD(*Particle) : nullptr);
 	if (FrameCount <= 0)
 	{
 		Particle->SubImageIndex = std::max(0, StartFrame);
@@ -124,21 +124,25 @@ void UParticleModuleSubUVMovie::Spawn(FParticleEmitterInstance* Owner, uint32 Mo
 	Particle->SubImageIndex = Range.Start + Payload->RandomFrameOffset;
 }
 
-void UParticleModuleSubUVMovie::Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime)
+void UParticleModuleSubUVMovie::UpdateParticleSubset(
+	FParticleEmitterInstance* Owner,
+	UParticleLODLevel* SimulationLOD,
+	uint32 ModuleOffset,
+	float DeltaTime,
+	const TArray<uint32>& ParticleIndices)
 {
 	(void)DeltaTime;
 
-	const int32 FrameCount = GetSubUVFrameCount(Owner);
+	const int32 FrameCount = GetSubUVFrameCount(SimulationLOD);
 	if (!Owner || FrameCount <= 0)
 	{
 		return;
 	}
 
 	const FSubUVFrameRange Range = BuildFrameRange(*this, FrameCount);
-	const uint32 ActiveParticleCount = Owner->GetActiveParticleCount();
-	for (uint32 i = 0; i < ActiveParticleCount; ++i)
+	for (uint32 ParticleIndex : ParticleIndices)
 	{
-		FBaseParticle* Particle = Owner->GetParticleAt(i);
+		FBaseParticle* Particle = Owner->GetParticleAt(ParticleIndex);
 		if (!Particle)
 		{
 			continue;

@@ -21,8 +21,8 @@ public:
 	EModuleCategory GetCategory() const override { return EModuleCategory::Size; }
 	const char*     GetDisplayName() const override { return "Size By Life"; }
 
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-	            float DeltaTime) override;
+	void UpdateParticle(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                    uint32 ModuleOffset, float DeltaTime, FBaseParticle* Particle) override;
 
 	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
 	UPROPERTY(Edit, Save, Instanced, Category="Size By Life", DisplayName="Life Multiplier Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)

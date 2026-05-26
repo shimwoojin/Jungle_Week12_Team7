@@ -15,9 +15,10 @@ class UParticleSystemComponent;
 //   하나의 emitter (= LODLevels 의 묶음). PSC 가 emitter 하나마다 한 개의
 //   FParticleEmitterInstance 를 만든다.
 //   CacheEmitterModuleInfo() 는 모든 LOD 의 모듈을 훑어 payload layout 을 계산한다.
-//   런타임에서 LOD가 바뀌어도 module payload offset 이 존재해야 하기 때문이다.
-//   즉 현재 런타임은 여전히 concrete/materialized UParticleLODLevel graph 와
-//   module pointer identity에 강하게 결합되어 있다. 미래 effective-runtime LOD
+//   현재 런타임은 live particle가 spawn-time simulation LOD를 유지할 수 있으므로,
+//   emitter instance 안에 여러 LOD contract가 동시에 공존할 수 있다. 따라서
+//   각 concrete/materialized UParticleLODLevel graph 의 module pointer identity
+//   기준 payload offset이 모두 캐시되어 있어야 한다. 미래 effective-runtime LOD
 //   materialization은 이 계약을 대체하거나 인접 단계에서 함께 빌드되어야 한다.
 // =============================================================================
 UCLASS()

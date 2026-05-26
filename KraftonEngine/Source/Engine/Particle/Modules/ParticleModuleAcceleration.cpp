@@ -33,21 +33,26 @@ void UParticleModuleAcceleration::Spawn(FParticleEmitterInstance* Owner, uint32 
 		: FVector(0.0f, 0.0f, 0.0f);
 }
 
-void UParticleModuleAcceleration::Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime)
+void UParticleModuleAcceleration::UpdateParticle(
+	FParticleEmitterInstance* Owner,
+	UParticleLODLevel* SimulationLOD,
+	uint32 ModuleOffset,
+	float DeltaTime,
+	FBaseParticle* Particle)
 {
+	(void)SimulationLOD;
+
 	if (!Owner)
 	{
 		return;
 	}
 
-	const uint32 ActiveParticleCount = Owner->GetActiveParticleCount();
-	for (uint32 i = 0; i < ActiveParticleCount; ++i)
+	if (!Particle)
 	{
-		FBaseParticle* Particle = Owner->GetParticleAt(i);
-		if (!Particle) continue;
-
-		const FAccelerationParticlePayload* Payload = PARTICLE_PAYLOAD_CONST(Particle, ModuleOffset, FAccelerationParticlePayload);
-		const FVector SampledAcceleration = Payload ? Payload->Acceleration : FVector(0.0f, 0.0f, 0.0f);
-		Particle->Velocity += SampledAcceleration * DeltaTime;
+		return;
 	}
+
+	const FAccelerationParticlePayload* Payload = PARTICLE_PAYLOAD_CONST(Particle, ModuleOffset, FAccelerationParticlePayload);
+	const FVector SampledAcceleration = Payload ? Payload->Acceleration : FVector(0.0f, 0.0f, 0.0f);
+	Particle->Velocity += SampledAcceleration * DeltaTime;
 }

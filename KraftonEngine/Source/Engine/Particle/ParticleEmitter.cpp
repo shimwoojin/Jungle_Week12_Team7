@@ -358,9 +358,10 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 	{
 		if (!LOD) continue;
 
-		// Every stored LOD contributes to the compatibility/runtime cache today so
-		// that instance code can switch LODs while still resolving payload offsets
-		// from concrete module pointers on the active graph.
+		// Every stored LOD contributes to the runtime cache because live particles
+		// can now coexist under multiple spawn-time simulation LOD contracts within
+		// one emitter instance. Payload offsets are still resolved from the
+		// concrete module pointer identity for the owning LOD graph.
 		CacheModule(LOD, LOD->RequiredModule);
 		CacheModule(LOD, LOD->SpawnModule);
 		CacheModule(LOD, LOD->TypeDataModule);

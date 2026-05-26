@@ -27,7 +27,8 @@ public:
 	};
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float SpawnTime, FBaseParticle* Particle) override;
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime) override;
+	void UpdateParticle(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                    uint32 ModuleOffset, float DeltaTime, FBaseParticle* Particle) override;
 	uint32 RequiredBytes(UParticleLODLevel* LODLevel) const override { (void)LODLevel; return sizeof(FAccelerationParticlePayload); }
 
 	// Evaluated with SpawnTime: emitter-loop seconds at which the particle is spawned.

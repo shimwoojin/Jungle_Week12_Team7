@@ -75,6 +75,10 @@ struct FBaseParticle
 	float    OneOverMaxLifetime = 1.0f;
 	uint32   Flags             = 0;
 	int32    SubImageIndex     = -1;   // SubUV 프레임 인덱스 (-1 = 렌더 fallback)
+	uint8    SimulationLODIndex = 0;   // Spawn 시점 LOD contract. live particle update continuity 용.
+	uint8    Reserved0         = 0;
+	uint8    Reserved1         = 0;
+	uint8    Reserved2         = 0;
 };
 
 // 입자 상태 플래그

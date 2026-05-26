@@ -23,8 +23,8 @@ public:
 	EModuleCategory GetCategory() const override { return EModuleCategory::Color; }
 	const char*     GetDisplayName() const override { return "Color Over Life"; }
 
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
-	            float DeltaTime) override;
+	void UpdateParticle(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                    uint32 ModuleOffset, float DeltaTime, FBaseParticle* Particle) override;
 
 	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
 	UPROPERTY(Edit, Save, Instanced, Category="Color Over Life", DisplayName="Color Distribution", Type=ObjectRef, AllowedClass=UDistributionVector)

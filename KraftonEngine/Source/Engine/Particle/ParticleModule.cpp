@@ -1,5 +1,7 @@
 #include "ParticleModule.h"
 
+#include "Particle/ParticleEmitterInstance.h"
+#include "Particle/ParticleLODLevel.h"
 #include "Serialization/Archive.h"
 
 void UParticleModule::PostDuplicate()
@@ -7,4 +9,24 @@ void UParticleModule::PostDuplicate()
 	UObject::PostDuplicate();
 }
 
-// UParticleModule 베이스는 인터페이스만. 서브클래스가 모든 동작을 구현.
+void UParticleModule::UpdateParticleSubset(
+	FParticleEmitterInstance* Owner,
+	UParticleLODLevel* SimulationLOD,
+	uint32 ModuleOffset,
+	float DeltaTime,
+	const TArray<uint32>& ParticleIndices)
+{
+	if (!Owner)
+	{
+		return;
+	}
+
+	for (uint32 ParticleIndex : ParticleIndices)
+	{
+		if (FBaseParticle* Particle = Owner->GetParticleAt(ParticleIndex))
+		{
+			UpdateParticle(Owner, SimulationLOD, ModuleOffset, DeltaTime, Particle);
+		}
+	}
+}
+

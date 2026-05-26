@@ -115,6 +115,18 @@ public:
 		}
 	}
 
+	template<typename Func>
+	void ForEachParticleSubset(const TArray<uint32>& ParticleIndices, Func&& InFunc)
+	{
+		for (uint32 ParticleIndex : ParticleIndices)
+		{
+			if (FBaseParticle* Particle = GetParticleAt(ParticleIndex))
+			{
+				InFunc(ParticleIndex, *Particle);
+			}
+		}
+	}
+
 	uint32 GetActiveParticleCount() const { return ActiveParticles; }
 	uint32 GetMaxParticleCount()    const { return MaxActiveParticles; }
 	// finite loop emitter가 더 이상 spawn하지 않는 상태인지 / 실제로 완전히 끝났는지.
@@ -129,6 +141,8 @@ public:
 	// PSC가 선택한 현재 LOD를 런타임 instance에 전달하는 entry point.
 	void   SetCurrentLODIndex(int32 InLODIndex);
 	int32  GetCurrentLODIndex() const { return CurrentLODIndex; }
+	int32  GetParticleSimulationLODIndex(const FBaseParticle& Particle) const;
+	UParticleLODLevel* GetParticleSimulationLOD(const FBaseParticle& Particle) const;
 
 	// EventManager 가 디스패치할 큐. EventGenerator 모듈이 push.
 	const TArray<FParticleEventSpawnData>&     GetSpawnEvents()     const { return SpawnEvents; }
@@ -177,14 +191,15 @@ protected:
 	// 각 particle의 emitter-loop spawn time을 계산하기 위한 값이다.
 	virtual int32 SpawnInternal(int32 Count, float StartTime, float Increment, float StepDeltaTime);
 
-	// 활성 입자 전체에 대해 모듈 Update + RelativeTime 적용 + Kill.
+	// 활성 입자 전체에 대해 기본 적분을 수행한 뒤, spawn-time simulation LOD 기준으로
+	// subset dispatch된 모듈 Update + Collision + Kill/compaction을 처리한다.
 	// Over-Life 모듈은 여기서 증가한 Particle->RelativeTime(0..1)을 기준으로 Distribution을 평가한다.
 	virtual void UpdateParticles(float DeltaTime);
 
 	// Collision은 일반 module Update가 아니라 explicit simulation phase에서 해결한다.
 	// Module은 authoring/settings와 payload init을 맡고, 실제 world hit query와 response는
 	// emitter instance가 담당한다.
-	virtual void ResolveParticleCollisions(float DeltaTime);
+	virtual void ResolveParticleCollisions(float DeltaTime, const TArray<TArray<uint32>>& ActiveParticleBuckets);
 
 	// MaxActiveParticles 변경 시 ParticleData/Indices 를 재할당.
 	void ResizeParticleData(uint32 NewMax);
@@ -244,6 +259,8 @@ private:
 	void ClearSpawnedFlag(FBaseParticle* Particle) const;
 	const class UParticleModuleRequired* GetRequiredModule() const;
 	const UParticleModuleCollision* GetCollisionModule() const;
+	const UParticleModuleCollision* GetCollisionModule(const UParticleLODLevel* LOD) const;
+	void BuildActiveParticleSimulationLODBuckets(TArray<TArray<uint32>>& OutBuckets) const;
 	bool FinalizeParticleCollisionWithoutQuery(
 		FBaseParticle& Particle,
 		const UParticleModuleCollision& CollisionModule,

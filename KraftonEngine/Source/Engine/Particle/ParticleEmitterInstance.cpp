@@ -362,6 +362,25 @@ UParticleLODLevel* FParticleEmitterInstance::GetCurrentLOD() const
 	return Emitter->GetCurrentLODLevel(CurrentLODIndex);
 }
 
+void FParticleEmitterInstance::BuildActiveParticleSimulationLODBuckets(TArray<TArray<uint32>>& OutBuckets) const
+{
+	const int32 LODCount = Emitter ? std::max(Emitter->GetLODCount(), 1) : 1;
+	OutBuckets.clear();
+	OutBuckets.resize(LODCount);
+
+	for (uint32 ActiveIndex = 0; ActiveIndex < ActiveParticles; ++ActiveIndex)
+	{
+		const FBaseParticle* Particle = GetParticleAt(ActiveIndex);
+		if (!Particle)
+		{
+			continue;
+		}
+
+		const int32 SimulationLODIndex = GetParticleSimulationLODIndex(*Particle);
+		OutBuckets[SimulationLODIndex].push_back(ActiveIndex);
+	}
+}
+
 bool FParticleEmitterInstance::UsesLocalSpace() const
 {
 	const UParticleModuleRequired* Required = GetRequiredModule();
@@ -479,6 +498,27 @@ FVector FParticleEmitterInstance::ConvertPositionFromSimulation(
 void FParticleEmitterInstance::SetCurrentLODIndex(int32 InLODIndex)
 {
 	CurrentLODIndex = std::max(0, InLODIndex);
+}
+
+int32 FParticleEmitterInstance::GetParticleSimulationLODIndex(const FBaseParticle& Particle) const
+{
+	if (!Emitter)
+	{
+		return 0;
+	}
+
+	const int32 LODCount = std::max(Emitter->GetLODCount(), 1);
+	return std::clamp(static_cast<int32>(Particle.SimulationLODIndex), 0, LODCount - 1);
+}
+
+UParticleLODLevel* FParticleEmitterInstance::GetParticleSimulationLOD(const FBaseParticle& Particle) const
+{
+	if (!Emitter)
+	{
+		return nullptr;
+	}
+
+	return Emitter->GetCurrentLODLevel(GetParticleSimulationLODIndex(Particle));
 }
 
 bool FParticleEmitterInstance::IsSpawningComplete() const
@@ -800,6 +840,9 @@ int32 FParticleEmitterInstance::SpawnInternal(int32 Count, float StartTime, floa
 		*Particle = FBaseParticle{};
 
 		Particle->Flags = ActiveFlag | SpawnedFlag;
+		// CurrentLODIndex still chooses the LOD contract for new particles, but
+		// already-live particles keep their spawn-time simulation LOD afterward.
+		Particle->SimulationLODIndex = static_cast<uint8>(std::max(0, CurrentLODIndex));
 
 		bool bUseLocalSpace = false;
 
@@ -852,8 +895,10 @@ int32 FParticleEmitterInstance::SpawnInternal(int32 Count, float StartTime, floa
 
 void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 {
-	UParticleLODLevel* LOD = GetCurrentLOD();
-	if (!LOD || !LOD->bEnabled) return;
+	if (!Emitter)
+	{
+		return;
+	}
 
 	for (uint32 i = 0; i < ActiveParticles; ++i)
 	{
@@ -865,15 +910,38 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 		Particle->RelativeTime += DeltaTime * Particle->OneOverMaxLifetime;
 	}
 
-	for (UParticleModule* Module : LOD->Modules)
-	{
-		if (!Module || !Module->IsEnabled()) continue;
+	TArray<TArray<uint32>> ActiveParticleBuckets;
+	BuildActiveParticleSimulationLODBuckets(ActiveParticleBuckets);
 
-		const uint32 ModuleOffset = GetModuleDataOffset(Module);
-		Module->Update(this, ModuleOffset, DeltaTime);
+	for (int32 SimulationLODIndex = 0;
+		SimulationLODIndex < static_cast<int32>(ActiveParticleBuckets.size());
+		++SimulationLODIndex)
+	{
+		const TArray<uint32>& ParticleIndices = ActiveParticleBuckets[SimulationLODIndex];
+		if (ParticleIndices.empty())
+		{
+			continue;
+		}
+
+		UParticleLODLevel* SimulationLOD = Emitter->GetCurrentLODLevel(SimulationLODIndex);
+		if (!SimulationLOD || !SimulationLOD->bEnabled)
+		{
+			continue;
+		}
+
+		for (UParticleModule* Module : SimulationLOD->Modules)
+		{
+			if (!Module || !Module->IsEnabled())
+			{
+				continue;
+			}
+
+			const uint32 ModuleOffset = GetModuleDataOffset(Module);
+			Module->UpdateParticleSubset(this, SimulationLOD, ModuleOffset, DeltaTime, ParticleIndices);
+		}
 	}
 
-	ResolveParticleCollisions(DeltaTime);
+	ResolveParticleCollisions(DeltaTime, ActiveParticleBuckets);
 
 	uint32 WriteIndex = 0;
 
@@ -912,14 +980,10 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 	ActiveParticles = WriteIndex;
 }
 
-void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
+void FParticleEmitterInstance::ResolveParticleCollisions(
+	float DeltaTime,
+	const TArray<TArray<uint32>>& ActiveParticleBuckets)
 {
-	const UParticleModuleCollision* CollisionModule = GetCollisionModule();
-	if (!CollisionModule)
-	{
-		return;
-	}
-
 	UWorld* World = Component ? Component->GetWorld() : nullptr;
 	if (!World || ActiveParticles == 0)
 	{
@@ -942,14 +1006,6 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 		return;
 	}
 
-	const auto OffsetIt = ModuleOffsetMap->find(CollisionModule);
-	if (OffsetIt == ModuleOffsetMap->end())
-	{
-		return;
-	}
-
-	const uint32 CollisionModuleOffset = OffsetIt->second;
-
 	const int32 CollisionBudget = GetCollisionCheckBudgetForCurrentLOD();
 	if (CollisionBudget <= 0)
 	{
@@ -970,10 +1026,33 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 	DebugStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
 	DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
 
+	const UParticleModuleCollision* OuterCollisionModule = GetCollisionModule();
+	if (!OuterCollisionModule)
+	{
+		for (int32 SimulationLODIndex = 0;
+			SimulationLODIndex < static_cast<int32>(ActiveParticleBuckets.size()) && !OuterCollisionModule;
+			++SimulationLODIndex)
+		{
+			if (ActiveParticleBuckets[SimulationLODIndex].empty())
+			{
+				continue;
+			}
+
+			UParticleLODLevel* SimulationLOD = Emitter ? Emitter->GetCurrentLODLevel(SimulationLODIndex) : nullptr;
+			OuterCollisionModule = GetCollisionModule(SimulationLOD);
+		}
+	}
+
+	if (!OuterCollisionModule)
+	{
+		DebugLogParticleCollisionStats(DebugStats);
+		return;
+	}
+
 	// Emitter-level pruning is a coarse "should we spend collision work on this
 	// emitter at all this tick?" gate. It sits outside per-particle budget
 	// prioritization, repeated-hit suppression, and event policy.
-	if (ShouldPruneEmitterCollisionByBounds(*CollisionModule, &DebugStats))
+	if (ShouldPruneEmitterCollisionByBounds(*OuterCollisionModule, &DebugStats))
 	{
 		DebugLogParticleCollisionStats(DebugStats);
 		return;
@@ -983,14 +1062,38 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 	// hit authority. It runs after emitter-level pruning and before per-particle
 	// candidate selection so the emitter has a conservative sense of nearby scene
 	// collision relevance without redefining query/event/response semantics.
-	RefreshEmitterNearbyCollisionCache(*CollisionModule, &DebugStats);
+	RefreshEmitterNearbyCollisionCache(*OuterCollisionModule, &DebugStats);
 
 	TArray<uint32> HighPriorityCandidates;
 	TArray<uint32> FallbackCandidates;
 	HighPriorityCandidates.reserve(ActiveParticles);
 	FallbackCandidates.reserve(ActiveParticles);
 
-	ForEachActiveParticle([this, CollisionModule, CollisionModuleOffset, DeltaTime, &HighPriorityCandidates, &FallbackCandidates, &DebugStats](uint32 ActiveIndex, FBaseParticle& Particle)
+	for (int32 SimulationLODIndex = 0;
+		SimulationLODIndex < static_cast<int32>(ActiveParticleBuckets.size());
+		++SimulationLODIndex)
+	{
+		const TArray<uint32>& ParticleIndices = ActiveParticleBuckets[SimulationLODIndex];
+		if (ParticleIndices.empty())
+		{
+			continue;
+		}
+
+		UParticleLODLevel* SimulationLOD = Emitter ? Emitter->GetCurrentLODLevel(SimulationLODIndex) : nullptr;
+		const UParticleModuleCollision* CollisionModule = GetCollisionModule(SimulationLOD);
+		if (!CollisionModule)
+		{
+			continue;
+		}
+
+		const auto OffsetIt = ModuleOffsetMap->find(CollisionModule);
+		if (OffsetIt == ModuleOffsetMap->end())
+		{
+			continue;
+		}
+
+		const uint32 CollisionModuleOffset = OffsetIt->second;
+		ForEachParticleSubset(ParticleIndices, [this, CollisionModule, CollisionModuleOffset, DeltaTime, &HighPriorityCandidates, &FallbackCandidates, &DebugStats](uint32 ActiveIndex, FBaseParticle& Particle)
 		{
 			// Budget is no longer "first N particles win". We first remove obvious
 			// no-query cases, then spend the limited collision work on the more
@@ -1020,9 +1123,10 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 			FallbackCandidates.push_back(ActiveIndex);
 			++DebugStats.FallbackCandidateCount;
 		});
+	}
 
 	int32 CollisionChecksRemaining = CollisionBudget;
-	auto ProcessCollisionCandidates = [this, CollisionModule, CollisionModuleOffset, DeltaTime, &CollisionChecksRemaining, &DebugStats](const TArray<uint32>& CandidateIndices)
+	auto ProcessCollisionCandidates = [this, DeltaTime, &CollisionChecksRemaining, &DebugStats](const TArray<uint32>& CandidateIndices)
 		{
 			for (uint32 ActiveIndex : CandidateIndices)
 			{
@@ -1037,6 +1141,25 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 					continue;
 				}
 
+				UParticleLODLevel* SimulationLOD = GetParticleSimulationLOD(*Particle);
+				const UParticleModuleCollision* CollisionModule = GetCollisionModule(SimulationLOD);
+				if (!CollisionModule)
+				{
+					continue;
+				}
+
+				if (!ModuleOffsetMap)
+				{
+					continue;
+				}
+
+				const auto OffsetIt = ModuleOffsetMap->find(CollisionModule);
+				if (OffsetIt == ModuleOffsetMap->end())
+				{
+					continue;
+				}
+
+				const uint32 CollisionModuleOffset = OffsetIt->second;
 				if (FinalizeParticleCollisionWithoutQuery(*Particle, *CollisionModule, CollisionModuleOffset))
 				{
 					++DebugStats.SkippedByState;
@@ -1070,7 +1193,11 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 
 const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule() const
 {
-	UParticleLODLevel* LOD = GetCurrentLOD();
+	return GetCollisionModule(GetCurrentLOD());
+}
+
+const UParticleModuleCollision* FParticleEmitterInstance::GetCollisionModule(const UParticleLODLevel* LOD) const
+{
 	if (!LOD)
 	{
 		return nullptr;

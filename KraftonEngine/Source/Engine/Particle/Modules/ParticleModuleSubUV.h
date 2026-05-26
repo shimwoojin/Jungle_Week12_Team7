@@ -27,7 +27,9 @@ public:
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime) override;
+	void UpdateParticleSubset(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                          uint32 ModuleOffset, float DeltaTime,
+	                          const TArray<uint32>& ParticleIndices) override;
 
 	// Evaluated with Particle->RelativeTime: normalized particle lifetime, 0=birth, 1=death.
 	// The evaluated value is floored and clamped to [0, FrameCount - 1].

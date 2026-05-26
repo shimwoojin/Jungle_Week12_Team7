@@ -26,7 +26,9 @@ public:
 
 	void Spawn(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	           float SpawnTime, FBaseParticle* Particle) override;
-	void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset, float DeltaTime) override;
+	void UpdateParticleSubset(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                          uint32 ModuleOffset, float DeltaTime,
+	                          const TArray<uint32>& ParticleIndices) override;
 	uint32 RequiredBytes(UParticleLODLevel* LODLevel) const override;
 
 	struct FSubUVMovieParticlePayload

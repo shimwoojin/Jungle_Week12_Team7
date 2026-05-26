@@ -87,6 +87,16 @@ public:
 	virtual void Update(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	                    float DeltaTime) {}
 
+	// Spawn-time simulation LOD continuity를 위해, runtime은 active particle 전체를
+	// current emitter LOD 하나로 update하지 않고 particle subset을 해당 particle의
+	// spawn-time LOD contract로 dispatch할 수 있다. 기본 구현은 subset을 순회하며
+	// UpdateParticle()를 호출한다.
+	virtual void UpdateParticle(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                            uint32 ModuleOffset, float DeltaTime, FBaseParticle* Particle) {}
+	virtual void UpdateParticleSubset(FParticleEmitterInstance* Owner, UParticleLODLevel* SimulationLOD,
+	                                  uint32 ModuleOffset, float DeltaTime,
+	                                  const TArray<uint32>& ParticleIndices);
+
 	// 시뮬레이션 시작 시 1회 (LODLevel 활성화 시점).
 	virtual void FinalUpdate(FParticleEmitterInstance* Owner, uint32 ModuleOffset,
 	                         float DeltaTime) {}
