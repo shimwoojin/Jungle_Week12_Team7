@@ -39,6 +39,221 @@ static bool ShouldSortParticleIndices(EParticleReplaySortMode SortMode,
 	}
 }
 
+namespace
+{
+	struct FRibbonControlPoint
+	{
+		FVector Position;
+		FVector Tangent;
+		FVector4 Color;
+		FVector Size;
+	};
+
+	struct FRibbonSamplePoint
+	{
+		FVector Position;
+		FVector4 Color;
+		FVector Size;
+		float TrailAlpha = 0.0f;
+	};
+
+	FVector GetRibbonParticleWorldPosition(
+		const uint8* RawBase,
+		uint32 Stride,
+		bool bLocal,
+		const FMatrix& LocalToWorld,
+		uint32 ParticleIndex)
+	{
+		const auto& Particle = *reinterpret_cast<const FBaseParticle*>(RawBase + ParticleIndex * Stride);
+		FVector WorldPosition = Particle.Location;
+		if (bLocal)
+		{
+			WorldPosition = LocalToWorld.TransformPositionWithW(WorldPosition);
+		}
+
+		return WorldPosition;
+	}
+
+	std::vector<uint32> BuildRibbonParticleOrder(const uint8* RawBase, uint32 Stride, uint32 ParticleCount)
+	{
+		std::vector<uint32> Order(ParticleCount);
+		for (uint32 i = 0; i < ParticleCount; ++i)
+		{
+			Order[i] = i;
+		}
+
+		std::sort(Order.begin(), Order.end(), [RawBase, Stride](uint32 A, uint32 B)
+		{
+			const auto& ParticleA = *reinterpret_cast<const FBaseParticle*>(RawBase + A * Stride);
+			const auto& ParticleB = *reinterpret_cast<const FBaseParticle*>(RawBase + B * Stride);
+			return ParticleA.RelativeTime > ParticleB.RelativeTime;
+		});
+
+		return Order;
+	}
+
+	void BuildRibbonControlPoints(
+		const uint8* RawBase,
+		uint32 Stride,
+		bool bLocal,
+		const FMatrix& LocalToWorld,
+		const std::vector<uint32>& OrderedParticleIndices,
+		std::vector<FRibbonControlPoint>& OutControlPoints)
+	{
+		OutControlPoints.clear();
+		OutControlPoints.reserve(OrderedParticleIndices.size());
+
+		for (uint32 ParticleIndex : OrderedParticleIndices)
+		{
+			const FBaseParticle& Particle =
+				*reinterpret_cast<const FBaseParticle*>(RawBase + ParticleIndex * Stride);
+
+			FRibbonControlPoint ControlPoint;
+			ControlPoint.Position =
+				GetRibbonParticleWorldPosition(RawBase, Stride, bLocal, LocalToWorld, ParticleIndex);
+			ControlPoint.Tangent = FVector::ZeroVector;
+			ControlPoint.Color = Particle.Color;
+			ControlPoint.Size = Particle.Size;
+			OutControlPoints.push_back(ControlPoint);
+		}
+	}
+
+	void ComputeRibbonTangents(std::vector<FRibbonControlPoint>& ControlPoints, float TangentTension)
+	{
+		for (size_t i = 0; i < ControlPoints.size(); ++i)
+		{
+			const FVector Prev =
+				(i > 0) ? ControlPoints[i - 1].Position : ControlPoints[i].Position;
+			const FVector Next =
+				(i + 1 < ControlPoints.size()) ? ControlPoints[i + 1].Position : ControlPoints[i].Position;
+			ControlPoints[i].Tangent = (Next - Prev) * (0.5f * TangentTension);
+		}
+	}
+
+	FVector HermiteInterpolateRibbon(
+		const FVector& P0,
+		const FVector& T0,
+		const FVector& P1,
+		const FVector& T1,
+		float T)
+	{
+		const float T2 = T * T;
+		const float T3 = T2 * T;
+
+		return
+			P0 * (2.0f * T3 - 3.0f * T2 + 1.0f) +
+			T0 * (T3 - 2.0f * T2 + T) +
+			P1 * (-2.0f * T3 + 3.0f * T2) +
+			T1 * (T3 - T2);
+	}
+
+	void SampleRibbonCurve(
+		const std::vector<FRibbonControlPoint>& ControlPoints,
+		uint32 TessellationPerSegment,
+		std::vector<FRibbonSamplePoint>& OutSamples)
+	{
+		OutSamples.clear();
+		if (ControlPoints.size() < 2)
+		{
+			return;
+		}
+
+		const uint32 ControlSegmentCount = static_cast<uint32>(ControlPoints.size()) - 1;
+		OutSamples.reserve(1 + ControlSegmentCount * TessellationPerSegment);
+
+		for (uint32 Segment = 0; Segment < ControlSegmentCount; ++Segment)
+		{
+			const FRibbonControlPoint& A = ControlPoints[Segment];
+			const FRibbonControlPoint& B = ControlPoints[Segment + 1];
+
+			for (uint32 Step = 0; Step < TessellationPerSegment; ++Step)
+			{
+				const float LocalT = static_cast<float>(Step) / static_cast<float>(TessellationPerSegment);
+				const float GlobalT = static_cast<float>(Segment) + LocalT;
+
+				FRibbonSamplePoint Sample;
+				Sample.Position =
+					HermiteInterpolateRibbon(A.Position, A.Tangent, B.Position, B.Tangent, LocalT);
+				Sample.Color = A.Color + (B.Color - A.Color) * LocalT;
+				Sample.Size = A.Size + (B.Size - A.Size) * LocalT;
+				Sample.TrailAlpha = GlobalT / static_cast<float>(ControlSegmentCount);
+				OutSamples.push_back(Sample);
+			}
+		}
+
+		const FRibbonControlPoint& Last = ControlPoints.back();
+		FRibbonSamplePoint LastSample;
+		LastSample.Position = Last.Position;
+		LastSample.Color = Last.Color;
+		LastSample.Size = Last.Size;
+		LastSample.TrailAlpha = 1.0f;
+		OutSamples.push_back(LastSample);
+	}
+
+	void BuildRibbonVertices(
+		const std::vector<FRibbonSamplePoint>& Samples,
+		float TilesPerTrail,
+		const FVector& CameraPosition,
+		std::vector<FParticleBeamTrailVertex>& OutVertices)
+	{
+		const uint32 NumPoints = static_cast<uint32>(Samples.size());
+		OutVertices.clear();
+		OutVertices.resize(NumPoints * 2);
+
+		for (uint32 i = 0; i < NumPoints; ++i)
+		{
+			const FRibbonSamplePoint& Sample = Samples[i];
+			const FVector Position = Sample.Position;
+
+			FVector SegmentDirection = (i + 1 < NumPoints)
+				? (Samples[i + 1].Position - Position)
+				: (Position - Samples[i - 1].Position);
+			const float DirectionLength = SegmentDirection.Length();
+			if (DirectionLength > 1e-4f)
+			{
+				SegmentDirection = SegmentDirection * (1.0f / DirectionLength);
+			}
+			else
+			{
+				SegmentDirection = FVector::ForwardVector;
+			}
+
+			FVector Side = SegmentDirection.Cross(CameraPosition - Position);
+			const float SideLength = Side.Length();
+			const float HalfWidth = Sample.Size.X * 0.5f;
+			Side = (SideLength > 1e-4f) ? (Side * (HalfWidth / SideLength)) : FVector{ 0, HalfWidth, 0 };
+
+			const float U = Sample.TrailAlpha * TilesPerTrail;
+			FParticleBeamTrailVertex& LeftVertex = OutVertices[i * 2 + 0];
+			FParticleBeamTrailVertex& RightVertex = OutVertices[i * 2 + 1];
+			LeftVertex.Position = Position - Side;
+			LeftVertex.Color = Sample.Color;
+			LeftVertex.UV = { U, 0.0f };
+			RightVertex.Position = Position + Side;
+			RightVertex.Color = Sample.Color;
+			RightVertex.UV = { U, 1.0f };
+		}
+	}
+
+	void BuildRibbonIndices(uint32 SegmentCount, std::vector<uint32>& OutIndices)
+	{
+		OutIndices.clear();
+		OutIndices.resize(SegmentCount * 6);
+
+		for (uint32 SegmentIndex = 0; SegmentIndex < SegmentCount; ++SegmentIndex)
+		{
+			const uint32 BaseVertex = SegmentIndex * 2;
+			uint32* IndexDst = OutIndices.data() + SegmentIndex * 6;
+			IndexDst[0] = BaseVertex + 0;
+			IndexDst[1] = BaseVertex + 1;
+			IndexDst[2] = BaseVertex + 2;
+			IndexDst[3] = BaseVertex + 1;
+			IndexDst[4] = BaseVertex + 3;
+			IndexDst[5] = BaseVertex + 2;
+		}
+	}
+}
+
 // =============================================================================
 // Sprite CPU billboard expansion
 // =============================================================================
@@ -528,162 +743,37 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const bool bLocal = Replay.bUseLocalSpace;
 	const FMatrix& L2W = Replay.LocalToWorld;
 
-	auto GetWorldPos = [RawBase, Stride, bLocal, &L2W](uint32 i) -> FVector
-	{
-		const auto& P = *reinterpret_cast<const FBaseParticle*>(RawBase + i * Stride);
-		FVector W = P.Location;
-		if (bLocal) W = L2W.TransformPositionWithW(W);
-		return W;
-	};
-
 	// Ribbon은 일반 translucent particle처럼 "그리기용 depth sort"를 우선하지 않고,
 	// trail topology를 복원하기 위한 order를 우선한다. 현재 구현은 emitter의 active
 	// particle snapshot 전체를 하나의 trail로 보고, 오래된 입자부터 이어 붙인다.
-	std::vector<uint32> Order(N);
-	for (uint32 i = 0; i < N; ++i) Order[i] = i;
-	std::sort(Order.begin(), Order.end(), [RawBase, Stride](uint32 a, uint32 b)
-	{
-		const auto& PA = *reinterpret_cast<const FBaseParticle*>(RawBase + a * Stride);
-		const auto& PB = *reinterpret_cast<const FBaseParticle*>(RawBase + b * Stride);
-		return PA.RelativeTime > PB.RelativeTime;
-	});
+	const std::vector<uint32> OrderedParticleIndices =
+		BuildRibbonParticleOrder(RawBase, Stride, N);
 
-	struct FRibbonControlPoint
-	{
-		FVector Position;
-		FVector Tangent;
-		FVector4 Color;
-		FVector Size;
-	};
-
-	struct FRibbonSamplePoint
-	{
-		FVector Position;
-		FVector4 Color;
-		FVector Size;
-		float TrailAlpha = 0.0f;
-	};
-
-	auto HermiteInterpolate = [](const FVector& P0, const FVector& T0,
-	                             const FVector& P1, const FVector& T1,
-	                             float T) -> FVector
-	{
-		const float T2 = T * T;
-		const float T3 = T2 * T;
-
-		return
-			P0 * (2.0f * T3 - 3.0f * T2 + 1.0f) +
-			T0 * (T3 - 2.0f * T2 + T) +
-			P1 * (-2.0f * T3 + 3.0f * T2) +
-			T1 * (T3 - T2);
-	};
-
+	// Stage 1: ordered particle chain -> control points
 	std::vector<FRibbonControlPoint> ControlPoints;
-	ControlPoints.reserve(N);
-	for (uint32 i = 0; i < N; ++i)
-	{
-		const uint32 Idx = Order[i];
-		const FBaseParticle& P = *reinterpret_cast<const FBaseParticle*>(RawBase + Idx * Stride);
+	BuildRibbonControlPoints(RawBase, Stride, bLocal, L2W, OrderedParticleIndices, ControlPoints);
 
-		FRibbonControlPoint CP;
-		CP.Position = GetWorldPos(Idx);
-		CP.Tangent = FVector::ZeroVector;
-		CP.Color = P.Color;
-		CP.Size = P.Size;
-		ControlPoints.push_back(CP);
-	}
-
-	// 각 control point의 tangent를 계산한다. TangentTension은 곡선 보간 강도다.
-	// 이것은 particle simulation payload가 아니라 emitter-level ribbon shaping
+	// Stage 2: control points -> curve tangents
+	// TangentTension은 particle payload가 아니라 emitter-level ribbon shaping
 	// rule이며, GT replay가 넘긴 authoring/type-data 계약을 RT가 소비하는 지점이다.
-	for (uint32 i = 0; i < N; ++i)
-	{
-		const FVector Prev = (i > 0) ? ControlPoints[i - 1].Position : ControlPoints[i].Position;
-		const FVector Next = (i + 1 < N) ? ControlPoints[i + 1].Position : ControlPoints[i].Position;
-		ControlPoints[i].Tangent = (Next - Prev) * (0.5f * TangentTension);
-	}
+	ComputeRibbonTangents(ControlPoints, TangentTension);
 
-	const uint32 ControlSegmentCount = N - 1;
+	// Stage 3: control points/tangents -> sampled curve points
 	const uint32 TessellationPerSegment = static_cast<uint32>(MaxTessellation);
-
 	std::vector<FRibbonSamplePoint> Samples;
-	Samples.reserve(1 + ControlSegmentCount * TessellationPerSegment);
-
-	for (uint32 Segment = 0; Segment < ControlSegmentCount; ++Segment)
-	{
-		const FRibbonControlPoint& A = ControlPoints[Segment];
-		const FRibbonControlPoint& B = ControlPoints[Segment + 1];
-
-		for (uint32 Step = 0; Step < TessellationPerSegment; ++Step)
-		{
-			const float LocalT = static_cast<float>(Step) / static_cast<float>(TessellationPerSegment);
-			const float GlobalT = static_cast<float>(Segment) + LocalT;
-
-			FRibbonSamplePoint S;
-			S.Position = HermiteInterpolate(A.Position, A.Tangent, B.Position, B.Tangent, LocalT);
-			S.Color = A.Color + (B.Color - A.Color) * LocalT;
-			S.Size = A.Size + (B.Size - A.Size) * LocalT;
-			S.TrailAlpha = GlobalT / static_cast<float>(ControlSegmentCount);
-			Samples.push_back(S);
-		}
-	}
-
-	// 마지막 control point는 위 루프에서 중복 생성을 피하려고 별도로 추가한다.
-	{
-		const FRibbonControlPoint& Last = ControlPoints.back();
-
-		FRibbonSamplePoint S;
-		S.Position = Last.Position;
-		S.Color = Last.Color;
-		S.Size = Last.Size;
-		S.TrailAlpha = 1.0f;
-		Samples.push_back(S);
-	}
+	SampleRibbonCurve(ControlPoints, TessellationPerSegment, Samples);
 
 	const uint32 NumPoints = static_cast<uint32>(Samples.size());
 	const uint32 NumSegments = NumPoints - 1;
 	const uint32 VertCount = NumPoints * 2;
 	const uint32 IndexCount = NumSegments * 6;
 
+	// Stage 4: sampled curve -> renderable ribbon strip vertices/indices
 	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
-	for (uint32 i = 0; i < NumPoints; ++i)
-	{
-		const FRibbonSamplePoint& S = Samples[i];
-		const FVector Pos = S.Position;
-
-		// segment 방향: 다음 sample로 (마지막은 직전 방향 재사용).
-		FVector Dir = (i + 1 < NumPoints) ? (Samples[i + 1].Position - Pos)
-		                                  : (Pos - Samples[i - 1].Position);
-		const float DirLen = Dir.Length();
-		if (DirLen > 1e-4f)
-		{
-			Dir = Dir * (1.0f / DirLen);
-		}
-		else
-		{
-			Dir = FVector::ForwardVector;
-		}
-
-		FVector Side = Dir.Cross(CameraPosition - Pos);
-		const float SideLen = Side.Length();
-		const float HalfWidth = S.Size.X * 0.5f;
-		Side = (SideLen > 1e-4f) ? (Side * (HalfWidth / SideLen)) : FVector{ 0, HalfWidth, 0 };
-
-		const float U = S.TrailAlpha * TilesPerTrail;
-		FParticleBeamTrailVertex& L = Vertices[i * 2 + 0];
-		FParticleBeamTrailVertex& R = Vertices[i * 2 + 1];
-		L.Position = Pos - Side; L.Color = S.Color; L.UV = { U, 0.0f };
-		R.Position = Pos + Side; R.Color = S.Color; R.UV = { U, 1.0f };
-	}
+	BuildRibbonVertices(Samples, TilesPerTrail, CameraPosition, Vertices);
 
 	std::vector<uint32> Indices(IndexCount);
-	for (uint32 s = 0; s < NumSegments; ++s)
-	{
-		const uint32 Base = s * 2;
-		uint32* Dst = Indices.data() + s * 6;
-		Dst[0] = Base + 0; Dst[1] = Base + 1; Dst[2] = Base + 2;
-		Dst[3] = Base + 1; Dst[4] = Base + 3; Dst[5] = Base + 2;
-	}
+	BuildRibbonIndices(NumSegments, Indices);
 
 	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
 		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));
@@ -696,7 +786,10 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 
 	// 섹션 depth 정렬용 대표 위치 = 입자 월드 위치 평균.
 	FVector SortSum{ 0, 0, 0 };
-	for (uint32 k = 0; k < N; ++k) SortSum += GetWorldPos(k);
+	for (uint32 k = 0; k < N; ++k)
+	{
+		SortSum += GetRibbonParticleWorldPosition(RawBase, Stride, bLocal, L2W, k);
+	}
 	OutDraw.SortWorldPos = SortSum * (1.0f / static_cast<float>(N));
 
 	OutDraw.StaticIB     = IB.GetBuffer();
