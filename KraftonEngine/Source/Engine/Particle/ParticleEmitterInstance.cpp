@@ -11,6 +11,7 @@
 #include "Particle/TypeData/ParticleModuleTypeDataBeam.h"
 #include "Particle/TypeData/ParticleModuleTypeDataRibbon.h"
 #include "Component/Particle/ParticleSystemComponent.h"
+#include "Core/Logging/Log.h"
 #include "Debug/DrawDebugHelpers.h"
 #include "GameFramework/World.h"
 #include "Math/Transform.h"
@@ -1504,7 +1505,7 @@ bool FParticleEmitterInstance::GatherEmitterNearbyCollisionEvidence(
 	const float DownwardDistance = std::max(
 		BoundsExtent.Z + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
 		ParticleCollisionEmitterPruneMinProbeDistance);
-	if (TryNearbyProbe(BoundsCenter, -FVector::UpVector, DownwardDistance, Hit))
+	if (TryNearbyProbe(BoundsCenter, FVector::UpVector * -1.0f, DownwardDistance, Hit))
 	{
 		DebugDrawParticleCollisionHit(
 			Hit,
@@ -1579,7 +1580,7 @@ bool FParticleEmitterInstance::HasNearbyCollisionForEmitterBounds(
 		return true;
 	}
 
-	const FVector DownwardDirection = -FVector::UpVector;
+	const FVector DownwardDirection = FVector::UpVector * -1.0f;
 	const float DownwardDistance = std::max(
 		BoundsExtent.Z + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
 		ParticleCollisionEmitterPruneMinProbeDistance);
@@ -2025,7 +2026,7 @@ bool FParticleEmitterInstance::ApplyImmediateParticleCollisionResponse(
 			std::clamp(CollisionModule.TangentialDamping, 0.0f, 1.0f);
 
 		const FVector ReflectedNormalVelocityWorld =
-			-NormalVelocityWorld * NormalBounceRetention;
+			NormalVelocityWorld * (-NormalBounceRetention);
 		const FVector DampedTangentialVelocityWorld =
 			TangentialVelocityWorld * TangentialRetention;
 		const FVector BouncedVelocityWorld =
