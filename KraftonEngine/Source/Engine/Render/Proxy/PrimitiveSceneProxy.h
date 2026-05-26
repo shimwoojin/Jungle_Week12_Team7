@@ -67,7 +67,7 @@ public:
 	bool CastsShadowAsTwoSided() const { return bCastShadowAsTwoSided; }
 
 	// --- 렌더 데이터 (DrawCommandBuilder가 읽음) ---
-	ERenderPass        GetRenderPass()  const;
+	virtual ERenderPass GetRenderPass()  const; // 빌보드 등 일부 프록시가 전용 패스로 오버라이드
 	FShader*           GetShader()      const;
 	FMeshBuffer*       GetMeshBuffer()  const { return MeshBuffer; }
 

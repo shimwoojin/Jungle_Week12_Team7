@@ -52,6 +52,7 @@ enum class ERenderPass : uint32
 	EditorLines,	// 디버그 라인 + 그리드 (LINELIST)
 	PostProcess,	// 아웃라인 풀스크린, Fog, SceneDepth
 	FXAA,			// FXAA 안티앨리어싱 (SceneColor 복사 후 실행)
+	EditorIcon,		// 에디터 아이콘 빌보드 오버레이 (포스트프로세스 이후, NoDepth/AlphaBlend — 항상 위)
 	GizmoOuter,		// 기즈모 외곽 (깊이 테스트 O)
 	GizmoInner,		// 기즈모 내부 (깊이 무시)
 	OverlayFont,	// 스크린 공간 텍스트 (깊이 무시)
@@ -74,6 +75,7 @@ inline const char* GetRenderPassName(ERenderPass Pass)
 		"RenderPass::EditorLines",
 		"RenderPass::PostProcess",
 		"RenderPass::FXAA",
+		"RenderPass::EditorIcon",
 		"RenderPass::GizmoOuter",
 		"RenderPass::GizmoInner",
 		"RenderPass::OverlayFont",
@@ -99,6 +101,7 @@ namespace RenderStateStrings
 		{ "EditorLines",   (int)ERenderPass::EditorLines },
 		{ "PostProcess",   (int)ERenderPass::PostProcess },
 		{ "FXAA",          (int)ERenderPass::FXAA },
+		{ "EditorIcon",    (int)ERenderPass::EditorIcon },
 		{ "GizmoOuter",    (int)ERenderPass::GizmoOuter },
 		{ "GizmoInner",    (int)ERenderPass::GizmoInner },
 		{ "OverlayFont",   (int)ERenderPass::OverlayFont },
