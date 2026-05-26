@@ -60,9 +60,10 @@ private:
 	// 공통 헬퍼
 	void EmitLineCommand(FLineGeometry& Lines, FShader* Shader, const FDrawCommandRenderState& RS);
 	void ApplyMaterialRenderState(FDrawCommandRenderState& OutState, const UMaterial* Mat, const FDrawCommandRenderState& BaseState);
-	FShader* SelectEffectiveShader(FShader* ProxyShader, EViewMode ViewMode, bool bUseSkeletalVertexFactory, bool bWeightBoneHeatMap);
+	FShader* SelectEffectiveShader(FShader* ProxyShader, EViewMode ViewMode, bool bUseSkeletalVertexFactory, bool bWeightBoneHeatMap, bool bForwardFog = false);
 	// shader-agnostic 도출: custom override 우선, 아니면 (Domain × VertexFactory × Pass × ViewMode).
-	FShader* ResolveSectionShader(class UMaterial* Mat, EVertexFactoryType VFType, EViewMode ViewMode, bool bGPUSkinning, bool bWeightBoneHeatMap);
+	// bForwardFog: Translucent 패스 섹션이면 UberLit FORWARD_FOG 변형 선택(self-fog).
+	FShader* ResolveSectionShader(class UMaterial* Mat, EVertexFactoryType VFType, EViewMode ViewMode, bool bGPUSkinning, bool bWeightBoneHeatMap, bool bForwardFog = false);
 
 	FConstantBuffer* GetPerObjectCBForProxy(FScene* Scene, const FPrimitiveSceneProxy& Proxy);
 	void EnsurePerObjectCBPoolCapacity(FScene* Scene, uint32 RequiredCount);

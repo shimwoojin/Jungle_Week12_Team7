@@ -35,6 +35,9 @@
 #include "Particle/Distributions/DistributionVectorUniform.h"
 #include "Particle/Distributions/DistributionVectorUniformCurve.h"
 #include "Particle/Modules/ParticleModuleAcceleration.h"
+#include "Particle/Modules/ParticleModuleBeamSource.h"
+#include "Particle/Modules/ParticleModuleBeamTarget.h"
+#include "Particle/Modules/ParticleModuleBeamNoise.h"
 
 #include "Particle/Modules/ParticleModuleCollision.h"
 #include "Particle/Modules/ParticleModuleColor.h"
@@ -75,6 +78,15 @@ namespace
 	constexpr int32 CurveSourceInitialColorAlpha = 11;
 	constexpr int32 CurveSourceSubImageIndex = 12;
 	constexpr int32 CurveSourceSubUVMovieFrameRate = 13;
+	constexpr int32 CurveSourceBeamWidth = 14;
+	constexpr int32 CurveSourceBeamDistance = 15;
+	constexpr int32 CurveSourceBeamSource = 16;
+	constexpr int32 CurveSourceBeamTarget = 17;
+	constexpr int32 CurveSourceBeamNoiseRange = 18;
+	constexpr int32 CurveSourceBeamNoiseFrequency = 19;
+	constexpr int32 CurveSourceBeamNoiseSpeed = 20;
+	constexpr int32 CurveSourceBeamSourceTangent = 21;
+	constexpr int32 CurveSourceBeamTargetTangent = 22;
 
 	uint32 GNextParticleEditorInstanceId = 0;
 
@@ -141,6 +153,7 @@ namespace
 		case UParticleModule::EModuleCategory::Collision: return "Collision";
 		case UParticleModule::EModuleCategory::Event:     return "Event";
 		case UParticleModule::EModuleCategory::SubUV:     return "SubUV";
+		case UParticleModule::EModuleCategory::Beam:      return "Beam";
 		default:                                         return "Module";
 		}
 	}
@@ -162,6 +175,7 @@ namespace
 		case UParticleModule::EModuleCategory::Collision: Color = IM_COL32(70, 70, 86, 255);    break;
 		case UParticleModule::EModuleCategory::Event:     Color = IM_COL32(72, 94, 120, 255);   break;
 		case UParticleModule::EModuleCategory::SubUV:     Color = IM_COL32(72, 94, 120, 255);   break;
+		case UParticleModule::EModuleCategory::Beam:      Color = IM_COL32(88, 116, 164, 255);  break;
 		default: break;
 		}
 
@@ -478,6 +492,17 @@ namespace
 			Distribution = UObjectManager::Get().CreateObject<UDistributionVectorConstant>(Outer);
 		}
 		return Distribution;
+	}
+
+	void EnsureFloatConstantDistribution(UDistributionFloat*& Distribution, UObject* Outer, float Value)
+	{
+		if (Distribution) return;
+		auto* NewDistribution = UObjectManager::Get().CreateObject<UDistributionFloatConstant>(Outer);
+		if (NewDistribution)
+		{
+			NewDistribution->Constant = Value;
+			Distribution = NewDistribution;
+		}
 	}
 
 	void EnsureInitialColorDistributions(UParticleModuleColor* Color)
@@ -2408,6 +2433,28 @@ void FParticleEditorWidget::RenderEmitterColumn(UParticleEmitter* Emitter, int32
 					}
 					ImGui::EndMenu();
 				}
+				if (ImGui::BeginMenu("Beam"))
+				{
+					if (ImGui::MenuItem("Beam Source"))
+					{
+						UParticleModule* Module = CreateParticleModule<UParticleModuleBeamSource>(ContextLOD, Emitter);
+						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
+						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
+					}
+					if (ImGui::MenuItem("Beam Target"))
+					{
+						UParticleModule* Module = CreateParticleModule<UParticleModuleBeamTarget>(ContextLOD, Emitter);
+						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
+						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
+					}
+					if (ImGui::MenuItem("Beam Noise"))
+					{
+						UParticleModule* Module = CreateParticleModule<UParticleModuleBeamNoise>(ContextLOD, Emitter);
+						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
+						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
+					}
+					ImGui::EndMenu();
+				}
 				if (ImGui::BeginMenu("TypeData"))
 				{
 					const bool bHasTypeData = ContextLOD->TypeDataModule != nullptr;
@@ -3104,14 +3151,69 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					bChanged |= ImGui::Checkbox("Override Material", &Mesh->bOverrideMaterial);
 				}
 			}
+			else if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
+			{
+				if (ImGui::CollapsingHeader("Beam Source", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static const char* SourceMethodNames[] = { "Default", "UserSet", "Emitter" };
+					int32 Method = static_cast<int32>(BeamSource->SourceMethod);
+					if (ComboInt("Source Method", Method, SourceMethodNames, 3)) { BeamSource->SourceMethod = static_cast<UParticleModuleBeamSource::EBeam2SourceMethod>(Method); bChanged = true; }
+					bChanged |= DrawVectorDistributionEditor("Source", BeamSource->SourceDistribution, BeamSource, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("Source Tangent", BeamSource->SourceTangentDistribution, BeamSource, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					bChanged |= ImGui::Checkbox("Source Absolute", &BeamSource->bSourceAbsolute);
+					bChanged |= ImGui::Checkbox("Lock Source", &BeamSource->bLockSource);
+				}
+			}
+			else if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
+			{
+				if (ImGui::CollapsingHeader("Beam Target", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static const char* TargetMethodNames[] = { "Default", "UserSet", "Emitter", "Distance" };
+					int32 Method = static_cast<int32>(BeamTarget->TargetMethod);
+					if (ComboInt("Target Method", Method, TargetMethodNames, 4)) { BeamTarget->TargetMethod = static_cast<UParticleModuleBeamTarget::EBeam2TargetMethod>(Method); bChanged = true; }
+					bChanged |= DrawVectorDistributionEditor("Target", BeamTarget->TargetDistribution, BeamTarget, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("Target Tangent", BeamTarget->TargetTangentDistribution, BeamTarget, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					bChanged |= ImGui::Checkbox("Target Absolute", &BeamTarget->bTargetAbsolute);
+					bChanged |= ImGui::Checkbox("Lock Target", &BeamTarget->bLockTarget);
+				}
+			}
+			else if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
+			{
+				if (ImGui::CollapsingHeader("Beam Noise", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					bChanged |= DrawFloatDistributionEditor("Noise Range", BeamNoise->NoiseRangeDistribution, BeamNoise, 0.1f, 0.0f, 10000.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawVectorDistributionEditor("Noise Direction", BeamNoise->NoiseDirectionDistribution, BeamNoise, 0.1f, 0.0f, 0.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawFloatDistributionEditor("Frequency", BeamNoise->FrequencyDistribution, BeamNoise, 0.1f, 0.0f, 1000.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawFloatDistributionEditor("Noise Speed", BeamNoise->NoiseSpeedDistribution, BeamNoise, 0.1f, -10000.0f, 10000.0f, "EmitterTime");
+					bChanged |= ImGui::Checkbox("Smooth", &BeamNoise->bSmooth);
+					bChanged |= ImGui::DragInt("Noise Tessellation", &BeamNoise->NoiseTessellation, 1.0f, 0, 128);
+				}
+			}
 			else if (UParticleModuleTypeDataBeam* Beam = Cast<UParticleModuleTypeDataBeam>(Module))
 			{
 				if (ImGui::CollapsingHeader("TypeData Beam", ImGuiTreeNodeFlags_DefaultOpen))
 				{
+					static const char* BeamMethodNames[] = { "Distance", "Target" };
+					int32 BeamMethod = static_cast<int32>(Beam->BeamMethod);
+					if (ComboInt("Beam Method", BeamMethod, BeamMethodNames, 2)) { Beam->BeamMethod = static_cast<UParticleModuleTypeDataBeam::EBeam2Method>(BeamMethod); bChanged = true; }
+					bChanged |= ImGui::DragFloat("Speed", &Beam->Speed, 0.1f, 0.0f, 100000.0f, "%.2f");
 					bChanged |= ImGui::DragInt("Interpolation Points", &Beam->InterpolationPoints, 1.0f, 0, 128);
-					bChanged |= ImGui::DragFloat("Noise Amount", &Beam->NoiseAmount, 0.1f, 0.0f, 100.0f, "%.2f");
-					bChanged |= ImGui::DragFloat("Noise Frequency", &Beam->NoiseFrequency, 0.1f, 0.0f, 20.0f, "%.2f");
+					EnsureFloatConstantDistribution(Beam->WidthDistribution, Beam, Beam->Width);
+					EnsureFloatConstantDistribution(Beam->DistanceDistribution, Beam, Beam->Distance);
+					bChanged |= DrawFloatDistributionEditor("Width", Beam->WidthDistribution, Beam, 0.01f, 0.0f, 10000.0f, "EmitterTime");
+					ImGui::Separator();
+					bChanged |= DrawFloatDistributionEditor("Distance", Beam->DistanceDistribution, Beam, 0.1f, 0.0f, 100000.0f, "EmitterTime");
 					bChanged |= ImGui::Checkbox("Tile UV", &Beam->bTileUV);
+					static const char* TaperNames[] = { "None", "Full" };
+					int32 Taper = static_cast<int32>(Beam->TaperMethod);
+					if (ComboInt("Taper Method", Taper, TaperNames, 2)) { Beam->TaperMethod = static_cast<UParticleModuleTypeDataBeam::EBeamTaperMethod>(Taper); bChanged = true; }
+					bChanged |= ImGui::DragFloat("Taper Factor", &Beam->TaperFactor, 0.01f, 0.0f, 10.0f, "%.2f");
+					bChanged |= ImGui::Checkbox("Render Geometry", &Beam->bRenderGeometry);
 					bChanged |= DragFloat3Field("Default Source", Beam->DefaultSource, 0.1f);
 					bChanged |= DragFloat3Field("Default Target", Beam->DefaultTarget, 0.1f);
 				}
@@ -3464,6 +3566,45 @@ void FParticleEditorWidget::RenderCurveEditor(ImVec2 Size)
 		bChanged |= DrawFloatCurveDistributionPanel("SubUV Movie Frame Rate", SubUVMovie->FrameRateDistribution, CurveSourceSubUVMovieFrameRate,
 			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
 	}
+	else if (UParticleModuleTypeDataBeam* Beam = Cast<UParticleModuleTypeDataBeam>(Module))
+	{
+		bHasCurve |= IsFloatCurveDistribution(Beam->WidthDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Beam Width", Beam->WidthDistribution, CurveSourceBeamWidth,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsFloatCurveDistribution(Beam->DistanceDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Beam Distance", Beam->DistanceDistribution, CurveSourceBeamDistance,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
+	else if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
+	{
+		bHasCurve |= IsVectorCurveDistribution(BeamSource->SourceDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Beam Source", BeamSource->SourceDistribution, CurveSourceBeamSource,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsVectorCurveDistribution(BeamSource->SourceTangentDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Beam Source Tangent", BeamSource->SourceTangentDistribution, CurveSourceBeamSourceTangent,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
+	else if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
+	{
+		bHasCurve |= IsVectorCurveDistribution(BeamTarget->TargetDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Beam Target", BeamTarget->TargetDistribution, CurveSourceBeamTarget,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsVectorCurveDistribution(BeamTarget->TargetTangentDistribution);
+		bChanged |= DrawVectorCurveDistributionPanel("Beam Target Tangent", BeamTarget->TargetTangentDistribution, CurveSourceBeamTargetTangent,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
+	else if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
+	{
+		bHasCurve |= IsFloatCurveDistribution(BeamNoise->NoiseRangeDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Beam Noise Range", BeamNoise->NoiseRangeDistribution, CurveSourceBeamNoiseRange,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsFloatCurveDistribution(BeamNoise->FrequencyDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Beam Noise Frequency", BeamNoise->FrequencyDistribution, CurveSourceBeamNoiseFrequency,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+		bHasCurve |= IsFloatCurveDistribution(BeamNoise->NoiseSpeedDistribution);
+		bChanged |= DrawFloatCurveDistributionPanel("Beam Noise Speed", BeamNoise->NoiseSpeedDistribution, CurveSourceBeamNoiseSpeed,
+			SelectedCurveSource, SelectedCurveChannel, SelectedCurveKeyIndex, bDraggingCurveKey);
+	}
 
 	if (!bHasCurve)
 	{
@@ -3559,6 +3700,9 @@ void FParticleEditorWidget::RenderAddModulePopup()
 		AddRegular("Event Generator", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventGenerator>(LOD, Emitter); });
 		AddRegular("Sub Image Index", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUV>(LOD, Emitter); });
 		AddRegular("SubUV Movie", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUVMovie>(LOD, Emitter); });
+		AddRegular("Beam Source", UParticleModule::EModuleCategory::Beam, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleBeamSource>(LOD, Emitter); });
+		AddRegular("Beam Target", UParticleModule::EModuleCategory::Beam, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleBeamTarget>(LOD, Emitter); });
+		AddRegular("Beam Noise", UParticleModule::EModuleCategory::Beam, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleBeamNoise>(LOD, Emitter); });
 
 		ImGui::Separator();
 		const bool bHasTypeData = LOD->TypeDataModule != nullptr;
@@ -3770,6 +3914,27 @@ bool FParticleEditorWidget::SelectFirstCurveForModule(UParticleModule* Module)
 	if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
 	{
 		return TryFloatCurve(SubUVMovie->FrameRateDistribution, CurveSourceSubUVMovieFrameRate, 0);
+	}
+	if (UParticleModuleTypeDataBeam* Beam = Cast<UParticleModuleTypeDataBeam>(Module))
+	{
+		return TryFloatCurve(Beam->WidthDistribution, CurveSourceBeamWidth, 0) ||
+			TryFloatCurve(Beam->DistanceDistribution, CurveSourceBeamDistance, 0);
+	}
+	if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
+	{
+		return TryVectorCurve(BeamSource->SourceDistribution, CurveSourceBeamSource) ||
+			TryVectorCurve(BeamSource->SourceTangentDistribution, CurveSourceBeamSourceTangent);
+	}
+	if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
+	{
+		return TryVectorCurve(BeamTarget->TargetDistribution, CurveSourceBeamTarget) ||
+			TryVectorCurve(BeamTarget->TargetTangentDistribution, CurveSourceBeamTargetTangent);
+	}
+	if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
+	{
+		return TryFloatCurve(BeamNoise->NoiseRangeDistribution, CurveSourceBeamNoiseRange, 0) ||
+			TryFloatCurve(BeamNoise->FrequencyDistribution, CurveSourceBeamNoiseFrequency, 0) ||
+			TryFloatCurve(BeamNoise->NoiseSpeedDistribution, CurveSourceBeamNoiseSpeed, 0);
 	}
 
 	return false;
@@ -4055,6 +4220,60 @@ FFloatCurve* FParticleEditorWidget::GetSelectedCurve(FString* OutCurveName, FStr
 		if (UParticleModuleSubUVMovie* SubUVMovie = Cast<UParticleModuleSubUVMovie>(Module))
 		{
 			return SelectFloatCurve(SubUVMovie->FrameRateDistribution, "SubUV Movie Frame Rate", "FPS");
+		}
+		break;
+	case CurveSourceBeamWidth:
+		if (UParticleModuleTypeDataBeam* Beam = Cast<UParticleModuleTypeDataBeam>(Module))
+		{
+			return SelectFloatCurve(Beam->WidthDistribution, "Beam Width", "Width");
+		}
+		break;
+	case CurveSourceBeamDistance:
+		if (UParticleModuleTypeDataBeam* Beam = Cast<UParticleModuleTypeDataBeam>(Module))
+		{
+			return SelectFloatCurve(Beam->DistanceDistribution, "Beam Distance", "Distance");
+		}
+		break;
+	case CurveSourceBeamSource:
+		if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
+		{
+			return SelectVectorChannel(BeamSource->SourceDistribution, "Beam Source");
+		}
+		break;
+	case CurveSourceBeamSourceTangent:
+		if (UParticleModuleBeamSource* BeamSource = Cast<UParticleModuleBeamSource>(Module))
+		{
+			return SelectVectorChannel(BeamSource->SourceTangentDistribution, "Beam Source Tangent");
+		}
+		break;
+	case CurveSourceBeamTarget:
+		if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
+		{
+			return SelectVectorChannel(BeamTarget->TargetDistribution, "Beam Target");
+		}
+		break;
+	case CurveSourceBeamTargetTangent:
+		if (UParticleModuleBeamTarget* BeamTarget = Cast<UParticleModuleBeamTarget>(Module))
+		{
+			return SelectVectorChannel(BeamTarget->TargetTangentDistribution, "Beam Target Tangent");
+		}
+		break;
+	case CurveSourceBeamNoiseRange:
+		if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
+		{
+			return SelectFloatCurve(BeamNoise->NoiseRangeDistribution, "Beam Noise Range", "Range");
+		}
+		break;
+	case CurveSourceBeamNoiseFrequency:
+		if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
+		{
+			return SelectFloatCurve(BeamNoise->FrequencyDistribution, "Beam Noise Frequency", "Frequency");
+		}
+		break;
+	case CurveSourceBeamNoiseSpeed:
+		if (UParticleModuleBeamNoise* BeamNoise = Cast<UParticleModuleBeamNoise>(Module))
+		{
+			return SelectFloatCurve(BeamNoise->NoiseSpeedDistribution, "Beam Noise Speed", "Speed");
 		}
 		break;
 	default:

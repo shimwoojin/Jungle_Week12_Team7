@@ -56,6 +56,7 @@ public:
 		Collision,
 		Event,
 		SubUV,
+		Beam,
 	};
 	virtual EModuleCategory GetCategory() const { return EModuleCategory::None; }
 

@@ -417,11 +417,19 @@ struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 	int32 InterpolationPoints = 0;
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };
+	FVector SourceTangent = { 0, 0, 0 };
+	FVector TargetTangent = { 0, 0, 0 };
+	FVector NoiseDirection = { 0, 0, 1 };
 	float Width = 10.0f;            // beam 띠 전체 폭
 	float NoiseAmount = 0.0f;       // 수직 변위 진폭 (0 = 직선)
 	float NoiseFrequency = 1.0f;    // beam 길이당 sin파 횟수
 	float NoiseSpeed = 2.0f;        // 시간에 따른 noise 흐름 속도
+	int32 NoiseTessellation = 0;    // noise 표현을 위한 최소 분할 수
+	bool bSmoothNoise = true;       // 현재 sine 기반 smooth noise 플래그
 	bool bTileUV = true;            // beam 전체 길이에 따라 UV를 반복(tile)할지 여부
+	bool bRenderGeometry = true;    // false면 Beam geometry를 생성하지 않음
+	float TaperFactor = 1.0f;       // target 방향 폭 배율
+	bool bTaperFull = false;        // true면 source→target으로 Width를 TaperFactor까지 보간
 	float EmitterTime = 0.0f;       // GT 누적 시간 (시간 기반 noise phase)
 };
 
