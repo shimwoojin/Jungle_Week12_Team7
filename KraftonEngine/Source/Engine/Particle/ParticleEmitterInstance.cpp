@@ -35,6 +35,9 @@ namespace
 	constexpr int32 ParticleCollisionBudgetLOD0 = 512;
 	constexpr int32 ParticleCollisionBudgetLOD1 = 128;
 	constexpr int32 ParticleCollisionBudgetLOD2OrLower = 0;
+	constexpr float ParticleCollisionEmitterPruneMinMovementDistance = 5.0f;
+	constexpr float ParticleCollisionEmitterPruneMinProbeDistance = 100.0f;
+	constexpr float ParticleCollisionEmitterPruneProbePadding = 50.0f;
 	// Narrow runtime gate for collision observability. Leave false by default so
 	// normal gameplay stays quiet; flip during focused collision investigation.
 	bool GParticleCollisionDebugEnabled = false;
@@ -213,6 +216,8 @@ void FParticleEmitterInstance::Init(UParticleEmitter* InEmitter, UParticleSystem
 	CurrentLoopTimeSeconds = 0.0f;
 	LoopCount = 0;
 	ActiveParticles = 0;
+	LastCollisionPruneBoundsCenter = FVector::ZeroVector;
+	bHasLastCollisionPruneBoundsCenter = false;
 
 	ClearPendingEvents();
 
@@ -285,6 +290,8 @@ void FParticleEmitterInstance::Reset()
 	EmitterTimeSeconds = 0.0f;
 	CurrentLoopTimeSeconds = 0.0f;
 	LoopCount = 0;
+	LastCollisionPruneBoundsCenter = FVector::ZeroVector;
+	bHasLastCollisionPruneBoundsCenter = false;
 
 	ClearPendingEvents();
 
@@ -950,6 +957,15 @@ void FParticleEmitterInstance::ResolveParticleCollisions(float DeltaTime)
 	DebugStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
 	DebugStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
 
+	// Emitter-level pruning is a coarse "should we spend collision work on this
+	// emitter at all this tick?" gate. It sits outside per-particle budget
+	// prioritization, repeated-hit suppression, and event policy.
+	if (ShouldPruneEmitterCollisionByBounds(*CollisionModule, &DebugStats))
+	{
+		DebugLogParticleCollisionStats(DebugStats);
+		return;
+	}
+
 	TArray<uint32> HighPriorityCandidates;
 	TArray<uint32> FallbackCandidates;
 	HighPriorityCandidates.reserve(ActiveParticles);
@@ -1289,12 +1305,170 @@ bool FParticleEmitterInstance::PerformParticleCollisionQuery(
 		GetParticleCollisionQueryIgnoreActor());
 }
 
+bool FParticleEmitterInstance::ShouldPruneEmitterCollisionByBounds(
+	const UParticleModuleCollision& CollisionModule,
+	FParticleCollisionDebugStats* DebugStats)
+{
+	FVector BoundsMin = FVector::ZeroVector;
+	FVector BoundsMax = FVector::ZeroVector;
+	if (!ComputeDynamicBounds(BoundsMin, BoundsMax))
+	{
+		bHasLastCollisionPruneBoundsCenter = false;
+		return false;
+	}
+
+	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+	const bool bHasNearbyCollision =
+		HasNearbyCollisionForEmitterBounds(
+			CollisionModule,
+			BoundsMin,
+			BoundsMax,
+			DebugStats);
+
+	LastCollisionPruneBoundsCenter = BoundsCenter;
+	bHasLastCollisionPruneBoundsCenter = true;
+	if (bHasNearbyCollision)
+	{
+		return false;
+	}
+
+	if (DebugStats)
+	{
+		++DebugStats->EmitterPrunedCount;
+	}
+	return true;
+}
+
+bool FParticleEmitterInstance::HasNearbyCollisionForEmitterBounds(
+	const UParticleModuleCollision& CollisionModule,
+	const FVector& BoundsMin,
+	const FVector& BoundsMax,
+	FParticleCollisionDebugStats* DebugStats)
+{
+	const FVector BoundsCenter = (BoundsMin + BoundsMax) * 0.5f;
+	const FVector BoundsExtent = (BoundsMax - BoundsMin) * 0.5f;
+	const float BoundsRadius = BoundsExtent.Length();
+
+	if (!bHasLastCollisionPruneBoundsCenter)
+	{
+		return true;
+	}
+
+	const FVector MovementDelta = BoundsCenter - LastCollisionPruneBoundsCenter;
+	const float MovementDistance = MovementDelta.Length();
+	if (MovementDistance < ParticleCollisionEmitterPruneMinMovementDistance)
+	{
+		return true;
+	}
+
+	const FVector DownwardDirection = -FVector::UpVector;
+	const float DownwardDistance = std::max(
+		BoundsExtent.Z + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
+		ParticleCollisionEmitterPruneMinProbeDistance);
+	const FVector DownwardEnd = BoundsCenter + DownwardDirection * DownwardDistance;
+
+	FHitResult DownwardHit;
+	// Reuse the same channel/ignore semantics as the real collision path so the
+	// coarse prune decision stays aligned with what per-particle queries would ask.
+	const bool bDownwardHit = PerformParticleCollisionQuery(
+		BoundsCenter,
+		DownwardDirection,
+		DownwardDistance,
+		CollisionModule,
+		DownwardHit);
+	DebugDrawEmitterCollisionPruneProbe(
+		BoundsCenter,
+		DownwardEnd,
+		bDownwardHit ? FColor(80, 180, 255) : FColor(160, 120, 220));
+	if (DebugStats)
+	{
+		if (bDownwardHit)
+		{
+			++DebugStats->EmitterPruneProbeHitCount;
+		}
+		else
+		{
+			++DebugStats->EmitterPruneProbeMissCount;
+		}
+	}
+	if (bDownwardHit)
+	{
+		DebugDrawParticleCollisionHit(
+			DownwardHit,
+			DownwardHit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : DownwardHit.ImpactNormal.Normalized(),
+			FColor(80, 180, 255),
+			FColor(80, 180, 255));
+		return true;
+	}
+
+	const FVector MovementDirection = MovementDelta / MovementDistance;
+	const float MovementProbeDistance = std::max(
+		MovementDistance + BoundsRadius + ParticleCollisionEmitterPruneProbePadding,
+		ParticleCollisionEmitterPruneMinProbeDistance);
+	const FVector MovementEnd = BoundsCenter + MovementDirection * MovementProbeDistance;
+
+	FHitResult MovementHit;
+	const bool bMovementHit = PerformParticleCollisionQuery(
+		BoundsCenter,
+		MovementDirection,
+		MovementProbeDistance,
+		CollisionModule,
+		MovementHit);
+	DebugDrawEmitterCollisionPruneProbe(
+		BoundsCenter,
+		MovementEnd,
+		bMovementHit ? FColor(80, 180, 255) : FColor(160, 120, 220));
+	if (DebugStats)
+	{
+		if (bMovementHit)
+		{
+			++DebugStats->EmitterPruneProbeHitCount;
+		}
+		else
+		{
+			++DebugStats->EmitterPruneProbeMissCount;
+		}
+	}
+	if (bMovementHit)
+	{
+		DebugDrawParticleCollisionHit(
+			MovementHit,
+			MovementHit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : MovementHit.ImpactNormal.Normalized(),
+			FColor(80, 180, 255),
+			FColor(80, 180, 255));
+		return true;
+	}
+
+	// Both coarse probes missed, so the emitter looks unlikely to spend useful
+	// collision work this tick. This is intentionally conservative: any
+	// ambiguous case above keeps collision processing enabled instead.
+	return false;
+}
+
 bool FParticleEmitterInstance::ShouldDebugParticleCollisions() const
 {
 	return GParticleCollisionDebugEnabled && Component && Component->GetWorld();
 }
 
 void FParticleEmitterInstance::DebugDrawParticleCollisionQuery(
+	const FVector& StartWorld,
+	const FVector& EndWorld,
+	const FColor& Color) const
+{
+	if (!ShouldDebugParticleCollisions())
+	{
+		return;
+	}
+
+	DrawDebugLine(
+		Component->GetWorld(),
+		StartWorld,
+		EndWorld,
+		Color,
+		ParticleCollisionDebugDrawDuration);
+}
+
+void FParticleEmitterInstance::DebugDrawEmitterCollisionPruneProbe(
 	const FVector& StartWorld,
 	const FVector& EndWorld,
 	const FColor& Color) const
@@ -1348,13 +1522,16 @@ void FParticleEmitterInstance::DebugLogParticleCollisionStats(
 
 	const std::string EmitterName = Emitter ? Emitter->GetName() : "<null>";
 	UE_LOG(
-		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
+		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d pruned=%d pruneProbeHit=%d pruneProbeMiss=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
 		EmitterName.c_str(),
 		Stats.CurrentLODIndex,
 		Stats.ActiveParticles,
 		Stats.EffectiveBudget,
 		Stats.bCollisionFullyDisabledForLOD ? 1 : 0,
 		Stats.bCollisionEventGatedForLOD ? 1 : 0,
+		Stats.EmitterPrunedCount,
+		Stats.EmitterPruneProbeHitCount,
+		Stats.EmitterPruneProbeMissCount,
 		Stats.CandidateCount,
 		Stats.HighPriorityCandidateCount,
 		Stats.FallbackCandidateCount,

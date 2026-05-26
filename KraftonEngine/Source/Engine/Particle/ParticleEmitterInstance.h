@@ -210,6 +210,9 @@ private:
 		int32 KilledImmediateCount = 0;
 		int32 FrozenAfterLimitCount = 0;
 		int32 IgnoredFurtherCollisionsCount = 0;
+		int32 EmitterPrunedCount = 0;
+		int32 EmitterPruneProbeHitCount = 0;
+		int32 EmitterPruneProbeMissCount = 0;
 		bool bCollisionFullyDisabledForLOD = false;
 		bool bCollisionEventGatedForLOD = false;
 	};
@@ -257,8 +260,20 @@ private:
 		float TravelDistance,
 		const UParticleModuleCollision& CollisionModule,
 		FHitResult& OutHit) const;
+	bool ShouldPruneEmitterCollisionByBounds(
+		const UParticleModuleCollision& CollisionModule,
+		FParticleCollisionDebugStats* DebugStats);
+	bool HasNearbyCollisionForEmitterBounds(
+		const UParticleModuleCollision& CollisionModule,
+		const FVector& BoundsMin,
+		const FVector& BoundsMax,
+		FParticleCollisionDebugStats* DebugStats);
 	bool ShouldDebugParticleCollisions() const;
 	void DebugDrawParticleCollisionQuery(
+		const FVector& StartWorld,
+		const FVector& EndWorld,
+		const FColor& Color) const;
+	void DebugDrawEmitterCollisionPruneProbe(
 		const FVector& StartWorld,
 		const FVector& EndWorld,
 		const FColor& Color) const;
@@ -330,6 +345,8 @@ protected:
 	float CurrentLoopTimeSeconds = 0.0f;
 	int32 LoopCount          = 0;
 	int32 CurrentLODIndex    = 0;
+	FVector LastCollisionPruneBoundsCenter = FVector::ZeroVector;
+	bool bHasLastCollisionPruneBoundsCenter = false;
 
 	// 이벤트 큐 (EventGenerator 모듈이 push, PSC/EventManager 가 drain).
 	TArray<FParticleEventSpawnData>     SpawnEvents;
