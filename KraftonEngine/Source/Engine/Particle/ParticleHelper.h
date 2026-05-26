@@ -430,6 +430,14 @@ struct FDynamicBeamEmitterReplayData : FDynamicEmitterReplayDataBase
 {
 	// Beam shaping inputs도 emitter-level current render replay LOD view에서 해석한다.
 	// 현재 RT beam path는 per-particle simulation LOD별 beam contract를 따로 들고 가지 않는다.
+	//
+	// 즉 이 struct의 Source/Target/Tangent/Noise 값은 "각 active particle마다 독립 beam"
+	// 을 기술하는 per-particle payload가 아니라, emitter 하나가 이번 프레임에 보여줄
+	// beam strip shape를 설명하는 emitter-level snapshot이다.
+	//
+	// 참고로 Base.ActiveParticleCount는 generic replay header에서 온 값이며, 현재 Beam RT
+	// path에서는 독립 endpoint 집합 수가 아니라 strip multiplicity를 결정하는 제한적/
+	// legacy hint로만 사용된다.
 	int32 InterpolationPoints = 0;
 	FVector SourcePoint = { 0, 0, 0 };
 	FVector TargetPoint = { 0, 0, 0 };

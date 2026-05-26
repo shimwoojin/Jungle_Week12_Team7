@@ -562,6 +562,21 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 // =============================================================================
 // Beam — SourcePoint→TargetPoint 카메라facing quad strip
 // =============================================================================
+namespace
+{
+uint32 ResolveBeamStripMultiplicity(const FDynamicBeamEmitterReplayData& BeamReplay)
+{
+	const FParticleDataView View = BeamReplay.GetParticleView();
+
+	// Current Beam contract note:
+	//   Beam replay itself is emitter-level (one source/target/tangent/noise snapshot).
+	//   RT does not consume per-particle independent endpoint sets here.
+	//   ActiveParticleCount is therefore not "beam endpoint pair count", but a legacy/
+	//   minimal multiplicity hint that can duplicate the same logical beam strip.
+	return std::max(1u, View.ActiveParticleCount);
+}
+}
+
 void FParticleBeamVertexFactory::InitResources(ID3D11Device* /*Device*/)
 {
 	Shader = FShaderManager::Get().GetOrCreate(EShaderPath::ParticleBeamTrail);
@@ -600,8 +615,7 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	}
 
 	if (!BeamReplay.bRenderGeometry) return false;
-	const FParticleDataView View = BeamReplay.GetParticleView();
-	const uint32 BeamCount = std::max(1u, View.ActiveParticleCount);
+	const uint32 BeamStripCount = ResolveBeamStripMultiplicity(BeamReplay);
 
 	const FVector Axis = Target - Source;
 	const float BeamLen = Axis.Length();
@@ -634,12 +648,15 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const float BeamTime   = BeamReplay.EmitterTime;
 	constexpr float Pi = 3.14159265358979323846f;
 
-	const uint32 VertCount = static_cast<uint32>(NumPoints * 2) * BeamCount;
-	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6) * BeamCount;
+	const uint32 VertCount = static_cast<uint32>(NumPoints * 2) * BeamStripCount;
+	const uint32 IndexCount = static_cast<uint32>(NumSegments * 6) * BeamStripCount;
 
 	std::vector<FParticleBeamTrailVertex> Vertices(VertCount);
-	for (uint32 BeamIndex = 0; BeamIndex < BeamCount; ++BeamIndex)
+	for (uint32 BeamIndex = 0; BeamIndex < BeamStripCount; ++BeamIndex)
 	{
+		// Current RT behavior duplicates the same logical beam shape with a phase offset
+		// when multiplicity > 1. This is not a per-particle independent beam contract;
+		// it is a legacy/minimal way to let generic emitter activity influence beam count.
 		const float BeamPhaseOffset = static_cast<float>(BeamIndex) * 0.73f;
 		for (int32 i = 0; i < NumPoints; ++i)
 		{
@@ -695,7 +712,7 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	}
 
 	std::vector<uint32> Indices(IndexCount);
-	for (uint32 BeamIndex = 0; BeamIndex < BeamCount; ++BeamIndex)
+	for (uint32 BeamIndex = 0; BeamIndex < BeamStripCount; ++BeamIndex)
 	{
 		for (int32 s = 0; s < NumSegments; ++s)
 		{

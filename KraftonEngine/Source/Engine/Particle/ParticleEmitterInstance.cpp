@@ -2494,6 +2494,8 @@ FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 
 	// Beam replay inputs도 emitter-level current render replay LOD에서 해석한다.
 	// Source/Target/Noise shaping은 현재 RT beam path가 소비할 단일 replay snapshot을 만들기 위한 값이다.
+	// 즉 ActiveParticleCount와 별개로, GT는 여기서 "active particle마다 서로 다른 beam endpoint"
+	// 배열을 만들지 않는다. Beam RT는 이 emitter-level shape contract를 받아 strip을 만든다.
 	if (UParticleLODLevel* LOD = GetRenderReplayLODLevel())
 	{
 		const float EvalTime = GetCurrentLoopTimeSeconds();
