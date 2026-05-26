@@ -77,6 +77,7 @@ void FSystemResources::Create(ID3D11Device* InDevice)
 	Device = InDevice;
 
 	FrameBuffer.Create(InDevice, sizeof(FFrameConstants), "FrameBuffer");
+	ForwardFogBuffer.Create(InDevice, sizeof(FFogConstants), "ForwardFogBuffer");
 	LightingConstantBuffer.Create(InDevice, sizeof(FLightingCBData), "LightingConstantBuffer");
 	ForwardLights.Create(InDevice, 32);
 
@@ -806,6 +807,7 @@ void FSystemResources::Release()
 	RasterizerStateManager.Release();
 
 	FrameBuffer.Release();
+	ForwardFogBuffer.Release();
 	LightingConstantBuffer.Release();
 	ForwardLights.Release();
 	TileCullingResource.Release();
@@ -834,6 +836,30 @@ void FSystemResources::UpdateFrameBuffer(FD3DDevice& Device, const FFrameContext
 	Ctx->VSSetConstantBuffers(ECBSlot::Frame, 1, &b0);
 	Ctx->PSSetConstantBuffers(ECBSlot::Frame, 1, &b0);
 	Ctx->CSSetConstantBuffers(ECBSlot::Frame, 1, &b0);
+}
+
+void FSystemResources::UpdateForwardFogBuffer(FD3DDevice& Device, const FScene& Scene, const FFrameContext& Frame)
+{
+	ID3D11DeviceContext* Ctx = Device.GetDeviceContext();
+	const FSceneEnvironment& Env = Scene.GetEnvironment();
+
+	// UberLit translucent self-fog용 전역 fog 파라미터 (b7). Fog 패스 조건과 동일하게 채운다
+	// (ShowFlags.bFog && HasFog 아니면 density=0 → FORWARD_FOG 변형이 fogFactor 0 → 무효과).
+	FFogConstants fwdFog = {};
+	if (Frame.RenderOptions.ShowFlags.bFog && Env.HasFog())
+	{
+		const FFogParams& FogParams = Env.GetFogParams();
+		fwdFog.InscatteringColor = FogParams.InscatteringColor;
+		fwdFog.Density           = FogParams.Density;
+		fwdFog.HeightFalloff     = FogParams.HeightFalloff;
+		fwdFog.FogBaseHeight     = FogParams.FogBaseHeight;
+		fwdFog.StartDistance     = FogParams.StartDistance;
+		fwdFog.CutoffDistance    = FogParams.CutoffDistance;
+		fwdFog.MaxOpacity        = FogParams.MaxOpacity;
+	}
+	ForwardFogBuffer.Update(Ctx, &fwdFog, sizeof(FFogConstants));
+	ID3D11Buffer* b7 = ForwardFogBuffer.GetBuffer();
+	Ctx->PSSetConstantBuffers(ECBSlot::ForwardFog, 1, &b7);
 }
 
 void FSystemResources::UpdateLightBuffer(FD3DDevice& Device, const FScene& Scene, const FFrameContext& Frame)

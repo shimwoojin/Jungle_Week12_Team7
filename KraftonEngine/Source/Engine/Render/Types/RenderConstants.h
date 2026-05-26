@@ -28,6 +28,7 @@ namespace ECBSlot
 	constexpr uint32 Lighting = 4;   // b4: LightingBuffer (Ambient + Directional + 메타)
 	constexpr uint32 Shadow = 5;     // b5: ShadowBuffer (Shadow 행렬 + 파라미터)
 	constexpr uint32 BoneHeatMap = 6; // b6: SkeletalMesh bone weight heatmap
+	constexpr uint32 ForwardFog = 7; // b7: 전역 Fog 파라미터 (UberLit translucent forward fog 용)
 }
 
 // HLSL 라이팅 SRV 슬롯 — 프레임에 1회 바인딩 (Forward Shading)
@@ -345,6 +346,9 @@ struct FMeshSectionDraw
 
 	// 드로우 시점 정점 팩토리 종류 (셰이더 도출 축). 메시는 Auto(로컬 계산), 파티클만 명시.
 	EVertexFactoryType VertexFactory = EVertexFactoryType::Auto;
+
+	// 섹션 패스 override — MAX면 머티리얼 GetRenderPass() 사용(기본). 빌보드 등이 EditorIcon 등으로 강제.
+	ERenderPass PassOverride = ERenderPass::MAX;
 
 	// Translucent 섹션별 depth 정렬용. true면 SortWorldPos로 카메라 거리를 계산하고,
 	// false면(기본) BuildCommandForProxy가 proxy 위치로 fallback — 비입자 proxy는 동작 변화 없음.

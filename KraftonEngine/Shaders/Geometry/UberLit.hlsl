@@ -15,6 +15,24 @@
 #include "Common/SystemSamplers.hlsli"
 #include "Common/Skinning.hlsli"
 
+#if defined(FORWARD_FOG) && FORWARD_FOG
+#include "Common/Fog.hlsli"
+// b7 (ECBSlot::ForwardFog): 전역 Fog 파라미터 — translucent self-fog 전용.
+//   fog 패스(불투명/하늘) 뒤에 그려지는 translucent가 자기 깊이로 동일 height-fog를 적용해
+//   주변 불투명과 일관되게 보이도록 한다. fog 비활성 시 density=0 으로 바인딩 → 무효과.
+cbuffer ForwardFogParams : register(b7)
+{
+    float4 FwdFogColor;
+    float  FwdFogDensity;
+    float  FwdFogHeightFalloff;
+    float  FwdFogBaseHeight;
+    float  FwdFogStartDistance;
+    float  FwdFogCutoffDistance;
+    float  FwdFogMaxOpacity;
+    float2 _fwdFogPad;
+};
+#endif
+
 #if !defined(LIGHTING_MODEL_UNLIT)
 #include "Common/ForwardLighting.hlsli"
 #endif
@@ -248,6 +266,15 @@ return output;
     // (비금속 표면: specular 반사 = 빛의 색, 물체 색이 아님)
     float3 finalColor = baseColor.rgb * diffuse + specular + g_DefaultEmissive.rgb;
     finalColor = ApplyWireframe(finalColor);
+#endif
+
+#if defined(FORWARD_FOG) && FORWARD_FOG
+    // translucent self-fog — fog 패스가 불투명/하늘에 적용한 것과 동일 수식(자기 worldPos 기준).
+    float fwdFog = ComputeHeightFogFactor(
+        input.worldPos, CameraWorldPos,
+        FwdFogDensity, FwdFogHeightFalloff, FwdFogBaseHeight,
+        FwdFogStartDistance, FwdFogCutoffDistance, FwdFogMaxOpacity);
+    finalColor = lerp(finalColor, FwdFogColor.rgb, fwdFog);
 #endif
 
     output.Color = float4(finalColor, baseColor.a * Opacity); // Opacity는 alpha에만 (Translucent 블렌드에서 효과)
