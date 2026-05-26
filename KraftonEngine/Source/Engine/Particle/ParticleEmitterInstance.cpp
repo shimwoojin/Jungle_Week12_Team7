@@ -2633,6 +2633,8 @@ void FParticleEmitterInstance::FillReplayData(FDynamicEmitterReplayDataBase& Out
 	//   1) copy active particle snapshot
 	//   2) resolve current render replay LOD
 	//   3) fill RequiredModule-based base render contract
+	// This boundary is where GT simulation state stops being "live particle data"
+	// and starts becoming "this frame's emitter-level RT replay contract."
 	CopyParticleSnapshotToReplay(*this, OutData);
 
 	UParticleLODLevel* RenderReplayLOD = GetRenderReplayLODLevel();
@@ -2736,6 +2738,8 @@ void FParticleEmitterInstance::AdvanceLoopState(float DeltaTime)
 // -- Sprite ----
 FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 {
+	// Shared base replay build first, then Sprite-only shaping values from the
+	// current render replay LOD. This matches the overall GT->RT pipeline split.
 	FDynamicSpriteEmitterData* Data = new FDynamicSpriteEmitterData();
 
 	FillReplayData(Data->Source);
@@ -2752,6 +2756,8 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData()
 // -- Mesh ----
 FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 {
+	// Mesh replay keeps the shared/base render contract and then layers on the
+	// type-data view that RT Mesh build may consume or merely preserve.
 	FDynamicMeshEmitterData* Data = new FDynamicMeshEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Mesh;
@@ -2769,6 +2775,9 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData()
 // -- Beam ----
 FDynamicEmitterDataBase* FParticleBeamEmitterInstance::GetDynamicData()
 {
+	// Beam replay still follows the same shared/base replay path, but its
+	// type-specific phase resolves one emitter-level beam shape snapshot rather
+	// than a per-particle independent beam list.
 	FDynamicBeamEmitterData* Data = new FDynamicBeamEmitterData();
 
 	FillReplayData(Data->Source);
@@ -2819,6 +2828,8 @@ void FParticleBeamEmitterInstance::ResetEndpointLocks()
 // -- Ribbon ----
 FDynamicEmitterDataBase* FParticleRibbonEmitterInstance::GetDynamicData()
 {
+	// Ribbon replay follows the shared/base replay path, then adds the single-trail
+	// shaping contract that RT geometry build consumes for this emitter/frame.
 	FDynamicRibbonEmitterData* Data = new FDynamicRibbonEmitterData();
 	FillReplayData(Data->Source);
 	Data->Source.EmitterType = EDynamicEmitterType::Ribbon;

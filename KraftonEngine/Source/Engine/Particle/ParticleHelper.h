@@ -333,6 +333,10 @@ enum class EParticleReplaySortMode : uint8
 
 struct FDynamicEmitterReplayDataBase
 {
+	// One emitter / one frame replay snapshot.
+	// GT simulation owns the live particles; RT consumes this reduced emitter-level
+	// contract after current render replay LOD interpretation and shared fallback
+	// resolution have already happened on GT.
 	EDynamicEmitterType EmitterType = EDynamicEmitterType::Unknown;
 	// RequiredModule.SortMode를 GT에서 복사해 둔 값.
 	// RT는 이 필드만 보고 emitter 내부 입자 정렬 정책을 선택한다.

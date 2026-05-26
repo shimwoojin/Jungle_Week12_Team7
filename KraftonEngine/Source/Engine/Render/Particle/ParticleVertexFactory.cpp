@@ -366,6 +366,9 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// VertexFactory::BuildDraw is the last RT step before command submission:
+	// it consumes the emitter-level replay contract and emits draw-ready geometry
+	// buffers/spec for exactly one replay emitter section.
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
@@ -495,6 +498,8 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// Mesh RT build consumes the shared replay header plus the narrower Mesh
+	// shaping contract and turns them into one instanced draw-ready section spec.
 	const FParticleDataView View = Replay.GetParticleView();
 	const uint32 N = View.ActiveParticleCount;
 	if (N == 0 || View.ParticleStride == 0 || !View.ParticleData) return false;
@@ -660,6 +665,9 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// Beam RT build does not reconstruct per-particle beam contracts; it consumes
+	// one emitter-level beam shape snapshot and emits the strip geometry that
+	// SceneProxy will submit as one section.
 	const auto& BeamReplay = static_cast<const FDynamicBeamEmitterReplayData&>(Replay);
 
 	FVector Source = BeamReplay.SourcePoint;
@@ -833,6 +841,8 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
+	// Ribbon RT build consumes one emitter-level single-trail replay snapshot and
+	// expands it into the actual sampled strip geometry that one RT section draws.
 	if (Replay.EmitterType != EDynamicEmitterType::Ribbon)
 	{
 		return false;

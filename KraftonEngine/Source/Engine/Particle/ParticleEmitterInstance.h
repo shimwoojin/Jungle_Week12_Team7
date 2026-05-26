@@ -31,6 +31,8 @@ enum class EParticleValueSpace : uint8
 //   - 입자 buffer (ParticleData/ParticleIndices) 관리
 //   - 모듈 Spawn/Update 호출
 //   - GameThread tick 의 끝에서 GetDynamicData() 로 RenderThread 용 snapshot 생성
+//   - 즉 "live simulation owner" 이면서, 프레임 끝에는 RT가 소비할 replay contract의
+//     GT 쪽 생산자 역할도 맡는다.
 //
 //   UObject 아님 (raw struct/class). PSC 가 소유 (unique_ptr 동등).
 // =============================================================================
@@ -50,6 +52,8 @@ public:
 	virtual void Reset();
 
 	// 현재 활성 입자 수 → snapshot 으로 옮겨 RenderThread 로 전달.
+	// 여기서 만들어지는 값은 live particle state 그 자체가 아니라, current render replay
+	// LOD 기준으로 해석한 emitter-level render contract다.
 	// 호출 측이 unique_ptr 처럼 소유권을 받는다 (PSC 가 매 프레임 delete).
 	virtual FDynamicEmitterDataBase* GetDynamicData();
 

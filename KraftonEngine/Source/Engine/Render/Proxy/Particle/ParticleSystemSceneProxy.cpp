@@ -377,6 +377,10 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 {
 	OutBuffer = {}; // section-level BufferOverride 사용 — ProxyBuffer는 빈 상태로 둠
 	if (!Device || !Context) return false;
+	// SceneProxy is the GT->RT handoff seam where replay snapshots become
+	// draw-ready sections: it iterates replay emitters, resolves replay-first
+	// material authority, dispatches to the right vertex factory, and appends the
+	// resulting draw section bookkeeping.
 
 	// ---- Replay 목록 — PSC.TickComponent → BuildDynamicData에서 채워짐.
 	// Editor 모드(PIE 미실행)에선 PSC가 Tick 안 해서 DynamicData가 null이라 빈 채로 return.
