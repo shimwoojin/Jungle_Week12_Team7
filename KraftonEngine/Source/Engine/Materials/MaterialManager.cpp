@@ -195,7 +195,7 @@ UMaterial* FMaterialManager::LoadMaterialBinary(const FString& UassetPath)
 	bool bIsInstance = false;
 	Ar << bIsInstance;
 	FString PathFileName;
-	Ar << PathFileName;
+	Ar << PathFileName; // 저장된 id — 파일 rename 시 stale 가능. 머티리얼 id 는 실제 로드 경로(UassetPath) 사용.
 
 	if (bIsInstance)
 	{
@@ -205,7 +205,7 @@ UMaterial* FMaterialManager::LoadMaterialBinary(const FString& UassetPath)
 		if (!ParentMat) return nullptr;
 
 		UMaterialInstance* MI = UObjectManager::Get().CreateObject<UMaterialInstance>();
-		MI->InitializeFromParent(ParentMat, PathFileName);  // Template/CB 를 Parent 에서 복제
+		MI->InitializeFromParent(ParentMat, UassetPath);    // Template/CB 를 Parent 에서 복제. id=로드 경로(rename 안전)
 		MI->Serialize(Ar);                                   // 복제된 CB 에 override/CPUData/텍스처 기록
 		if (!Ar.IsValid()) { UObjectManager::Get().DestroyObject(MI); return nullptr; }
 		return MI;
@@ -218,7 +218,7 @@ UMaterial* FMaterialManager::LoadMaterialBinary(const FString& UassetPath)
 	auto Buffers = CreateConstantBuffers(Template);                // 빈 CB 선생성
 
 	UMaterial* Material = UObjectManager::Get().CreateObject<UMaterial>();
-	Material->Create(PathFileName, Template, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(Buffers));
+	Material->Create(UassetPath, Template, EMaterialDomain::Surface, EBlendMode::Opaque, std::move(Buffers)); // id=로드 경로(rename 안전)
 	Material->SetShaderPathForSerialize(ShaderPath);
 	Material->Serialize(Ar);  // Domain/BlendMode 등을 덮어쓰고 CPUData 를 빈 CB 에 기록
 	if (!Ar.IsValid()) { UObjectManager::Get().DestroyObject(Material); return nullptr; }
