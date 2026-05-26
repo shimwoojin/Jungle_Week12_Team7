@@ -857,10 +857,10 @@
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.cpp">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.cpp">
+    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.cpp">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.cpp">
+    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.cpp">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotify_LogMessage.cpp">
@@ -2021,10 +2021,10 @@
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.h">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.h">
+    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.h">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.h">
+    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.h">
       <Filter>Source\Engine\Animation\Notify</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotify_LogMessage.h">
