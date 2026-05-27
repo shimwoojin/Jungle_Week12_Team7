@@ -10,7 +10,7 @@ void UParticleModuleEventGenerator::HandleSpawnEvent(FParticleEmitterInstance* O
 		return;
 	}
 
-	for (const FEntry& Entry : Entries)
+	for (const FParticleEventGeneratorEntry& Entry : Entries)
 	{
 		if (!Entry.bEnabled || Entry.Type != EParticleEventType::Spawn)
 		{
@@ -33,7 +33,7 @@ void UParticleModuleEventGenerator::HandleDeathEvent(FParticleEmitterInstance* O
 		return;
 	}
 
-	for (const FEntry& Entry : Entries)
+	for (const FParticleEventGeneratorEntry& Entry : Entries)
 	{
 		if (!Entry.bEnabled || Entry.Type != EParticleEventType::Death)
 		{
@@ -54,7 +54,7 @@ void UParticleModuleEventGenerator::HandleCollisionEvent(FParticleEmitterInstanc
 		return;
 	}
 
-	for (const FEntry& Entry : Entries)
+	for (const FParticleEventGeneratorEntry& Entry : Entries)
 	{
 		if (!Entry.bEnabled || Entry.Type != EParticleEventType::Collision)
 		{
@@ -75,7 +75,7 @@ void UParticleModuleEventGenerator::HandleBurstEvent(FParticleEmitterInstance* O
 		return;
 	}
 
-	for (const FEntry& Entry : Entries)
+	for (const FParticleEventGeneratorEntry& Entry : Entries)
 	{
 		if (!Entry.bEnabled || Entry.Type != EParticleEventType::Burst)
 		{

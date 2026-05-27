@@ -5,6 +5,9 @@
 #include "Particle/ParticleModule.h"
 #include "Particle/Modules/ParticleModuleCollision.h"
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
+#include "Particle/Modules/ParticleModuleEventReceiverBase.h"
+#include "Particle/Modules/ParticleModuleEventReceiverKillAll.h"
+#include "Particle/Modules/ParticleModuleEventReceiverSpawn.h"
 #include "Particle/Modules/ParticleModuleSpawn.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
 #include "Particle/Modules/ParticleModuleBeamSource.h"
@@ -990,6 +993,108 @@ void FParticleEmitterInstance::EmitBurstEvent(const FParticleEventBurstData& InE
 		});
 }
 
+void FParticleEmitterInstance::ApplyEventSpawnOverride(
+	FBaseParticle& Particle,
+	const FParticleEventSpawnOverride& SpawnOverride) const
+{
+	if (SpawnOverride.bUseLocation)
+	{
+		Particle.Location = ConvertPositionToSimulation(
+			SpawnOverride.LocationWorld,
+			EParticleValueSpace::World);
+		Particle.OldLocation = Particle.Location;
+	}
+
+	if (SpawnOverride.bInheritVelocity)
+	{
+		const FVector EventVelocity = ConvertVectorToSimulation(
+			SpawnOverride.VelocityWorld * SpawnOverride.InheritVelocityScale,
+			EParticleValueSpace::World);
+
+		Particle.Velocity = Particle.Velocity + EventVelocity;
+		Particle.BaseVelocity = Particle.Velocity;
+	}
+}
+
+int32 FParticleEmitterInstance::SpawnFromEvent(
+	int32 Count,
+	const FParticleEventSpawnOverride& SpawnOverride)
+{
+	if (Count <= 0)
+	{
+		return 0;
+	}
+
+	return SpawnInternal(
+		Count,
+		CurrentLoopTimeSeconds,
+		0.0f,
+		0.0f,
+		&SpawnOverride);
+}
+
+void FParticleEmitterInstance::KillAllParticles(bool bStopSpawning)
+{
+	ActiveParticles = 0;
+	if (bStopSpawning)
+	{
+		bHaltSpawning = true;
+	}
+}
+
+void FParticleEmitterInstance::HandleReceivedEvent(const FParticleEventDataBase& Event)
+{
+	UParticleLODLevel* LOD = GetCurrentLOD();
+	if (!LOD || !LOD->bEnabled)
+	{
+		return;
+	}
+
+	for (UParticleModule* Module : LOD->Modules)
+	{
+		if (!Module || !Module->IsEnabled())
+		{
+			continue;
+		}
+
+		if (const auto* ReceiverSpawn = Cast<UParticleModuleEventReceiverSpawn>(Module))
+		{
+			ReceiverSpawn->ReceiveEvent(this, Event);
+			continue;
+		}
+
+		if (const auto* ReceiverKillAll = Cast<UParticleModuleEventReceiverKillAll>(Module))
+		{
+			ReceiverKillAll->ReceiveEvent(this, Event);
+			continue;
+		}
+	}
+}
+
+void FParticleEmitterInstance::HandleReceivedEvents(
+	const TArray<FParticleEventSpawnData>& InSpawnEvents,
+	const TArray<FParticleEventDeathData>& InDeathEvents,
+	const TArray<FParticleEventCollideData>& InCollisionEvents,
+	const TArray<FParticleEventBurstData>& InBurstEvents)
+{
+	for (const FParticleEventSpawnData& Event : InSpawnEvents)
+	{
+		HandleReceivedEvent(Event);
+	}
+	for (const FParticleEventDeathData& Event : InDeathEvents)
+	{
+		HandleReceivedEvent(Event);
+	}
+	for (const FParticleEventCollideData& Event : InCollisionEvents)
+	{
+		HandleReceivedEvent(Event);
+	}
+	for (const FParticleEventBurstData& Event : InBurstEvents)
+	{
+		HandleReceivedEvent(Event);
+	}
+}
+
 void FParticleEmitterInstance::SpawnParticles(float DeltaTime)
 {
 	UParticleLODLevel* LOD = GetCurrentLOD();
@@ -1116,7 +1221,12 @@ int32 FParticleEmitterInstance::SpawnBurstParticles(UParticleModuleSpawn* SpawnM
 	return TotalSpawned;
 }
 
-int32 FParticleEmitterInstance::SpawnInternal(int32 Count, float StartTime, float Increment, float StepDeltaTime)
+int32 FParticleEmitterInstance::SpawnInternal(
+	int32 Count,
+	float StartTime,
+	float Increment,
+	float StepDeltaTime,
+	const FParticleEventSpawnOverride* SpawnOverride)
 {
 	if (Count <= 0) return 0;
 
@@ -1190,11 +1300,16 @@ int32 FParticleEmitterInstance::SpawnInternal(int32 Count, float StartTime, floa
 			Module->Spawn(this, ModuleOffset, SpawnTime, Particle);
 		}
 
+		if (SpawnOverride)
+		{
+			ApplyEventSpawnOverride(*Particle, *SpawnOverride);
+		}
+
 		FParticleEventSpawnData SpawnEvent;
 		SpawnEvent.Type = EParticleEventType::Spawn;
 		SpawnEvent.TimeSeconds = AbsoluteSpawnTime;
-		SpawnEvent.Location = Particle->Location;
-		SpawnEvent.Velocity = Particle->Velocity;
+		SpawnEvent.Location = ConvertPositionFromSimulation(Particle->Location, EParticleValueSpace::World);
+		SpawnEvent.Velocity = ConvertVectorFromSimulation(Particle->Velocity, EParticleValueSpace::World);
 		SpawnEvent.ParticleCount = 1;
 		EmitSpawnEvent(SpawnEvent);
 
@@ -1277,8 +1392,8 @@ void FParticleEmitterInstance::UpdateParticles(float DeltaTime)
 			FParticleEventDeathData DeathEvent;
 			DeathEvent.Type = EParticleEventType::Death;
 			DeathEvent.TimeSeconds = EmitterTimeSeconds;
-			DeathEvent.Location = Particle->Location;
-			DeathEvent.Velocity = Particle->Velocity;
+			DeathEvent.Location = ConvertPositionFromSimulation(Particle->Location, EParticleValueSpace::World);
+			DeathEvent.Velocity = ConvertVectorFromSimulation(Particle->Velocity, EParticleValueSpace::World);
 			DeathEvent.ParticleAge = Particle->RelativeTime;
 			EmitDeathEvent(DeathEvent);
 

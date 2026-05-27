@@ -650,6 +650,8 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColor.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleEventGenerator.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleEventReceiverKillAll.cpp" />
+    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleEventReceiverSpawn.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleLifetime.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleLocation.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleRequired.cpp" />
@@ -1075,6 +1077,9 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColor.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleEventGenerator.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleEventReceiverBase.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleEventReceiverKillAll.h" />
+    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleEventReceiverSpawn.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleLifetime.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleLocation.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleRequired.h" />

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Particle/ParticleHelper.h"
 #include "Particle/ParticleEvents.h"
@@ -23,6 +23,15 @@ enum class EParticleValueSpace : uint8
 	Simulation,
 	Local,
 	World,
+};
+
+struct FParticleEventSpawnOverride
+{
+	bool bUseLocation = false;
+	FVector LocationWorld = FVector::ZeroVector;
+	bool bInheritVelocity = false;
+	FVector VelocityWorld = FVector::ZeroVector;
+	float InheritVelocityScale = 1.0f;
 };
 
 // =============================================================================
@@ -167,6 +176,16 @@ public:
 	void EmitCollisionEvent(const FParticleEventCollideData& InEvent);
 	void EmitBurstEvent(const FParticleEventBurstData& InEvent);
 
+	// Event Receiver가 이벤트 위치/속도를 기준으로 이 emitter에 파티클을 생성할 때 사용한다.
+	// 일반 SpawnModule의 rate 제한과 bHaltSpawning에는 묶이지 않는다.
+	int32 SpawnFromEvent(int32 Count, const FParticleEventSpawnOverride& SpawnOverride);
+	void KillAllParticles(bool bStopSpawning);
+	void HandleReceivedEvents(
+		const TArray<FParticleEventSpawnData>& InSpawnEvents,
+		const TArray<FParticleEventDeathData>& InDeathEvents,
+		const TArray<FParticleEventCollideData>& InCollisionEvents,
+		const TArray<FParticleEventBurstData>& InBurstEvents);
+
 	UParticleEmitter*           GetEmitter()       const { return Emitter; }
 	UParticleSystemComponent*   GetComponent()     const { return Component; }
 	UParticleLODLevel*          GetCurrentLOD()    const;
@@ -196,7 +215,12 @@ protected:
 	// 새 입자 N 개를 만든다. 내부적으로 모듈의 Spawn() 을 차례로 호출.
 	// StartTime/Increment는 언리얼 Cascade의 SpawnParticles(Count, StartTime, Increment)처럼
 	// 각 particle의 emitter-loop spawn time을 계산하기 위한 값이다.
-	virtual int32 SpawnInternal(int32 Count, float StartTime, float Increment, float StepDeltaTime);
+	virtual int32 SpawnInternal(
+		int32 Count,
+		float StartTime,
+		float Increment,
+		float StepDeltaTime,
+		const FParticleEventSpawnOverride* SpawnOverride = nullptr);
 
 	// 활성 입자 전체에 대해 기본 적분을 수행한 뒤, spawn-time simulation LOD 기준으로
 	// subset dispatch된 모듈 Update + Collision + Kill/compaction을 처리한다.
@@ -387,6 +411,8 @@ private:
 	bool IsCollisionFullyDisabledForCurrentLOD() const;
 	bool ShouldEmitCollisionEventsForCurrentLOD() const;
 	int32 GetCollisionCheckBudgetForCurrentLOD() const;
+	void ApplyEventSpawnOverride(FBaseParticle& Particle, const FParticleEventSpawnOverride& SpawnOverride) const;
+	void HandleReceivedEvent(const FParticleEventDataBase& Event);
 	bool IsSpawningAllowed() const;
 	void AdvanceLoopState(float DeltaTime);
 

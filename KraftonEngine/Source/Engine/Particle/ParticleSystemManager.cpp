@@ -161,27 +161,48 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 		Asset,
 		Asset->GetEmitterCount());
 
-	FWindowsBinWriter Ar(NormalizedPath);
-	if (!Ar.IsValid())
 	{
-		UE_LOG("[ParticleSystemManager] Save failed: file open failed. Path=%s", NormalizedPath.c_str());
-		return false;
-	}
+		const FString TempPath = NormalizedPath + ".tmp";
+		bool bWriteSucceeded = false;
 
-	FAssetImportMetadata Metadata;
-	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::ParticleSystem, Metadata))
-	{
-		UE_LOG("[ParticleSystemManager] Save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
-		return false;
-	}
+		{
+			FWindowsBinWriter Ar(TempPath);
+			if (!Ar.IsValid())
+			{
+				UE_LOG("[ParticleSystemManager] Save failed: file open failed. Path=%s", TempPath.c_str());
+				return false;
+			}
 
-	Asset->BuildEmitters();
-	Asset->Serialize(Ar);
+			FAssetImportMetadata Metadata;
+			if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::ParticleSystem, Metadata))
+			{
+				UE_LOG("[ParticleSystemManager] Save failed: package prelude write failed. Path=%s", TempPath.c_str());
+				return false;
+			}
 
-	if (!Ar.IsValid())
-	{
-		UE_LOG("[ParticleSystemManager] Save failed: archive invalid after asset serialize. Path=%s", NormalizedPath.c_str());
-		return false;
+			Asset->BuildEmitters();
+			Asset->Serialize(Ar);
+			bWriteSucceeded = Ar.IsValid();
+		}
+
+		if (!bWriteSucceeded)
+		{
+			std::error_code RemoveError;
+			std::filesystem::remove(FPaths::ToWide(TempPath), RemoveError);
+			UE_LOG("[ParticleSystemManager] Save failed: archive invalid after asset serialize. Path=%s", TempPath.c_str());
+			return false;
+		}
+
+		if (!MoveFileExW(
+			FPaths::ToWide(TempPath).c_str(),
+			FPaths::ToWide(NormalizedPath).c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			UE_LOG("[ParticleSystemManager] Save failed: replace temp file failed. Path=%s TempPath=%s",
+				NormalizedPath.c_str(),
+				TempPath.c_str());
+			return false;
+		}
 	}
 
 	UE_LOG("[ParticleSystemManager] Save success. Path=%s", NormalizedPath.c_str());

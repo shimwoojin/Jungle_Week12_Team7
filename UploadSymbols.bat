@@ -12,36 +12,30 @@ set SOURCE_INDEX_SCRIPT=%REPO_ROOT%\Scripts\GenerateSrcSrvStream.ps1
 
 set VERSION_NAME=%~1
 set NO_PAUSE=%~2
+set MISSING_DEBUG_TOOLS=0
 
 if "%VERSION_NAME%"=="" (
     echo Usage: UploadSymbols.bat [VersionName]
     echo Example: UploadSymbols.bat Week12_Release_20260527_2130
-    exit /b 1
+    goto :Fail
 )
 
-if not exist "%DEBUGGER_PATH%\symstore.exe" (
-    echo ERROR: symstore.exe not found.
-    exit /b 1
-)
-
-if not exist "%SRCSRV_PATH%\srctool.exe" (
-    echo ERROR: srctool.exe not found.
-    exit /b 1
-)
-
-if not exist "%SRCSRV_PATH%\pdbstr.exe" (
-    echo ERROR: pdbstr.exe not found.
-    exit /b 1
-)
+call :CheckWindowsDebugTool "%DEBUGGER_PATH%\symstore.exe" "symstore.exe"
+if errorlevel 1 set MISSING_DEBUG_TOOLS=1
+call :CheckWindowsDebugTool "%SRCSRV_PATH%\srctool.exe" "srctool.exe"
+if errorlevel 1 set MISSING_DEBUG_TOOLS=1
+call :CheckWindowsDebugTool "%SRCSRV_PATH%\pdbstr.exe" "pdbstr.exe"
+if errorlevel 1 set MISSING_DEBUG_TOOLS=1
+if "%MISSING_DEBUG_TOOLS%"=="1" goto :MissingWindowsDebugTools
 
 if not exist "%RELEASE_BIN%" (
     echo ERROR: Release bin folder not found: %RELEASE_BIN%
-    exit /b 1
+    goto :Fail
 )
 
 if not exist "%SOURCE_INDEX_SCRIPT%" (
     echo ERROR: Source indexing script not found: %SOURCE_INDEX_SCRIPT%
-    exit /b 1
+    goto :Fail
 )
 
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
@@ -54,7 +48,7 @@ echo ========================================
 for %%F in ("%RELEASE_BIN%\*.pdb") do (
     if exist "%%~fF" call :SourceIndexPdb "%%~fF" "%VERSION_NAME%"
 )
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto :Fail
 
 echo ========================================
 echo Checking Release PDB source info...
@@ -68,7 +62,7 @@ for %%F in ("%RELEASE_BIN%\*.pdb") do (
 
 if not exist "%SYMBOL_STORE%" (
     echo ERROR: Symbol store path not accessible: %SYMBOL_STORE%
-    exit /b 1
+    goto :Fail
 )
 
 echo ========================================
@@ -77,13 +71,13 @@ echo Version: %VERSION_NAME%
 echo ========================================
 
 "%DEBUGGER_PATH%\symstore.exe" add /r /f "%RELEASE_BIN%\*.pdb" /s "%SYMBOL_STORE%" /t "%PRODUCT_NAME%" /v "%VERSION_NAME%"
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto :Fail
 
 "%DEBUGGER_PATH%\symstore.exe" add /r /f "%RELEASE_BIN%\*.exe" /s "%SYMBOL_STORE%" /t "%PRODUCT_NAME%" /v "%VERSION_NAME%"
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto :Fail
 
 "%DEBUGGER_PATH%\symstore.exe" add /r /f "%RELEASE_BIN%\*.dll" /s "%SYMBOL_STORE%" /t "%PRODUCT_NAME%" /v "%VERSION_NAME%"
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto :Fail
 
 echo.
 echo Upload complete.
@@ -91,6 +85,43 @@ echo Source info logs: %LOG_DIR%
 if /i not "%NO_PAUSE%"=="--no-pause" pause
 
 endlocal
+exit /b 0
+
+:Fail
+echo.
+echo UploadSymbols failed.
+echo.
+if /i not "%NO_PAUSE%"=="--no-pause" pause
+endlocal
+exit /b 1
+
+:MissingWindowsDebugTools
+call :PrintWindowsSdkInstallHelp
+goto :Fail
+
+:CheckWindowsDebugTool
+if exist "%~1" exit /b 0
+echo ERROR: %~2 not found: %~1
+exit /b 1
+
+:PrintWindowsSdkInstallHelp
+echo.
+echo Required Windows Debugging Tools were not found.
+echo.
+echo Install or modify Windows SDK and enable:
+echo   Debugging Tools for Windows
+echo.
+echo Expected tool locations:
+echo   %DEBUGGER_PATH%\symstore.exe
+echo   %SRCSRV_PATH%\srctool.exe
+echo   %SRCSRV_PATH%\pdbstr.exe
+echo.
+echo Installer options:
+echo   1. Visual Studio Installer - Individual components - Windows SDK
+echo   2. Windows SDK standalone installer - Debugging Tools for Windows
+echo.
+echo After installing, reopen the terminal and run PackageRelease.bat again.
+echo.
 exit /b 0
 
 :SourceIndexPdb

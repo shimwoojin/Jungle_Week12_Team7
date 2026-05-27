@@ -1,4 +1,4 @@
-﻿#include "ParticleSystemComponent.h"
+#include "ParticleSystemComponent.h"
 
 #include "Particle/ParticleSystem.h"
 #include "Particle/ParticleEmitter.h"
@@ -253,6 +253,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		Inst->ClearPendingEvents();
 	}
 
+	DispatchEventsToReceivers();
 	DispatchEventsToManager();
 
 	PushDynamicDataToProxy();
@@ -631,6 +632,34 @@ void UParticleSystemComponent::DestroyEmitterInstances()
 	EmitterInstances.clear();
 	PendingEvents = {};
 	ResetAutomaticLODTransitionState();
+}
+
+void UParticleSystemComponent::DispatchEventsToReceivers()
+{
+	if (PendingEvents.Spawn.empty() &&
+		PendingEvents.Death.empty() &&
+		PendingEvents.Collision.empty() &&
+		PendingEvents.Burst.empty())
+	{
+		return;
+	}
+
+	// PendingEvents는 이번 PSC tick에서 모은 이벤트 snapshot이다.
+	// Receiver가 여기서 새 파티클을 spawn해도 그 spawn event를 같은 프레임에
+	// 다시 receiver로 보내지 않으므로 recursive event 폭주를 피할 수 있다.
+	for (FParticleEmitterInstance* Inst : EmitterInstances)
+	{
+		if (!Inst)
+		{
+			continue;
+		}
+
+		Inst->HandleReceivedEvents(
+			PendingEvents.Spawn,
+			PendingEvents.Death,
+			PendingEvents.Collision,
+			PendingEvents.Burst);
+	}
 }
 
 void UParticleSystemComponent::DispatchEventsToManager()

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Component/PrimitiveComponent.h"
 #include "Object/Ptr/SoftObjectPtr.h"
@@ -87,6 +87,7 @@ public:
 protected:
 	void CreateEmitterInstances();
 	void DestroyEmitterInstances();
+	void DispatchEventsToReceivers();
 	void DispatchEventsToManager();
 	// PSC는 EventManager를 직접 탐색/생성하지 않고, 상위 particle runtime provider가
 	// 등록한 default manager를 이 helper로 주입받는다. EventManager는 basic playback/rendering에는
