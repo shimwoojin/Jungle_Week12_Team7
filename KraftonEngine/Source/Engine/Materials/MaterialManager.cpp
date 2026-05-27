@@ -152,11 +152,11 @@ bool FMaterialManager::SaveMaterial(UMaterial* Material, const FString& UassetPa
 	FWindowsBinWriter Ar(NormalizedPath);
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::Material);
 	FAssetImportMetadata Metadata;
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::Material, Metadata))
+	{
+		return false;
+	}
 
 	UMaterialInstance* MI = Cast<UMaterialInstance>(Material);
 	bool bIsInstance = (MI != nullptr);

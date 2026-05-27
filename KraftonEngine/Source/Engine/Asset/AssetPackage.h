@@ -127,6 +127,7 @@ public:
 	static bool ReadMetadata(const FString& Path, EAssetPackageType ExpectedType, FAssetImportMetadata& OutMetadata);
 	static bool ReadPackagePrelude(FArchive& Ar, EAssetPackageType ExpectedType, FAssetPackageHeader& OutHeader, FAssetImportMetadata& OutMetadata);
 	static void InitializeHeaderForSave(FAssetPackageHeader& Header, EAssetPackageType Type);
+	static bool WritePackagePrelude(FArchive& Ar, EAssetPackageType Type, const FAssetImportMetadata& Metadata, FAssetPackageHeader* OutWrittenHeader = nullptr);
 
 	static bool SaveStringPayload(const FString& Path, EAssetPackageType Type, const FAssetImportMetadata& Metadata, const FString& Payload);
 	static bool LoadStringPayload(const FString& Path, EAssetPackageType ExpectedType, FAssetImportMetadata& Metadata, FString& OutPayload);

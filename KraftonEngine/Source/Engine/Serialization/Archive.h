@@ -17,12 +17,15 @@ class FArchive
 protected:
 	bool bIsLoading = false;
 	bool bIsSaving = false;
+	bool bUseTaggedPropertySerialization = false;
 
 public:
 	virtual ~FArchive() = default;
 
 	inline bool IsLoading() const { return bIsLoading; }
 	inline bool IsSaving() const { return bIsSaving; }
+	inline bool UsesTaggedPropertySerialization() const { return bUseTaggedPropertySerialization; }
+	virtual void SetTaggedPropertySerializationEnabled(bool bEnabled) { bUseTaggedPropertySerialization = bEnabled; }
 	virtual bool IsObjectReferenceRemapping() const { return false; }
 	virtual UObject* ResolveObjectReference(uint32 /*SourceUUID*/) const { return nullptr; }
 	virtual void AddObjectReferenceFixup(uint32 /*SourceUUID*/, std::function<void(UObject*)> /*Fixup*/) {}

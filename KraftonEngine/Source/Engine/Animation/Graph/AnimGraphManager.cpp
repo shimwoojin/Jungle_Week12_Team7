@@ -58,13 +58,11 @@ bool FAnimGraphManager::Save(UAnimGraphAsset* Asset)
 	FWindowsBinWriter Ar(FPaths::MakeProjectRelative(Path));
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::AnimGraph);
-
 	FAssetImportMetadata Metadata;
-
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::AnimGraph, Metadata))
+	{
+		return false;
+	}
 
 	Asset->Serialize(Ar);
 	return Ar.IsValid();

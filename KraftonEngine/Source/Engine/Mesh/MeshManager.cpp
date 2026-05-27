@@ -246,12 +246,12 @@ static bool SaveStaticMeshBinary(UStaticMesh* StaticMesh, const FString& BinaryP
 
 	try
 	{
-		FAssetPackageHeader Header;
-		FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::StaticMesh);
-		Writer << Header;
-
 		FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
-		Writer << Metadata;
+		if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::StaticMesh, Metadata))
+		{
+			UE_LOG("StaticMesh binary save failed: package prelude write failed. Path=%s", BinaryPath.c_str());
+			return false;
+		}
 
 		StaticMesh->Serialize(Writer);
 	}
@@ -412,12 +412,12 @@ static bool SaveSkeletalMeshBinary(USkeletalMesh* SkeletalMesh, const FString& B
 
 	try
 	{
-		FAssetPackageHeader Header;
-		FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::SkeletalMesh);
-		Writer << Header;
-
 		FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
-		Writer << Metadata;
+		if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::SkeletalMesh, Metadata))
+		{
+			UE_LOG("SkeletalMesh binary save failed: package prelude write failed. Path=%s", BinaryPath.c_str());
+			return false;
+		}
 
 		SkeletalMesh->Serialize(Writer);
 	}

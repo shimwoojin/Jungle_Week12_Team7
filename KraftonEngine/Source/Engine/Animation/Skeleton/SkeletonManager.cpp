@@ -492,13 +492,13 @@ bool FSkeletonManager::SaveSkeleton(USkeleton* Skeleton, const FString& PackageP
         return false;
     }
 
-    FAssetPackageHeader Header;
-    FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::Skeleton);
-
     FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
 
-    Writer << Header;
-    Writer << Metadata;
+    if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::Skeleton, Metadata))
+    {
+        UE_LOG("Skeleton save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+        return false;
+    }
     Skeleton->Serialize(Writer);
 
     if (!Writer.IsValid())

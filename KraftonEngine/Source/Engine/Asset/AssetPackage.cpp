@@ -41,6 +41,8 @@ bool FAssetPackage::ReadPackagePrelude(
 		return false;
 	}
 
+	Ar.SetTaggedPropertySerializationEnabled(false);
+
 	// Legacy packages predate the explicit format seam used for future schema
 	// evolution. Newer packages opt into the versioned branch explicitly even
 	// though both paths still deserialize the same metadata payload for now.
@@ -49,6 +51,7 @@ bool FAssetPackage::ReadPackagePrelude(
 	case EAssetPackageFormatBranch::Legacy:
 	case EAssetPackageFormatBranch::Versioned:
 		Ar << OutMetadata;
+		Ar.SetTaggedPropertySerializationEnabled(OutHeader.IsVersionedFormat());
 		return Ar.IsValid();
 	default:
 		return false;
@@ -60,6 +63,29 @@ void FAssetPackage::InitializeHeaderForSave(FAssetPackageHeader& Header, EAssetP
 	Header.Magic = FAssetPackageHeader::MagicValue;
 	Header.Version = FAssetPackageHeader::CurrentVersion;
 	Header.Type = static_cast<uint32>(Type);
+}
+
+bool FAssetPackage::WritePackagePrelude(
+	FArchive& Ar,
+	EAssetPackageType Type,
+	const FAssetImportMetadata& Metadata,
+	FAssetPackageHeader* OutWrittenHeader)
+{
+	FAssetPackageHeader Header;
+	InitializeHeaderForSave(Header, Type);
+
+	FAssetImportMetadata MetadataCopy = Metadata;
+
+	Ar << Header;
+	Ar << MetadataCopy;
+	Ar.SetTaggedPropertySerializationEnabled(Header.IsVersionedFormat());
+
+	if (OutWrittenHeader)
+	{
+		*OutWrittenHeader = Header;
+	}
+
+	return Ar.IsValid();
 }
 
 bool FAssetPackage::GetPackageType(const FString& Path, EAssetPackageType& OutType)
@@ -91,13 +117,11 @@ bool FAssetPackage::SaveStringPayload(const FString& Path, EAssetPackageType Typ
 	if (!Ar.IsValid()) return false;
 
 	FAssetPackageHeader Header;
-	InitializeHeaderForSave(Header, Type);
-
-	FAssetImportMetadata MetadataCopy = Metadata;
 	FString PayloadCopy = Payload;
-
-	Ar << Header;
-	Ar << MetadataCopy;
+	if (!WritePackagePrelude(Ar, Type, Metadata, &Header))
+	{
+		return false;
+	}
 	Ar << PayloadCopy;
 
 	return Ar.IsValid();

@@ -168,13 +168,12 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 		return false;
 	}
 
-	FAssetPackageHeader Header;
-	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::ParticleSystem);
-
 	FAssetImportMetadata Metadata;
-
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::ParticleSystem, Metadata))
+	{
+		UE_LOG("[ParticleSystemManager] Save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+		return false;
+	}
 
 	Asset->BuildEmitters();
 	Asset->Serialize(Ar);

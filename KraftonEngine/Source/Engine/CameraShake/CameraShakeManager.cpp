@@ -80,13 +80,12 @@ bool FCameraShakeManager::Save(UCameraShakeAsset* Asset)
 	FWindowsBinWriter Ar(FPaths::MakeProjectRelative(Path));
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::CameraShake);
-
 	FAssetImportMetadata Metadata;
 
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::CameraShake, Metadata))
+	{
+		return false;
+	}
 
 	Asset->Serialize(Ar);
 

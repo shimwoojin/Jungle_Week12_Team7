@@ -253,13 +253,13 @@ bool FAnimationManager::SaveAnimation(UAnimSequence* Sequence, const FString& Pa
         return false;
     }
 
-    FAssetPackageHeader Header;
-    FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::AnimSequence);
-
     FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
 
-    Writer << Header;
-    Writer << Metadata;
+    if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::AnimSequence, Metadata))
+    {
+        UE_LOG("Animation save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+        return false;
+    }
     Sequence->Serialize(Writer);
 
     if (!Writer.IsValid())
@@ -586,14 +586,14 @@ bool FAnimationManager::SaveMontage(UAnimMontage* Montage, const FString& Packag
         return false;
     }
 
-    FAssetPackageHeader Header;
-    FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::AnimMontage);
-
     FAssetImportMetadata Metadata;
     // Montage 는 FBX 같은 source 가 없음 — SourcePath 비워둠.
 
-    Writer << Header;
-    Writer << Metadata;
+    if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::AnimMontage, Metadata))
+    {
+        UE_LOG("Montage save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+        return false;
+    }
     Montage->Serialize(Writer);
 
     if (!Writer.IsValid())

@@ -58,13 +58,12 @@ bool FFloatCurveManager::Save(UFloatCurveAsset* Asset)
 	FWindowsBinWriter Ar(FPaths::MakeProjectRelative(Path));
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::FloatCurve);
-
 	FAssetImportMetadata Metadata;
 
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::FloatCurve, Metadata))
+	{
+		return false;
+	}
 
 	Asset->Serialize(Ar);
 
