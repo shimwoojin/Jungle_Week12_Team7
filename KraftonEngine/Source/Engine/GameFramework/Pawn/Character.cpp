@@ -16,6 +16,13 @@ void ACharacter::InitDefaultComponents(const FString& SkeletalMeshFileName)
 	CapsuleComponent = AddComponent<UCapsuleComponent>();
 	SetRootComponent(CapsuleComponent);
 
+	// 물리 시뮬레이션(중력/반발)은 CharacterMovement 가 직접 처리하므로 끄되, trigger volume
+	// 등과의 overlap 이벤트는 받아야 한다. PhysX 백엔드는 static-static pair 를 생성하지 않아
+	// simulate=false 인 static 바디로는 static trigger 와 overlap 이 발화되지 않으므로 kinematic 으로 등록
+	// (kinematic↔static pair → setKinematicTarget 으로 위치 추적 + trigger 콜백 수신).
+	// ※ overlap 을 받으려면 CollisionEnabled 가 QueryOnly/QueryAndPhysics 여야 물리 씬에 등록됨.
+	CapsuleComponent->SetKinematic(true);
+
 	// 2) SkeletalMesh — Capsule 의 자식.
 	Mesh = AddComponent<USkeletalMeshComponent>();
 	Mesh->AttachToComponent(CapsuleComponent);

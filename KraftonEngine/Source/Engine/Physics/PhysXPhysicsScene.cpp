@@ -421,6 +421,12 @@ void FPhysXPhysicsScene::Initialize(UWorld* InWorld)
 	SceneDesc.cpuDispatcher = Dispatcher;
 	SceneDesc.filterShader = KraftonFilterShader;
 	SceneDesc.simulationEventCallback = EventCallback;
+	// PhysX 4.x 는 kinematic-static / kinematic-kinematic pair 를 기본 suppress 한다(한쪽이 trigger 면
+	// 예외적으로 통과되나, hit 등 contact 이벤트까지 받으려면 명시적 eKEEP 필요). 캐릭터 capsule
+	// (kinematic) 이 static trigger/collider 와 overlap·hit 이벤트를 받도록 filtering pipeline 에 통과시킨다.
+	// (구버전 PxSceneFlag::eENABLE_KINEMATIC_*_PAIRS 는 4.x 에서 제거 → FilteringMode 로 대체됨)
+	SceneDesc.staticKineFilteringMode = PxPairFilteringMode::eKEEP;  // kinematic ↔ static (capsule↔trigger/collider)
+	SceneDesc.kineKineFilteringMode   = PxPairFilteringMode::eKEEP;  // kinematic ↔ kinematic (캐릭터끼리)
 	Scene = Physics->createScene(SceneDesc);
 
 	if (!Scene)
@@ -484,13 +490,26 @@ void FPhysXPhysicsScene::RegisterComponent(UPrimitiveComponent* Comp)
 		UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(OwnerActor->GetRootComponent());
 		if (!RootPrim) RootPrim = Comp;
 
-		const bool bDynamic = RootPrim->GetSimulatePhysics();
+		// SimulatePhysics 가 우선. 아니면서 Kinematic 이면 RigidDynamic + eKINEMATIC
+		// (중력/힘 무시, setKinematicTarget 으로만 이동하되 충돌·trigger pair 는 형성).
+		// 둘 다 아니면 RigidStatic.
+		const bool bSimulate = RootPrim->GetSimulatePhysics();
+		const bool bKinematic = !bSimulate && RootPrim->IsKinematic();
+		const bool bDynamic = bSimulate || bKinematic;
 		PxTransform BodyXf = GetPxTransform(RootPrim);
 
 		PxRigidActor* Body = bDynamic
 			? static_cast<PxRigidActor*>(Physics->createRigidDynamic(BodyXf))
 			: static_cast<PxRigidActor*>(Physics->createRigidStatic(BodyXf));
 		if (!Body) return;
+
+		if (bKinematic)
+		{
+			if (PxRigidDynamic* Dyn = Body->is<PxRigidDynamic>())
+			{
+				Dyn->setRigidBodyFlag(PxRigidBodyFlag::eKINEMATIC, true);
+			}
+		}
 
 		Body->userData = OwnerActor;
 		Scene->addActor(*Body);
@@ -764,6 +783,17 @@ PxShape* FPhysXPhysicsScene::AddShapeForComponent(FBodyMapping& Mapping, UPrimit
 			}
 		}
 		bShouldBeTrigger = !bHasAnyBlockResponse;
+	}
+
+	// PhysX 는 trigger-trigger pair 에 onTrigger 를 발화하지 않는다. trigger 는 "정지한 감지 영역"
+	// 이고, 그 안으로 들어가는 캐릭터/발사체(움직이는 바디)는 simulation shape 여야 trigger 에 감지된다.
+	// 따라서 RigidDynamic(simulate/kinematic) actor 의 shape 는 trigger 로 만들지 않는다.
+	// (이게 없으면 GenerateOverlapEvents=true 인 캐릭터 capsule 이 trigger shape 가 되어, static
+	//  trigger volume 과 trigger-trigger 가 되고 콜백이 오지 않는다 — TriggerVolume 쪽은 그대로
+	//  GenerateOverlapEvents 로 trigger, capsule 은 simulation 이 되어 둘 사이 onTrigger 가 발화됨.)
+	if (bShouldBeTrigger && Mapping.Actor->is<PxRigidDynamic>())
+	{
+		bShouldBeTrigger = false;
 	}
 
 	if (bShouldBeTrigger)
