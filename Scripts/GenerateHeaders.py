@@ -52,6 +52,12 @@ class ReflectedEnum:
 
 
 @dataclass(frozen=True)
+class ReflectedStruct:
+    name: str
+    header: Path
+
+
+@dataclass(frozen=True)
 class ReflectedProperty:
     owner: str
     cpp_type: str
@@ -86,6 +92,9 @@ class ReflectedHeader:
     file_id: str
     class_names: tuple[str, ...]
     types: tuple[ReflectedType, ...]
+
+
+DISCOVERED_REFLECTED_STRUCTS: dict[str, ReflectedStruct] = {}
 
 
 TYPE_MAP = {
@@ -279,7 +288,44 @@ def normalize_cpp_type(cpp_type: str) -> str:
     return " ".join(cpp_type.split()).strip()
 
 
-def infer_property_type(cpp_type: str, metadata: dict[str, str]) -> str:
+def normalize_struct_cpp_type(cpp_type: str) -> str:
+    normalized = normalize_cpp_type(cpp_type)
+    normalized = normalized.replace("&", "").replace("*", "").strip()
+    return " ".join(normalized.split())
+
+
+def parse_ustructs(header: Path, scan_text: str) -> dict[str, ReflectedStruct]:
+    structs: dict[str, ReflectedStruct] = {}
+
+    for match in REFLECTED_DECL_RE.finditer(scan_text):
+        if match.group("kind") != "STRUCT":
+            continue
+
+        struct_name = match.group("name")
+        brace_start = scan_text.find("{", match.end())
+        if brace_start < 0:
+            continue
+        brace_end = find_matching(scan_text, brace_start, "{", "}")
+        if brace_end < 0:
+            continue
+
+        body = scan_text[brace_start + 1:brace_end]
+        if "GENERATED_BODY" not in body:
+            continue
+
+        info = ReflectedStruct(name=struct_name, header=header)
+        structs[struct_name] = info
+        structs[struct_name.rsplit("::", 1)[-1]] = info
+
+    return structs
+
+
+def is_reflected_struct_type(cpp_type: str, reflected_structs: dict[str, ReflectedStruct]) -> bool:
+    normalized = normalize_struct_cpp_type(cpp_type)
+    return normalized in reflected_structs
+
+
+def infer_property_type(cpp_type: str, metadata: dict[str, str], reflected_structs: dict[str, ReflectedStruct]) -> str:
     explicit_type = metadata.get("type")
     if explicit_type:
         if explicit_type.startswith("EPropertyType::"):
@@ -305,6 +351,8 @@ def infer_property_type(cpp_type: str, metadata: dict[str, str]) -> str:
         return "ObjectRef"
     if normalized.endswith("*") and not normalized.endswith("char*"):
         return "ObjectRef"
+    if is_reflected_struct_type(normalized, reflected_structs):
+        return "Struct"
     return TYPE_MAP.get(normalized, "String")
 
 
@@ -453,7 +501,11 @@ def get_array_element_cpp_type(cpp_type: str) -> str | None:
     return normalize_cpp_type(match.group("inner")) if match else None
 
 
-def get_array_element_property_type(prop: ReflectedProperty) -> str | None:
+def get_array_element_property_type(
+    prop: ReflectedProperty,
+    reflected_structs: dict[str, ReflectedStruct] | None = None,
+) -> str | None:
+    reflected_structs = reflected_structs or DISCOVERED_REFLECTED_STRUCTS
     element_cpp_type = get_array_element_cpp_type(prop.cpp_type)
     if element_cpp_type:
         if element_cpp_type in {"FString", "FSoftObjectPtr"} and bool(prop.asset_type or prop.allowed_class):
@@ -462,6 +514,8 @@ def get_array_element_property_type(prop: ReflectedProperty) -> str | None:
             return "ClassRef"
         if get_tobjectptr_inner_type(element_cpp_type) or (element_cpp_type.endswith("*") and not element_cpp_type.endswith("char*")):
             return "ObjectRef"
+        if is_reflected_struct_type(element_cpp_type, reflected_structs):
+            return "Struct"
         if prop.struct_type or prop.metadata and any(key == "struct" or key == "structtype" for key, _ in prop.metadata):
             return "Struct"
         return TYPE_MAP.get(element_cpp_type, "String")
@@ -679,7 +733,11 @@ def parse_member_declaration(declaration: str) -> tuple[str, str] | None:
     return normalize_cpp_type(match.group("type")), match.group("name")
 
 
-def parse_uproperties(scan_text: str, enums: dict[str, ReflectedEnum]) -> tuple[dict[str, tuple[ReflectedProperty, ...]], list[str]]:
+def parse_uproperties(
+    scan_text: str,
+    enums: dict[str, ReflectedEnum],
+    reflected_structs: dict[str, ReflectedStruct],
+) -> tuple[dict[str, tuple[ReflectedProperty, ...]], list[str]]:
     properties_by_class: dict[str, tuple[ReflectedProperty, ...]] = {}
     warnings: list[str] = []
 
@@ -722,7 +780,7 @@ def parse_uproperties(scan_text: str, enums: dict[str, ReflectedEnum]) -> tuple[
 
                 cpp_type, member_name = member
 
-            property_type = infer_property_type(cpp_type, metadata)
+            property_type = infer_property_type(cpp_type, metadata, reflected_structs)
 
             display_name = metadata.get("displayname") or metadata.get("display") or member_name
             category = metadata.get("category") or "Default"
@@ -736,8 +794,12 @@ def parse_uproperties(scan_text: str, enums: dict[str, ReflectedEnum]) -> tuple[
                 enum_type_name = enum_info.name
             struct_type = metadata.get("structtype") or metadata.get("struct")
             if property_type == "Struct" and not struct_type:
-                struct_type = cpp_type
-            struct_type_expr = f"{struct_type}::StaticStruct()" if struct_type and struct_type != "Struct" else "nullptr"
+                struct_type = normalize_struct_cpp_type(cpp_type)
+            struct_type_expr = (
+                f"{normalize_struct_cpp_type(struct_type)}::StaticStruct()"
+                if struct_type and struct_type != "Struct"
+                else "nullptr"
+            )
             asset_type = metadata.get("assettype")
             allowed_class = infer_allowed_class(asset_type, metadata.get("allowedclass"))
 
@@ -749,6 +811,19 @@ def parse_uproperties(scan_text: str, enums: dict[str, ReflectedEnum]) -> tuple[
                 )
                 cursor = semicolon + 1
                 continue
+
+            normalized_cpp_type = normalize_struct_cpp_type(cpp_type)
+            if (
+                property_type == "String"
+                and normalized_cpp_type.startswith("F")
+                and normalized_cpp_type not in TYPE_MAP
+                and normalized_cpp_type not in reflected_structs
+                and normalized_cpp_type not in {"FString", "FName", "FSoftObjectPtr"}
+            ):
+                warnings.append(
+                    f"{class_name}.{member_name}: custom type '{normalized_cpp_type}' fell back to String; "
+                    "add explicit metadata or make it a reflected USTRUCT if struct semantics are intended"
+                )
 
             found.append(
                 ReflectedProperty(
@@ -874,11 +949,12 @@ def find_reflected_headers(
     generated_root: Path,
     fix_generated_includes: bool,
     dry_run: bool,
-) -> tuple[list[ReflectedHeader], dict[str, ReflectedEnum], list[str]]:
+) -> tuple[list[ReflectedHeader], dict[str, ReflectedEnum], dict[str, ReflectedStruct], list[str]]:
     reflected: list[ReflectedHeader] = []
     warnings: list[str] = []
     header_texts: list[tuple[Path, str, str]] = []
     enums: dict[str, ReflectedEnum] = {}
+    reflected_structs: dict[str, ReflectedStruct] = {}
 
     for header in sorted(source_dir.rglob("*.h")):
         if header.name.endswith(".generated.h"):
@@ -899,6 +975,7 @@ def find_reflected_headers(
                 scan_text = strip_comments(text)
         header_texts.append((header, text, scan_text))
         enums.update(parse_uenums(header, scan_text))
+        reflected_structs.update(parse_ustructs(header, scan_text))
 
     for header, text, scan_text in header_texts:
         reflected_decls: list[tuple[str, str, str | None, int | None]] = []
@@ -913,7 +990,7 @@ def find_reflected_headers(
             reflected_decls.append((match.group("kind"), class_name, match.group("super"), line))
 
         declarations = [name for _, name, _, _ in reflected_decls]
-        properties_by_class, property_warnings = parse_uproperties(scan_text, enums)
+        properties_by_class, property_warnings = parse_uproperties(scan_text, enums, reflected_structs)
 
         property_types = tuple(
             ReflectedType(
@@ -972,7 +1049,7 @@ def find_reflected_headers(
         )
 
     unique_enums = {enum.name: enum for enum in enums.values()}
-    return reflected, unique_enums, warnings
+    return reflected, unique_enums, reflected_structs, warnings
 
 
 def render_generated_header(item: ReflectedHeader, root: Path) -> str:
@@ -1530,13 +1607,15 @@ def main() -> int:
         print(f"error: source directory does not exist: {source_dir}")
         return 1
 
-    reflected, enums, warnings = find_reflected_headers(
+    reflected, enums, reflected_structs, warnings = find_reflected_headers(
         root,
         source_dir,
         generated_root,
         fix_generated_includes=not args.no_fix_generated_includes,
         dry_run=args.dry_run,
     )
+    global DISCOVERED_REFLECTED_STRUCTS
+    DISCOVERED_REFLECTED_STRUCTS = reflected_structs
 
     fatal_errors = [warning for warning in warnings if warning.startswith("error: ") or ": error: " in warning]
     if fatal_errors:

@@ -108,7 +108,7 @@ protected:
 	UParticleSystem* Template = nullptr;
 
 	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Template", AssetType="UParticleSystem")
-	FSoftObjectPtr TemplatePath = "None";
+	FSoftObjectPtr TemplatePath;
 
 	UPROPERTY(Edit, Save, Category="Particle", DisplayName="Auto Activate")
 	bool bAutoActivate = true;

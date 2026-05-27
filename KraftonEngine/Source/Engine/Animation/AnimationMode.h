@@ -66,7 +66,7 @@ struct FSingleAnimationPlayData
 	TObjectPtr<UAnimSequenceBase> AnimToPlay;
 
 	UPROPERTY(Edit, Save, Category="Animation", DisplayName="Anim To Play", AssetType="UAnimSequence")
-	FSoftObjectPtr     AnimToPlayPath = "None";
+	FSoftObjectPtr     AnimToPlayPath;
 	UPROPERTY(Edit, Save, Category="Animation", DisplayName="Play Rate", Min=-4.0f, Max=4.0f, Speed=0.05f)
 	float              PlayRate       = 1.0f;
 	UPROPERTY(Edit, Save, Category="Animation", DisplayName="Looping")

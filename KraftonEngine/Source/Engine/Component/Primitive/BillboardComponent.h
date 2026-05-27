@@ -41,7 +41,7 @@ protected:
 	bool bIsBillboard = true;
 
 	UPROPERTY(Edit, Save, Category="Rendering", DisplayName="Material", AssetType="Material")
-	FSoftObjectPtr MaterialSlot = "None";
+	FSoftObjectPtr MaterialSlot;
 	UMaterial* Material = nullptr;
 };
 

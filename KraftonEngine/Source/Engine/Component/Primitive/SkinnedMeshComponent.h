@@ -111,7 +111,7 @@ protected:
 	// Mesh/material state는 SetSkeletalMesh와 PostEditProperty가 같은 경로를 쓰도록 여기서 소유한다.
 	TObjectPtr<USkeletalMesh> SkeletalMesh;
 	UPROPERTY(Edit, Save, Category="Mesh", DisplayName="Skeletal Mesh", AssetType="SkeletalMesh")
-	FSoftObjectPtr SkeletalMeshPath = "None";
+	FSoftObjectPtr SkeletalMeshPath;
 	TArray<UMaterial*> OverrideMaterials;
 	UPROPERTY(Edit, Save, EditFixedSize, Category="Materials", DisplayName="Materials", AssetType="Material")
 	TArray<FSoftObjectPtr> MaterialSlots;

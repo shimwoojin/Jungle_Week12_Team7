@@ -24,7 +24,7 @@ public:
 	FParticleEmitterInstance* CreateInstance(UParticleSystemComponent* InComponent) override;
 
 	UPROPERTY(Edit, Save, Category="Mesh", DisplayName="Static Mesh", AssetType="StaticMesh")
-	FSoftObjectPtr MeshSlot = "None";
+	FSoftObjectPtr MeshSlot;
 	UStaticMesh*   CachedMesh = nullptr; // ResolveMesh() 에서 resolve
 
 	UStaticMesh* ResolveMesh();
