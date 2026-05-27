@@ -123,8 +123,13 @@ void UObject::SerializeProperties(FArchive& Ar, uint32 RequiredFlags)
 			continue;
 		}
 
+		FPropertySerializeContext Context;
+		Context.Owner = this;
+		Context.RequiredFlags = RequiredFlags;
+		Context.bIsVersionedTaggedLoad = Ar.IsVersionedTaggedLoad();
+
 		Ar.BeginProperty(Property->Name);
-		Property->Serialize(this, Ar);
+		Property->SerializeValue(Property->GetValuePtrFor(this), Ar, Context);
 		Ar.EndProperty();
 	}
 

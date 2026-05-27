@@ -25,6 +25,7 @@ public:
 	inline bool IsLoading() const { return bIsLoading; }
 	inline bool IsSaving() const { return bIsSaving; }
 	inline bool UsesTaggedPropertySerialization() const { return bUseTaggedPropertySerialization; }
+	inline bool IsVersionedTaggedLoad() const { return bIsLoading && bUseTaggedPropertySerialization; }
 	virtual void SetTaggedPropertySerializationEnabled(bool bEnabled) { bUseTaggedPropertySerialization = bEnabled; }
 	virtual bool IsObjectReferenceRemapping() const { return false; }
 	virtual UObject* ResolveObjectReference(uint32 /*SourceUUID*/) const { return nullptr; }
