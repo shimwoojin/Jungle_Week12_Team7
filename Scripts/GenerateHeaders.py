@@ -516,7 +516,10 @@ def get_array_element_property_type(
             return "ObjectRef"
         if is_reflected_struct_type(element_cpp_type, reflected_structs):
             return "Struct"
-        if prop.struct_type or prop.metadata and any(key == "struct" or key == "structtype" for key, _ in prop.metadata):
+        if (
+            (prop.struct_type and prop.struct_type != "nullptr")
+            or (prop.metadata and any(key == "struct" or key == "structtype" for key, _ in prop.metadata))
+        ):
             return "Struct"
         return TYPE_MAP.get(element_cpp_type, "String")
     return None
