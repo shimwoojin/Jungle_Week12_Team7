@@ -72,6 +72,16 @@ namespace
 		float TilesPerTrail = 1.0f;
 	};
 
+	FVector ScaleParticleSize(const FVector& Size, const FVector& Scale)
+	{
+		return FVector(Size.X * Scale.X, Size.Y * Scale.Y, Size.Z * Scale.Z);
+	}
+
+	float GetParticleWidthScale(const FVector& Scale)
+	{
+		return std::max(Scale.X, Scale.Y);
+	}
+
 	FVector GetRibbonParticleWorldPosition(
 		const uint8* RawBase,
 		uint32 Stride,
@@ -119,6 +129,7 @@ namespace
 		uint32 Stride,
 		bool bLocal,
 		const FMatrix& LocalToWorld,
+		const FVector& SizeScale,
 		const std::vector<uint32>& OrderedParticleIndices,
 		std::vector<FRibbonControlPoint>& OutControlPoints)
 	{
@@ -135,7 +146,7 @@ namespace
 				GetRibbonParticleWorldPosition(RawBase, Stride, bLocal, LocalToWorld, ParticleIndex);
 			ControlPoint.Tangent = FVector::ZeroVector;
 			ControlPoint.Color = Particle.Color;
-			ControlPoint.Size = Particle.Size;
+			ControlPoint.Size = ScaleParticleSize(Particle.Size, SizeScale);
 			OutControlPoints.push_back(ControlPoint);
 		}
 	}
@@ -385,6 +396,7 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const uint32 Stride = View.ParticleStride;
 	const bool bLocal = Replay.bUseLocalSpace;
 	const FMatrix& L2W = Replay.LocalToWorld;
+	const FVector SizeScale = L2W.GetScale();
 
 	auto GetWorldPos = [RawBase, Stride, bLocal, &L2W](uint32 i) -> FVector
 	{
@@ -424,7 +436,7 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		FParticleSpriteInstanceVertex& V = Instances[sortI];
 		V.Center   = GetWorldPos(i);
 		V.Velocity = bLocal ? L2W.TransformVector(P.Velocity) : P.Velocity;
-		V.Size     = FVector2{ P.Size.X, P.Size.Y };
+		V.Size     = FVector2{ P.Size.X * SizeScale.X, P.Size.Y * SizeScale.Y };
 		V.Rotation = P.Rotation;
 		V.Color    = P.Color;
 
@@ -522,6 +534,7 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 
 	const uint8* RawBase = View.ParticleData;
 	const uint32 Stride = View.ParticleStride;
+	const FVector SizeScale = Replay.LocalToWorld.GetScale();
 
 	int32 SubH = 1;
 	int32 SubV = 1;
@@ -575,7 +588,10 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		// Instance orientation currently comes from the particle's own scale/rotation/
 		// translation only. Replay Alignment is carried through from GT for contract
 		// visibility, but is not yet consumed as an extra RT orientation mode.
-		FMatrix M = FMatrix::MakeScaleMatrix(P.Size)
+		const FVector RenderSize = Replay.bUseLocalSpace
+			? P.Size
+			: ScaleParticleSize(P.Size, SizeScale);
+		FMatrix M = FMatrix::MakeScaleMatrix(RenderSize)
 			* FMatrix::MakeRotationZ(P.Rotation)
 			* FMatrix::MakeTranslationMatrix(P.Location);
 		if (Replay.bUseLocalSpace)
@@ -704,7 +720,8 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 	const int32 NoiseSegments = BeamReplay.NoiseTessellation > 0 ? BeamReplay.NoiseTessellation : 0;
 	const int32 NumSegments = std::max(1, std::max(InterpPts + 1, NoiseSegments)); // source~target 분할 수
 	const int32 NumPoints = NumSegments + 1;
-	const float BaseHalfWidth = BeamReplay.Width * 0.5f;
+	const float BeamWidthScale = GetParticleWidthScale(Replay.LocalToWorld.GetScale());
+	const float BaseHalfWidth = BeamReplay.Width * BeamWidthScale * 0.5f;
 	const FVector4 BeamColor = { 1, 1, 1, 1 };
 
 	FVector NoiseAxis = NoiseDirection - Dir * NoiseDirection.Dot(Dir);
@@ -876,6 +893,7 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	const uint32 Stride = View.ParticleStride;
 	const bool bLocal = Replay.bUseLocalSpace;
 	const FMatrix& L2W = Replay.LocalToWorld;
+	const FVector SizeScale = L2W.GetScale();
 
 	// Ribbon은 일반 translucent particle처럼 "그리기용 depth sort"를 우선하지 않고,
 	// trail topology를 복원하기 위한 order를 우선한다. 따라서 shared replay SortMode가
@@ -887,7 +905,7 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 
 	// Stage 1: ordered particle chain -> control points
 	std::vector<FRibbonControlPoint> ControlPoints;
-	BuildRibbonControlPoints(RawBase, Stride, bLocal, L2W, OrderedParticleIndices, ControlPoints);
+	BuildRibbonControlPoints(RawBase, Stride, bLocal, L2W, SizeScale, OrderedParticleIndices, ControlPoints);
 
 	// Stage 2: control points -> curve tangents
 	// TangentTension은 particle payload가 아니라 emitter-level ribbon shaping
