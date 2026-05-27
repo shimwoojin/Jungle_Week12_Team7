@@ -1,4 +1,4 @@
-﻿#include "ParticleEditorWidget.h"
+#include "ParticleEditorWidget.h"
 
 #include <imgui.h>
 #include <algorithm>
@@ -43,6 +43,8 @@
 #include "Particle/Modules/ParticleModuleColor.h"
 #include "Particle/Modules/ParticleModuleColorOverLife.h"
 #include "Particle/Modules/ParticleModuleEventGenerator.h"
+#include "Particle/Modules/ParticleModuleEventReceiverKillAll.h"
+#include "Particle/Modules/ParticleModuleEventReceiverSpawn.h"
 #include "Particle/Modules/ParticleModuleLifetime.h"
 #include "Particle/Modules/ParticleModuleLocation.h"
 #include "Particle/Modules/ParticleModuleRequired.h"
@@ -2411,6 +2413,18 @@ void FParticleEditorWidget::RenderEmitterColumn(UParticleEmitter* Emitter, int32
 						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
 						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
 					}
+					if (ImGui::MenuItem("Event Receiver Spawn"))
+					{
+						UParticleModule* Module = CreateParticleModule<UParticleModuleEventReceiverSpawn>(ContextLOD, Emitter);
+						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
+						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
+					}
+					if (ImGui::MenuItem("Event Receiver Kill All"))
+					{
+						UParticleModule* Module = CreateParticleModule<UParticleModuleEventReceiverKillAll>(ContextLOD, Emitter);
+						if (Module && ContextLOD->AddModule(Module)) { SelectedModuleIndex = static_cast<int32>(ContextLOD->Modules.size()) - 1; NotifyParticleAssetChanged(true); }
+						else if (Module) { UObjectManager::Get().DestroyObject(Module); }
+					}
 					ImGui::EndMenu();
 				}
 				if (ImGui::BeginMenu("SubUV"))
@@ -3143,13 +3157,44 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 					}
 					if (ImGui::Button("Add Event Entry"))
 					{
-						UParticleModuleEventGenerator::FEntry Entry;
+						FParticleEventGeneratorEntry Entry;
 						Entry.Type = EParticleEventType::Death;
 						Entry.EventName = FName("ParticleEvent");
 						Entry.bEnabled = true;
 						EventGen->Entries.push_back(Entry);
 						bChanged = true;
 					}
+				}
+			}
+			else if (UParticleModuleEventReceiverSpawn* ReceiverSpawn = Cast<UParticleModuleEventReceiverSpawn>(Module))
+			{
+				if (ImGui::CollapsingHeader("Event Receiver Spawn", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static const char* EventNames[] = { "Spawn", "Death", "Collision", "Burst" };
+					bChanged |= ImGui::Checkbox("Use Event Type Filter", &ReceiverSpawn->bUseEventTypeFilter);
+					int32 Type = static_cast<int32>(ReceiverSpawn->SourceEventType);
+					if (ComboInt("Source Event Type", Type, EventNames, 4)) { ReceiverSpawn->SourceEventType = static_cast<EParticleEventType>(Type); bChanged = true; }
+					bChanged |= ImGui::Checkbox("Use Event Name Filter", &ReceiverSpawn->bUseEventNameFilter);
+					FString EventName = ReceiverSpawn->EventName.ToString();
+					if (InputTextFString("Event Name", EventName)) { ReceiverSpawn->EventName = FName(EventName); bChanged = true; }
+					bChanged |= ImGui::DragInt("Spawn Count", &ReceiverSpawn->SpawnCount, 1.0f, 0, 1024);
+					bChanged |= ImGui::Checkbox("Use Event Location", &ReceiverSpawn->bUseEventLocation);
+					bChanged |= ImGui::Checkbox("Inherit Event Velocity", &ReceiverSpawn->bInheritEventVelocity);
+					bChanged |= ImGui::DragFloat("Inherit Velocity Scale", &ReceiverSpawn->InheritVelocityScale, 0.05f, -1000.0f, 1000.0f, "%.3f");
+				}
+			}
+			else if (UParticleModuleEventReceiverKillAll* ReceiverKillAll = Cast<UParticleModuleEventReceiverKillAll>(Module))
+			{
+				if (ImGui::CollapsingHeader("Event Receiver Kill All", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					static const char* EventNames[] = { "Spawn", "Death", "Collision", "Burst" };
+					bChanged |= ImGui::Checkbox("Use Event Type Filter", &ReceiverKillAll->bUseEventTypeFilter);
+					int32 Type = static_cast<int32>(ReceiverKillAll->SourceEventType);
+					if (ComboInt("Source Event Type", Type, EventNames, 4)) { ReceiverKillAll->SourceEventType = static_cast<EParticleEventType>(Type); bChanged = true; }
+					bChanged |= ImGui::Checkbox("Use Event Name Filter", &ReceiverKillAll->bUseEventNameFilter);
+					FString EventName = ReceiverKillAll->EventName.ToString();
+					if (InputTextFString("Event Name", EventName)) { ReceiverKillAll->EventName = FName(EventName); bChanged = true; }
+					bChanged |= ImGui::Checkbox("Stop Spawning", &ReceiverKillAll->bStopSpawning);
 				}
 			}
 			else if (UParticleModuleTypeDataMesh* Mesh = Cast<UParticleModuleTypeDataMesh>(Module))
@@ -3716,6 +3761,8 @@ void FParticleEditorWidget::RenderAddModulePopup()
 		AddRegular("Size By Life", UParticleModule::EModuleCategory::Size, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSizeByLife>(LOD, Emitter); });
 		AddRegular("Collision", UParticleModule::EModuleCategory::Collision, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleCollision>(LOD, Emitter); });
 		AddRegular("Event Generator", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventGenerator>(LOD, Emitter); });
+		AddRegular("Event Receiver Spawn", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventReceiverSpawn>(LOD, Emitter); });
+		AddRegular("Event Receiver Kill All", UParticleModule::EModuleCategory::Event, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleEventReceiverKillAll>(LOD, Emitter); });
 		AddRegular("Sub Image Index", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUV>(LOD, Emitter); });
 		AddRegular("SubUV Movie", UParticleModule::EModuleCategory::SubUV, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleSubUVMovie>(LOD, Emitter); });
 		AddRegular("Beam Source", UParticleModule::EModuleCategory::Beam, [&]() -> UParticleModule* { return CreateParticleModule<UParticleModuleBeamSource>(LOD, Emitter); });

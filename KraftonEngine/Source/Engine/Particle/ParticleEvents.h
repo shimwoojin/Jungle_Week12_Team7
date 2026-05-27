@@ -3,6 +3,7 @@
 #include "Core/Types/CoreTypes.h"
 #include "Math/Vector.h"
 #include "Object/FName.h"
+#include "Object/Reflection/ObjectMacros.h"
 
 // =============================================================================
 // ParticleEvents.h
@@ -11,6 +12,7 @@
 //   AParticleEventManager (or PSC) 가 디스패치한다.
 // =============================================================================
 
+UENUM()
 enum class EParticleEventType : uint8
 {
 	Spawn,

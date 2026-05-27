@@ -6,6 +6,21 @@
 
 #include "Source/Engine/Particle/Modules/ParticleModuleEventGenerator.generated.h"
 
+USTRUCT()
+struct FParticleEventGeneratorEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Edit, Save, Category="Event", DisplayName="Type", Type=Enum, Enum=EParticleEventType)
+	EParticleEventType Type = EParticleEventType::Death;
+
+	UPROPERTY(Edit, Save, Category="Event", DisplayName="Event Name")
+	FName EventName;
+
+	UPROPERTY(Edit, Save, Category="Event", DisplayName="Enabled")
+	bool bEnabled = true;
+};
+
 // =============================================================================
 // UParticleModuleEventGenerator
 //   특정 이벤트 (Spawn/Death/Collision/Burst) 가 발생할 때 EmitterInstance 의
@@ -26,15 +41,8 @@ public:
 	EModuleCategory GetCategory() const override { return EModuleCategory::Event; }
 	const char*     GetDisplayName() const override { return "Event Generator"; }
 
-	struct FEntry
-	{
-		EParticleEventType Type      = EParticleEventType::Death;
-		FName              EventName;
-		bool               bEnabled  = true;
-	};
-
-	UPROPERTY(Edit, Save, Category="Event", DisplayName="Entries", Type=Array)
-	TArray<FEntry> Entries;
+	UPROPERTY(Edit, Save, Category="Event", DisplayName="Entries", Type=Array, Struct=FParticleEventGeneratorEntry)
+	TArray<FParticleEventGeneratorEntry> Entries;
 
 	// 각 발행 지점에서 호출. 활성 entry 가 있으면 emitter 의 큐에 push.
 	void HandleSpawnEvent    (FParticleEmitterInstance* Owner, const FParticleEventSpawnData&    InTemplate) const;
