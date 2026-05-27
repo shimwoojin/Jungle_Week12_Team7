@@ -27,6 +27,8 @@ class UObject;
 struct FPropertySerializeContext
 {
 	UObject* Owner = nullptr;
+	uint32 RequiredFlags = 0;
+	bool bIsVersionedTaggedLoad = false;
 };
 
 // 에디터에서 자동 위젯 매핑에 사용되는 프로퍼티 타입

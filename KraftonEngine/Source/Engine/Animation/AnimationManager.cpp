@@ -195,16 +195,12 @@ UAnimSequence* FAnimationManager::LoadAnimation(const FString& PackagePath)
     }
 
     FAssetPackageHeader Header;
-    Reader << Header;
-
-    if (!Header.IsValid(EAssetPackageType::AnimSequence))
+    FAssetImportMetadata Metadata;
+    if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::AnimSequence, Header, Metadata))
     {
         UE_LOG("Animation load failed: invalid package header. Path=%s", NormalizedPath.c_str());
         return nullptr;
     }
-
-    FAssetImportMetadata Metadata;
-    Reader << Metadata;
 
     UAnimSequence* Sequence = UObjectManager::Get().CreateObject<UAnimSequence>();
     Sequence->Serialize(Reader);
@@ -257,13 +253,13 @@ bool FAnimationManager::SaveAnimation(UAnimSequence* Sequence, const FString& Pa
         return false;
     }
 
-    FAssetPackageHeader Header;
-    Header.Type = static_cast<uint32>(EAssetPackageType::AnimSequence);
-
     FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
 
-    Writer << Header;
-    Writer << Metadata;
+    if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::AnimSequence, Metadata))
+    {
+        UE_LOG("Animation save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+        return false;
+    }
     Sequence->Serialize(Writer);
 
     if (!Writer.IsValid())
@@ -515,15 +511,12 @@ UAnimMontage* FAnimationManager::LoadMontage(const FString& PackagePath)
     }
 
     FAssetPackageHeader Header;
-    Reader << Header;
-    if (!Header.IsValid(EAssetPackageType::AnimMontage))
+    FAssetImportMetadata Metadata;
+    if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::AnimMontage, Header, Metadata))
     {
         UE_LOG("Montage load failed: invalid package header. Path=%s", NormalizedPath.c_str());
         return nullptr;
     }
-
-    FAssetImportMetadata Metadata;
-    Reader << Metadata;
 
     UAnimMontage* Montage = UObjectManager::Get().CreateObject<UAnimMontage>();
     Montage->Serialize(Reader);
@@ -593,14 +586,14 @@ bool FAnimationManager::SaveMontage(UAnimMontage* Montage, const FString& Packag
         return false;
     }
 
-    FAssetPackageHeader Header;
-    Header.Type = static_cast<uint32>(EAssetPackageType::AnimMontage);
-
     FAssetImportMetadata Metadata;
     // Montage 는 FBX 같은 source 가 없음 — SourcePath 비워둠.
 
-    Writer << Header;
-    Writer << Metadata;
+    if (!FAssetPackage::WritePackagePrelude(Writer, EAssetPackageType::AnimMontage, Metadata))
+    {
+        UE_LOG("Montage save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+        return false;
+    }
     Montage->Serialize(Writer);
 
     if (!Writer.IsValid())

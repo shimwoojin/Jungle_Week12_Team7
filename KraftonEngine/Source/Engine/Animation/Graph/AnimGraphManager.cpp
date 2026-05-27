@@ -24,11 +24,8 @@ UAnimGraphAsset* FAnimGraphManager::Load(const FString& Path)
 	if (!Ar.IsValid()) return nullptr;
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-	if (!Header.IsValid(EAssetPackageType::AnimGraph)) return nullptr;
-
 	FAssetImportMetadata Metadata;
-	Ar << Metadata;
+	if (!FAssetPackage::ReadPackagePrelude(Ar, EAssetPackageType::AnimGraph, Header, Metadata)) return nullptr;
 
 	UAnimGraphAsset* NewAsset = UObjectManager::Get().CreateObject<UAnimGraphAsset>();
 	NewAsset->Serialize(Ar);
@@ -61,13 +58,11 @@ bool FAnimGraphManager::Save(UAnimGraphAsset* Asset)
 	FWindowsBinWriter Ar(FPaths::MakeProjectRelative(Path));
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(EAssetPackageType::AnimGraph);
-
 	FAssetImportMetadata Metadata;
-
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::AnimGraph, Metadata))
+	{
+		return false;
+	}
 
 	Asset->Serialize(Ar);
 	return Ar.IsValid();

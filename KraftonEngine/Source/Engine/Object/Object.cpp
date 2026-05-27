@@ -98,6 +98,9 @@ void UObject::SerializeIdentity(FArchive& Ar)
 
 void UObject::SerializeProperties(FArchive& Ar, uint32 RequiredFlags)
 {
+	// Legacy binary assets still rely on the historical order-based payload path.
+	// Versioned package loads opt into tagged property serialization via the
+	// archive seam, which makes HasProperty(...) reflect real payload presence.
 	Ar.BeginObject();
 
 	TArray<const FProperty*> Properties;
@@ -120,8 +123,13 @@ void UObject::SerializeProperties(FArchive& Ar, uint32 RequiredFlags)
 			continue;
 		}
 
+		FPropertySerializeContext Context;
+		Context.Owner = this;
+		Context.RequiredFlags = RequiredFlags;
+		Context.bIsVersionedTaggedLoad = Ar.IsVersionedTaggedLoad();
+
 		Ar.BeginProperty(Property->Name);
-		Property->Serialize(this, Ar);
+		Property->SerializeValue(Property->GetValuePtrFor(this), Ar, Context);
 		Ar.EndProperty();
 	}
 

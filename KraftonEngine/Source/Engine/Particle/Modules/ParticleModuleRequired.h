@@ -29,7 +29,7 @@ public:
 
 	// --- Material ---
 	UPROPERTY(Edit, Save, Category="Required", DisplayName="Material", AssetType="Material")
-	FSoftObjectPtr MaterialSlot = "None";
+	FSoftObjectPtr MaterialSlot;
 	UMaterial* CachedMaterial = nullptr; // ResolveMaterial() 에서 resolve
 
 	UMaterial* ResolveMaterial(); // soft → hard

@@ -20,11 +20,8 @@ UFloatCurveAsset* FFloatCurveManager::Load(const FString& Path)
 	if (!Ar.IsValid()) return nullptr;
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-	if (!Header.IsValid(EAssetPackageType::FloatCurve)) return nullptr;
-
 	FAssetImportMetadata Metadata;
-	Ar << Metadata;
+	if (!FAssetPackage::ReadPackagePrelude(Ar, EAssetPackageType::FloatCurve, Header, Metadata)) return nullptr;
 
 	UFloatCurveAsset* NewAsset = UObjectManager::Get().CreateObject<UFloatCurveAsset>();
 	NewAsset->Serialize(Ar);
@@ -61,13 +58,12 @@ bool FFloatCurveManager::Save(UFloatCurveAsset* Asset)
 	FWindowsBinWriter Ar(FPaths::MakeProjectRelative(Path));
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(EAssetPackageType::FloatCurve);
-
 	FAssetImportMetadata Metadata;
 
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::FloatCurve, Metadata))
+	{
+		return false;
+	}
 
 	Asset->Serialize(Ar);
 

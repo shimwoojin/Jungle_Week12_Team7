@@ -69,7 +69,9 @@ protected:
 	virtual bool ShouldReflectProperties() const { return true; }  // UPROPERTY(Save) 자동 반사. 수동 포맷 클래스만 false 로 opt-out
 	virtual void OnPreSave(FArchive& /*Ar*/) {}                    // 반사 전(저장) — 스냅샷 등
 	virtual void SerializeExtra(FArchive& /*Ar*/) {}               // 반사로 못 담는 수동 필드
-	virtual void OnPostLoad(FArchive& /*Ar*/) {}                   // 반사 후(로드) — 파생 상태 재구성
+	// Versioned tagged loads use OnPostLoad as the semantic compatibility/default-fill seam
+	// after raw reflected serialization has already handled missing/unknown properties safely.
+	virtual void OnPostLoad(FArchive& /*Ar*/) {}                   // 반사 후(로드) — 파생 상태 재구성 / compatibility fixups
 
 public:
 	virtual void PostDuplicate() {}

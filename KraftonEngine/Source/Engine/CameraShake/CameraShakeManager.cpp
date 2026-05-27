@@ -20,11 +20,8 @@ UCameraShakeAsset* FCameraShakeManager::Load(const FString& Path)
 		if (!Ar.IsValid()) return nullptr;
 
 		FAssetPackageHeader Header;
-		Ar << Header;
-		if (!Header.IsValid(EAssetPackageType::CameraShake)) return nullptr;
-
 		FAssetImportMetadata Metadata;
-		Ar << Metadata;
+		if (!FAssetPackage::ReadPackagePrelude(Ar, EAssetPackageType::CameraShake, Header, Metadata)) return nullptr;
 
 		UCameraShakeAsset* NewAsset = UObjectManager::Get().CreateObject<UCameraShakeAsset>();
 		NewAsset->Serialize(Ar);
@@ -83,13 +80,12 @@ bool FCameraShakeManager::Save(UCameraShakeAsset* Asset)
 	FWindowsBinWriter Ar(FPaths::MakeProjectRelative(Path));
 	if (!Ar.IsValid()) return false;
 
-	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(EAssetPackageType::CameraShake);
-
 	FAssetImportMetadata Metadata;
 
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::CameraShake, Metadata))
+	{
+		return false;
+	}
 
 	Asset->Serialize(Ar);
 

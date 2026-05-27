@@ -1,6 +1,7 @@
 ﻿#include "Core/Types/PropertyTypes.h"
 
 #include "Object/Reflection/UStruct.h"
+#include "Serialization/Archive.h"
 
 const char* FPropertyValue::GetName() const
 {
@@ -85,6 +86,7 @@ void FProperty::Serialize(UObject* Object, FArchive& Ar) const
 {
 	FPropertySerializeContext Context;
 	Context.Owner = Object;
+	Context.bIsVersionedTaggedLoad = Ar.IsVersionedTaggedLoad();
 	SerializeValue(GetValuePtrFor(Object), Ar, Context);
 }
 

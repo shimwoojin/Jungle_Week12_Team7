@@ -52,7 +52,7 @@ private:
 
 	TObjectPtr<UStaticMesh> StaticMesh;
 	UPROPERTY(Edit, Save, Category="Mesh", DisplayName="Static Mesh", AssetType="StaticMesh")
-	FSoftObjectPtr StaticMeshPath = "None";
+	FSoftObjectPtr StaticMeshPath;
 	TArray<UMaterial*> OverrideMaterials;
 	UPROPERTY(Edit, Save, EditFixedSize, Category="Materials", DisplayName="Materials", AssetType="Material")
 	TArray<FSoftObjectPtr> MaterialSlots;

@@ -46,7 +46,7 @@ public:
 	// InitializeDefault 호출 (기존 데모 흐름 유지). path 가 있으면 FAnimGraphManager 로 로드 후
 	// 그 자산을 컴파일러에 넘긴다 — Editor 에서 만든 그래프가 실제 캐릭터 평가에 박힘.
 	UPROPERTY(Edit, Save, Category="AnimGraph", DisplayName="Graph Asset", AssetType="UAnimGraphAsset")
-	FSoftObjectPtr GraphAssetPath = "None";
+	FSoftObjectPtr GraphAssetPath;
 
 private:
 	// GraphAsset.Version != CompiledAssetVersion 이면 트리 폐기 + 재컴파일 + 버전 캡쳐.

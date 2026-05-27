@@ -269,8 +269,17 @@ private:
 		int32 NearbyEvidenceProbeCount = 0;
 		bool bCollisionFullyDisabledForLOD = false;
 		bool bCollisionEventGatedForLOD = false;
+		bool bUsingCollisionOuterPolicyOverride = false;
 		bool bNearbyCollisionCacheValid = false;
 		bool bNearbyCollisionEvidence = false;
+	};
+
+	struct FResolvedCollisionOuterPolicy
+	{
+		bool bCollisionFullyDisabled = false;
+		bool bEmitCollisionEvents = true;
+		bool bUsingAuthoringOverride = false;
+		int32 CollisionQueryBudget = 0;
 	};
 
 	uint32 GetInitialParticleCapacity() const;
@@ -285,6 +294,7 @@ private:
 	const UParticleModuleCollision* GetCollisionModule(const UParticleLODLevel* LOD) const;
 	const UParticleModuleCollision* ResolveCollisionOuterPolicyModule(
 		const TArray<TArray<uint32>>& ActiveParticleBuckets) const;
+	FResolvedCollisionOuterPolicy ResolveCollisionOuterPolicyForCurrentLOD() const;
 	void InitializeCollisionOuterPolicyDebugStats(
 		FParticleCollisionDebugStats& OutStats,
 		int32 CollisionBudget) const;

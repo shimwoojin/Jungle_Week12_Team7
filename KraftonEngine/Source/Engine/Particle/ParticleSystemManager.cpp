@@ -2,12 +2,84 @@
 
 #include "Asset/AssetPackage.h"
 #include "Platform/Paths.h"
+#include "Particle/ParticleEmitter.h"
+#include "Particle/ParticleLODLevel.h"
+#include "Particle/Modules/ParticleModuleCollision.h"
 #include "Serialization/WindowsArchive.h"
 
 #include <algorithm>
 #include <filesystem>
 
 #include "Core/Logging/Log.h"
+
+namespace
+{
+	constexpr const char* Stage3LowerLODCollisionOverrideTargetPath =
+		"Content/Particle System/NewParticleSystem_2.uasset";
+	constexpr int32 Stage3LowerLODCollisionQueryBudget = 16;
+	constexpr int32 Stage3FirstLowerCollisionOverrideLOD = 2;
+
+	void ApplyStage3LowerLODCollisionOverrideToEmitter(UParticleEmitter* Emitter)
+	{
+		if (!Emitter)
+		{
+			return;
+		}
+
+		for (int32 LODIndex = Stage3FirstLowerCollisionOverrideLOD;
+			LODIndex < Emitter->GetLODCount();
+			++LODIndex)
+		{
+			UParticleLODLevel* LOD = Emitter->GetLODLevel(LODIndex);
+			if (!LOD)
+			{
+				continue;
+			}
+
+			UParticleModuleCollision* CollisionModule =
+				LOD->FindModuleByClass<UParticleModuleCollision>();
+			if (!CollisionModule)
+			{
+				continue;
+			}
+
+			FParticleCollisionLODPolicyOverride& PolicyOverride =
+				CollisionModule->LODPolicyOverride;
+
+			// Stage 3 is a targeted rollout for the known falling-particle asset:
+			// keep lower-LOD collision continuity with a small query budget, but do
+			// not stomp on explicit authoring if an override is already enabled.
+			if (PolicyOverride.bEnabled)
+			{
+				continue;
+			}
+
+			PolicyOverride.bEnabled = true;
+			PolicyOverride.CollisionQueryBudget = Stage3LowerLODCollisionQueryBudget;
+			PolicyOverride.bOverrideDisablePolicy = true;
+			PolicyOverride.bDisableCollisionQueries = false;
+		}
+	}
+
+	void ApplyStage3LowerLODCollisionOverrideIfNeeded(UParticleSystem* Asset)
+	{
+		if (!Asset)
+		{
+			return;
+		}
+
+		const FString NormalizedPath = FPaths::MakeProjectRelative(Asset->GetSourcePath());
+		if (NormalizedPath != Stage3LowerLODCollisionOverrideTargetPath)
+		{
+			return;
+		}
+
+		for (int32 EmitterIndex = 0; EmitterIndex < Asset->GetEmitterCount(); ++EmitterIndex)
+		{
+			ApplyStage3LowerLODCollisionOverrideToEmitter(Asset->GetEmitter(EmitterIndex));
+		}
+	}
+}
 
 UParticleSystem* FParticleSystemManager::Load(const FString& Path)
 {
@@ -31,15 +103,11 @@ UParticleSystem* FParticleSystemManager::Load(const FString& Path)
 	}
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-
-	if (!Header.IsValid(EAssetPackageType::ParticleSystem))
+	FAssetImportMetadata Metadata;
+	if (!FAssetPackage::ReadPackagePrelude(Ar, EAssetPackageType::ParticleSystem, Header, Metadata))
 	{
 		return nullptr;
 	}
-
-	FAssetImportMetadata Metadata;
-	Ar << Metadata;
 
 	UParticleSystem* NewAsset = UObjectManager::Get().CreateObject<UParticleSystem>();
 	if (!NewAsset)
@@ -57,6 +125,7 @@ UParticleSystem* FParticleSystemManager::Load(const FString& Path)
 
 	NewAsset->SetSourcePath(NormalizedPath);
 	NewAsset->BuildEmitters();
+	ApplyStage3LowerLODCollisionOverrideIfNeeded(NewAsset);
 
 	LoadedParticleSystems.emplace(NormalizedPath, NewAsset);
 	return NewAsset;
@@ -99,13 +168,12 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 		return false;
 	}
 
-	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(EAssetPackageType::ParticleSystem);
-
 	FAssetImportMetadata Metadata;
-
-	Ar << Header;
-	Ar << Metadata;
+	if (!FAssetPackage::WritePackagePrelude(Ar, EAssetPackageType::ParticleSystem, Metadata))
+	{
+		UE_LOG("[ParticleSystemManager] Save failed: package prelude write failed. Path=%s", NormalizedPath.c_str());
+		return false;
+	}
 
 	Asset->BuildEmitters();
 	Asset->Serialize(Ar);

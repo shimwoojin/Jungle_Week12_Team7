@@ -6,11 +6,40 @@
 
 #include "Source/Engine/Particle/Modules/ParticleModuleCollision.generated.h"
 
+USTRUCT()
+struct FParticleCollisionLODPolicyOverride
+{
+	GENERATED_BODY()
+
+	// This override belongs to current-emitter-LOD outer collision policy:
+	// workload budget, optional full-disable, and optional event gating.
+	// It does not change what an accepted hit means for response/completion.
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="Enabled")
+	bool bEnabled = false;
+
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="Collision Query Budget", Min=0)
+	int32 CollisionQueryBudget = 0;
+
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="Override Disable Policy")
+	bool bOverrideDisablePolicy = false;
+
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="Disable Collision Queries")
+	bool bDisableCollisionQueries = false;
+
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="Override Collision Event Policy")
+	bool bOverrideCollisionEventPolicy = false;
+
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="Allow Collision Events")
+	bool bAllowCollisionEvents = true;
+};
+
 // =============================================================================
 // UParticleModuleCollision
 //   Collision authoring/settings module.
 //   - Stores collision policy (damping, max collisions, trace channel,
 //     kill-on-collision, collision-event intent).
+//   - May optionally override current-LOD collision outer policy
+//     (budget / full-disable / event gating) without redefining hit response.
 //   - Initializes lightweight per-particle collision payload at spawn time.
 //   - Actual world hit query and runtime collision response are executed by the
 //     explicit FParticleEmitterInstance collision pass.
@@ -82,6 +111,12 @@ public:
 	// Base collision events flow through the existing EventGenerator / PSC path.
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Generate Collision Events")
 	bool bGenerateCollisionEvents = false;
+
+	// Optional authoring override for the current-emitter-LOD collision outer
+	// policy. When disabled, runtime falls back to the legacy hardcoded LOD
+	// policy so existing assets keep their current behavior.
+	UPROPERTY(Edit, Save, Category="Collision|LOD Policy", DisplayName="LOD Policy Override")
+	FParticleCollisionLODPolicyOverride LODPolicyOverride;
 
 	// Per-particle runtime collision state used by the emitter-instance pass.
 	// The recent-hit fields are intentionally lightweight and only exist to calm

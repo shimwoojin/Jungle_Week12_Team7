@@ -18,10 +18,24 @@ enum class EAssetPackageType : uint32
 	ParticleSystem,
 };
 
+enum class EAssetPackageSerializationVersion : uint32
+{
+	LegacyBinaryLayout = 1,
+	HeaderVersionedFormat = 2,
+};
+
+enum class EAssetPackageFormatBranch : uint8
+{
+	Invalid = 0,
+	Legacy,
+	Versioned,
+};
+
 struct FAssetPackageHeader
 {
 	static constexpr uint32 MagicValue = 0x54455341; // ASET
-	static constexpr uint32 CurrentVersion = 1;
+	static constexpr uint32 LegacyVersion = static_cast<uint32>(EAssetPackageSerializationVersion::LegacyBinaryLayout);
+	static constexpr uint32 CurrentVersion = static_cast<uint32>(EAssetPackageSerializationVersion::HeaderVersionedFormat);
 
 	uint32 Magic = MagicValue;
 	uint32 Version = CurrentVersion;
@@ -38,14 +52,43 @@ struct FAssetPackageHeader
 	bool IsValid(EAssetPackageType ExpectedType) const
 	{
 		return Magic == MagicValue
-			&& Version == CurrentVersion
+			&& IsKnownVersion()
 			&& Type == static_cast<uint32>(ExpectedType);
 	}
 
 	bool IsValidPackage() const
 	{
 		return Magic == MagicValue
-			&& Version == CurrentVersion;
+			&& IsKnownVersion();
+	}
+
+	bool IsKnownVersion() const
+	{
+		return Version == LegacyVersion
+			|| Version == CurrentVersion;
+	}
+
+	bool IsLegacyFormat() const
+	{
+		return Version == LegacyVersion;
+	}
+
+	bool IsVersionedFormat() const
+	{
+		return Version == CurrentVersion;
+	}
+
+	EAssetPackageFormatBranch GetFormatBranch() const
+	{
+		if (IsLegacyFormat())
+		{
+			return EAssetPackageFormatBranch::Legacy;
+		}
+		if (IsVersionedFormat())
+		{
+			return EAssetPackageFormatBranch::Versioned;
+		}
+		return EAssetPackageFormatBranch::Invalid;
 	}
 };
 
@@ -82,6 +125,9 @@ public:
 	static bool ReadHeader(const FString& Path, FAssetPackageHeader& OutHeader);
 	static bool GetPackageType(const FString& Path, EAssetPackageType& OutType);
 	static bool ReadMetadata(const FString& Path, EAssetPackageType ExpectedType, FAssetImportMetadata& OutMetadata);
+	static bool ReadPackagePrelude(FArchive& Ar, EAssetPackageType ExpectedType, FAssetPackageHeader& OutHeader, FAssetImportMetadata& OutMetadata);
+	static void InitializeHeaderForSave(FAssetPackageHeader& Header, EAssetPackageType Type);
+	static bool WritePackagePrelude(FArchive& Ar, EAssetPackageType Type, const FAssetImportMetadata& Metadata, FAssetPackageHeader* OutWrittenHeader = nullptr);
 
 	static bool SaveStringPayload(const FString& Path, EAssetPackageType Type, const FAssetImportMetadata& Metadata, const FString& Payload);
 	static bool LoadStringPayload(const FString& Path, EAssetPackageType ExpectedType, FAssetImportMetadata& Metadata, FString& OutPayload);
