@@ -2696,6 +2696,9 @@
     <ClInclude Include="Source\Engine\Platform\ConsoleHelper.h">
       <Filter>Source\Engine\Platform</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Platform\BuildInfo.h">
+      <Filter>Source\Engine\Platform</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Platform\CrashDump.h">
       <Filter>Source\Engine\Platform</Filter>
     </ClInclude>

@@ -1,10 +1,14 @@
 ﻿#include "Engine/Platform/CrashDump.h"
+#include "Engine/Platform/BuildInfo.h"
 #include "Engine/Platform/Paths.h"
 
 #include <DbgHelp.h>
 #include <ctime>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <sstream>
+#include <string>
 
 #pragma comment(lib, "DbgHelp.lib")
 
@@ -125,6 +129,42 @@ namespace
 
 		return ResolveSourceFromStack(ExceptionInfo, OutLocation);
 	}
+
+	std::string GetExecutableName()
+	{
+		WCHAR ExecutablePath[MAX_PATH] = {};
+		GetModuleFileNameW(nullptr, ExecutablePath, MAX_PATH);
+		return FPaths::ToUtf8(std::filesystem::path(ExecutablePath).filename().wstring());
+	}
+
+	void WriteTextFileUtf8(const std::wstring& FilePath, const std::string& Text)
+	{
+		HANDLE File = CreateFileW(FilePath.c_str(), GENERIC_WRITE, 0, nullptr,
+			CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (File == INVALID_HANDLE_VALUE)
+		{
+			return;
+		}
+
+		DWORD BytesWritten = 0;
+		WriteFile(File, Text.data(), static_cast<DWORD>(Text.size()), &BytesWritten, nullptr);
+		CloseHandle(File);
+	}
+
+	void WriteCrashBuildInfo(const std::wstring& InfoPath)
+	{
+		std::ostringstream Stream;
+		Stream << "Product: " << BuildInfo::ProductName << "\r\n";
+		Stream << "Config: " << BuildInfo::BuildConfig << "\r\n";
+		Stream << "BuildVersion: " << BuildInfo::BuildVersion << "\r\n";
+		Stream << "GitCommit: " << BuildInfo::GitCommit << "\r\n";
+		Stream << "SymbolPath: " << BuildInfo::SymbolPath << "\r\n";
+		Stream << "Executable: " << GetExecutableName() << "\r\n";
+		Stream << "BuildTime: " << BuildInfo::BuildTime << "\r\n";
+		Stream << "DumpType: MiniDumpWithDataSegs" << "\r\n";
+
+		WriteTextFileUtf8(InfoPath, Stream.str());
+	}
 }
 
 __declspec(noinline) void CauseCrash()
@@ -138,15 +178,16 @@ LONG WINAPI WriteCrashDump(EXCEPTION_POINTERS* ExceptionInfo)
 	FPaths::CreateDir(FPaths::DumpDir());
 
 	// 타임스탬프 기반 파일명 생성
-	WCHAR FileName[MAX_PATH];
+	WCHAR BaseName[MAX_PATH];
 	time_t Now = time(nullptr);
 	tm LocalTime;
 	localtime_s(&LocalTime, &Now);
-	swprintf_s(FileName, L"Crash_%04d%02d%02d_%02d%02d%02d.dmp",
+	swprintf_s(BaseName, L"Crash_%04d%02d%02d_%02d%02d%02d",
 		LocalTime.tm_year + 1900, LocalTime.tm_mon + 1, LocalTime.tm_mday,
 		LocalTime.tm_hour, LocalTime.tm_min, LocalTime.tm_sec);
 
-	std::wstring DumpPath = FPaths::Combine(FPaths::DumpDir(), FileName);
+	std::wstring DumpPath = FPaths::Combine(FPaths::DumpDir(), std::wstring(BaseName) + L".dmp");
+	std::wstring InfoPath = FPaths::Combine(FPaths::DumpDir(), std::wstring(BaseName) + L"_BuildInfo.txt");
 
 	HANDLE File = CreateFileW(DumpPath.c_str(), GENERIC_WRITE, 0, nullptr,
 		CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -186,6 +227,8 @@ LONG WINAPI WriteCrashDump(EXCEPTION_POINTERS* ExceptionInfo)
 		}
 		MessageBoxW(nullptr, Message, L"Crash", MB_OK | MB_ICONERROR);
 	}
+
+	WriteCrashBuildInfo(InfoPath);
 
 	return EXCEPTION_EXECUTE_HANDLER;
 }
