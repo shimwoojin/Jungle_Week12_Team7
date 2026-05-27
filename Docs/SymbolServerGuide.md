@@ -175,7 +175,7 @@ Visual Studio가 덤프 분석 중 소스 파일이 필요함
 `UploadSymbols.bat` 실행 후 다음 폴더에 로그가 생성됩니다.
 
 ```text
-KraftonEngine\Saved\SymbolLogs
+KraftonEngine\Saves\SymbolLogs
 ```
 
 예:
@@ -376,7 +376,7 @@ Release를 만들 때:
 
 ```text
 ReleaseBuild/BuildInfo.txt
-KraftonEngine/Saved/SymbolLogs/*_srcsrv.txt
+KraftonEngine/Saves/SymbolLogs/*_srcsrv.txt
 심볼 서버 업로드 성공 메시지
 ```
 

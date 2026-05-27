@@ -6,7 +6,7 @@ set SRCSRV_PATH=%DEBUGGER_PATH%\srcsrv
 set SYMBOL_STORE=\\SYMBOL-SERVER\Symbols\Team7
 set PRODUCT_NAME=KraftonEngine_Team7
 set RELEASE_BIN=C:\development\Jungle_Week12_Team7\KraftonEngine\Bin\Release
-set LOG_DIR=C:\development\Jungle_Week12_Team7\KraftonEngine\Saved\SymbolLogs
+set LOG_DIR=C:\development\Jungle_Week12_Team7\KraftonEngine\Saves\SymbolLogs
 set REPO_ROOT=C:\development\Jungle_Week12_Team7
 set SOURCE_INDEX_SCRIPT=%REPO_ROOT%\Scripts\GenerateSrcSrvStream.ps1
 
