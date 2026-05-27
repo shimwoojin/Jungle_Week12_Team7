@@ -433,16 +433,12 @@ USkeleton* FSkeletonManager::LoadSkeleton(const FString& PackagePath)
     }
 
     FAssetPackageHeader Header;
-    Reader << Header;
-
-    if (!Header.IsValid(EAssetPackageType::Skeleton))
+    FAssetImportMetadata Metadata;
+    if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::Skeleton, Header, Metadata))
     {
         UE_LOG("Skeleton load failed: invalid package header. Path=%s", NormalizedPath.c_str());
         return nullptr;
     }
-
-    FAssetImportMetadata Metadata;
-    Reader << Metadata;
 
     USkeleton* Skeleton = UObjectManager::Get().CreateObject<USkeleton>();
     Skeleton->Serialize(Reader);
@@ -497,7 +493,7 @@ bool FSkeletonManager::SaveSkeleton(USkeleton* Skeleton, const FString& PackageP
     }
 
     FAssetPackageHeader Header;
-    Header.Type = static_cast<uint32>(EAssetPackageType::Skeleton);
+    FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::Skeleton);
 
     FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
 

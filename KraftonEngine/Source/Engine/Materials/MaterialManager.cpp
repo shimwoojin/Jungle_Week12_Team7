@@ -153,7 +153,7 @@ bool FMaterialManager::SaveMaterial(UMaterial* Material, const FString& UassetPa
 	if (!Ar.IsValid()) return false;
 
 	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(EAssetPackageType::Material);
+	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::Material);
 	FAssetImportMetadata Metadata;
 	Ar << Header;
 	Ar << Metadata;
@@ -187,10 +187,8 @@ UMaterial* FMaterialManager::LoadMaterialBinary(const FString& UassetPath)
 	if (!Ar.IsValid()) return nullptr;
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-	if (!Header.IsValid(EAssetPackageType::Material)) return nullptr;
 	FAssetImportMetadata Metadata;
-	Ar << Metadata;
+	if (!FAssetPackage::ReadPackagePrelude(Ar, EAssetPackageType::Material, Header, Metadata)) return nullptr;
 
 	bool bIsInstance = false;
 	Ar << bIsInstance;

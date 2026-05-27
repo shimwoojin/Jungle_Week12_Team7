@@ -29,6 +29,39 @@ bool FAssetPackage::ReadHeader(const FString& Path, FAssetPackageHeader& OutHead
 	return Ar.IsValid() && OutHeader.IsValidPackage();
 }
 
+bool FAssetPackage::ReadPackagePrelude(
+	FArchive& Ar,
+	EAssetPackageType ExpectedType,
+	FAssetPackageHeader& OutHeader,
+	FAssetImportMetadata& OutMetadata)
+{
+	Ar << OutHeader;
+	if (!Ar.IsValid() || !OutHeader.IsValid(ExpectedType))
+	{
+		return false;
+	}
+
+	// Legacy packages predate the explicit format seam used for future schema
+	// evolution. Newer packages opt into the versioned branch explicitly even
+	// though both paths still deserialize the same metadata payload for now.
+	switch (OutHeader.GetFormatBranch())
+	{
+	case EAssetPackageFormatBranch::Legacy:
+	case EAssetPackageFormatBranch::Versioned:
+		Ar << OutMetadata;
+		return Ar.IsValid();
+	default:
+		return false;
+	}
+}
+
+void FAssetPackage::InitializeHeaderForSave(FAssetPackageHeader& Header, EAssetPackageType Type)
+{
+	Header.Magic = FAssetPackageHeader::MagicValue;
+	Header.Version = FAssetPackageHeader::CurrentVersion;
+	Header.Type = static_cast<uint32>(Type);
+}
+
 bool FAssetPackage::GetPackageType(const FString& Path, EAssetPackageType& OutType)
 {
 	FAssetPackageHeader Header;
@@ -48,15 +81,7 @@ bool FAssetPackage::ReadMetadata(const FString& Path, EAssetPackageType Expected
 	if (!Ar.IsValid()) return false;
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-
-	if (!Header.IsValid(ExpectedType))
-	{
-		return false;
-	}
-	
-	Ar << OutMetadata;
-	return Ar.IsValid();
+	return ReadPackagePrelude(Ar, ExpectedType, Header, OutMetadata);
 }
 
 bool FAssetPackage::SaveStringPayload(const FString& Path, EAssetPackageType Type, const FAssetImportMetadata& Metadata, const FString& Payload)
@@ -66,7 +91,7 @@ bool FAssetPackage::SaveStringPayload(const FString& Path, EAssetPackageType Typ
 	if (!Ar.IsValid()) return false;
 
 	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(Type);
+	InitializeHeaderForSave(Header, Type);
 
 	FAssetImportMetadata MetadataCopy = Metadata;
 	FString PayloadCopy = Payload;
@@ -84,14 +109,10 @@ bool FAssetPackage::LoadStringPayload(const FString& Path, EAssetPackageType Exp
 	if (!Ar.IsValid()) return false;
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-
-	if (!Header.IsValid(ExpectedType))
+	if (!ReadPackagePrelude(Ar, ExpectedType, Header, Metadata))
 	{
 		return false;
 	}
-
-	Ar << Metadata;
 	Ar << OutPayload;
 
 	return Ar.IsValid();

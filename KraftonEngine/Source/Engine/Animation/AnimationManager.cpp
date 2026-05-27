@@ -195,16 +195,12 @@ UAnimSequence* FAnimationManager::LoadAnimation(const FString& PackagePath)
     }
 
     FAssetPackageHeader Header;
-    Reader << Header;
-
-    if (!Header.IsValid(EAssetPackageType::AnimSequence))
+    FAssetImportMetadata Metadata;
+    if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::AnimSequence, Header, Metadata))
     {
         UE_LOG("Animation load failed: invalid package header. Path=%s", NormalizedPath.c_str());
         return nullptr;
     }
-
-    FAssetImportMetadata Metadata;
-    Reader << Metadata;
 
     UAnimSequence* Sequence = UObjectManager::Get().CreateObject<UAnimSequence>();
     Sequence->Serialize(Reader);
@@ -258,7 +254,7 @@ bool FAnimationManager::SaveAnimation(UAnimSequence* Sequence, const FString& Pa
     }
 
     FAssetPackageHeader Header;
-    Header.Type = static_cast<uint32>(EAssetPackageType::AnimSequence);
+    FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::AnimSequence);
 
     FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
 
@@ -515,15 +511,12 @@ UAnimMontage* FAnimationManager::LoadMontage(const FString& PackagePath)
     }
 
     FAssetPackageHeader Header;
-    Reader << Header;
-    if (!Header.IsValid(EAssetPackageType::AnimMontage))
+    FAssetImportMetadata Metadata;
+    if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::AnimMontage, Header, Metadata))
     {
         UE_LOG("Montage load failed: invalid package header. Path=%s", NormalizedPath.c_str());
         return nullptr;
     }
-
-    FAssetImportMetadata Metadata;
-    Reader << Metadata;
 
     UAnimMontage* Montage = UObjectManager::Get().CreateObject<UAnimMontage>();
     Montage->Serialize(Reader);
@@ -594,7 +587,7 @@ bool FAnimationManager::SaveMontage(UAnimMontage* Montage, const FString& Packag
     }
 
     FAssetPackageHeader Header;
-    Header.Type = static_cast<uint32>(EAssetPackageType::AnimMontage);
+    FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::AnimMontage);
 
     FAssetImportMetadata Metadata;
     // Montage 는 FBX 같은 source 가 없음 — SourcePath 비워둠.

@@ -103,15 +103,11 @@ UParticleSystem* FParticleSystemManager::Load(const FString& Path)
 	}
 
 	FAssetPackageHeader Header;
-	Ar << Header;
-
-	if (!Header.IsValid(EAssetPackageType::ParticleSystem))
+	FAssetImportMetadata Metadata;
+	if (!FAssetPackage::ReadPackagePrelude(Ar, EAssetPackageType::ParticleSystem, Header, Metadata))
 	{
 		return nullptr;
 	}
-
-	FAssetImportMetadata Metadata;
-	Ar << Metadata;
 
 	UParticleSystem* NewAsset = UObjectManager::Get().CreateObject<UParticleSystem>();
 	if (!NewAsset)
@@ -173,7 +169,7 @@ bool FParticleSystemManager::Save(UParticleSystem* Asset)
 	}
 
 	FAssetPackageHeader Header;
-	Header.Type = static_cast<uint32>(EAssetPackageType::ParticleSystem);
+	FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::ParticleSystem);
 
 	FAssetImportMetadata Metadata;
 

@@ -211,16 +211,12 @@ static bool LoadStaticMeshBinary(UStaticMesh* StaticMesh, const FString& BinaryP
 	try
 	{
 		FAssetPackageHeader Header;
-		Reader << Header;
-
-		if (!Header.IsValid(EAssetPackageType::StaticMesh))
+		FAssetImportMetadata Metadata;
+		if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::StaticMesh, Header, Metadata))
 		{
 			UE_LOG("StaticMesh binary read failed: invalid file header. Path=%s", BinaryPath.c_str());
 			return false;
 		}
-
-		FAssetImportMetadata Metadata;
-		Reader << Metadata;
 
 		StaticMesh->Serialize(Reader);
 	}
@@ -251,7 +247,7 @@ static bool SaveStaticMeshBinary(UStaticMesh* StaticMesh, const FString& BinaryP
 	try
 	{
 		FAssetPackageHeader Header;
-		Header.Type = static_cast<uint32>(EAssetPackageType::StaticMesh);
+		FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::StaticMesh);
 		Writer << Header;
 
 		FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
@@ -280,16 +276,12 @@ static bool LoadSkeletalMeshBinary(USkeletalMesh* SkeletalMesh, const FString& B
 	try
 	{
 		FAssetPackageHeader Header;
-		Reader << Header;
-
-		if (!Header.IsValid(EAssetPackageType::SkeletalMesh))
+		FAssetImportMetadata Metadata;
+		if (!FAssetPackage::ReadPackagePrelude(Reader, EAssetPackageType::SkeletalMesh, Header, Metadata))
 		{
 			UE_LOG("SkeletalMesh binary read failed: invalid file header. Path=%s", BinaryPath.c_str());
 			return false;
 		}
-
-		FAssetImportMetadata Metadata;
-		Reader << Metadata;
 
 		SkeletalMesh->Serialize(Reader);
 	}
@@ -421,7 +413,7 @@ static bool SaveSkeletalMeshBinary(USkeletalMesh* SkeletalMesh, const FString& B
 	try
 	{
 		FAssetPackageHeader Header;
-		Header.Type = static_cast<uint32>(EAssetPackageType::SkeletalMesh);
+		FAssetPackage::InitializeHeaderForSave(Header, EAssetPackageType::SkeletalMesh);
 		Writer << Header;
 
 		FAssetImportMetadata Metadata = MakeImportMetadata(SourcePath);
