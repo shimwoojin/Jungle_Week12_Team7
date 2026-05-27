@@ -3079,11 +3079,42 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 				{
 					bChanged |= ImGui::DragFloat("Damping Factor", &Collision->DampingFactor, 0.01f, 0.0f, 1.0f, "%.2f");
 					bChanged |= ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
+					ImGui::TextDisabled("Max Collisions is a per-particle hit-count limit, not a per-tick query workload budget.");
 					static const char* ChannelNames[] = { "WorldStatic", "WorldDynamic", "Pawn", "Projectile", "Trigger" };
 					int32 Channel = static_cast<int32>(Collision->CollisionChannel);
 					if (ComboInt("Collision Channel", Channel, ChannelNames, 5)) { Collision->CollisionChannel = static_cast<ECollisionChannel>(Channel); bChanged = true; }
 					bChanged |= ImGui::Checkbox("Kill On Collision", &Collision->bKillOnCollision);
 					bChanged |= ImGui::Checkbox("Generate Collision Events", &Collision->bGenerateCollisionEvents);
+
+					ImGui::Separator();
+					if (ImGui::CollapsingHeader("LOD Policy Override", ImGuiTreeNodeFlags_DefaultOpen))
+					{
+						const bool bIsLowerLOD = LOD && LOD->Level > 0;
+						ImGui::TextDisabled(
+							bIsLowerLOD
+								? "Current lower-LOD outer collision policy override. This controls workload/reporting, not hit response semantics."
+								: "Optional current-LOD outer collision policy override. Mainly useful for reduced lower-LOD tuning.");
+
+						auto& LODPolicyOverride = Collision->LODPolicyOverride;
+						bChanged |= ImGui::Checkbox("Override LOD Collision Policy", &LODPolicyOverride.bEnabled);
+
+						if (!LODPolicyOverride.bEnabled) ImGui::BeginDisabled();
+						bChanged |= ImGui::DragInt("Collision Query Budget", &LODPolicyOverride.CollisionQueryBudget, 1.0f, 0, 100000);
+						ImGui::TextDisabled("Per-emitter per-tick collision query workload for this LOD.");
+						bChanged |= ImGui::Checkbox("Override Disable Policy", &LODPolicyOverride.bOverrideDisablePolicy);
+						if (!LODPolicyOverride.bOverrideDisablePolicy) ImGui::BeginDisabled();
+						bChanged |= ImGui::Checkbox("Disable Collision Queries", &LODPolicyOverride.bDisableCollisionQueries);
+						if (!LODPolicyOverride.bOverrideDisablePolicy) ImGui::EndDisabled();
+						bChanged |= ImGui::Checkbox("Override Collision Event Policy", &LODPolicyOverride.bOverrideCollisionEventPolicy);
+						if (!LODPolicyOverride.bOverrideCollisionEventPolicy) ImGui::BeginDisabled();
+						bChanged |= ImGui::Checkbox("Allow Collision Events", &LODPolicyOverride.bAllowCollisionEvents);
+						if (!LODPolicyOverride.bOverrideCollisionEventPolicy) ImGui::EndDisabled();
+						if (!LODPolicyOverride.bEnabled)
+						{
+							ImGui::EndDisabled();
+							ImGui::TextDisabled("When disabled, runtime falls back to the default hardcoded LOD collision policy.");
+						}
+					}
 				}
 			}
 			else if (UParticleModuleEventGenerator* EventGen = Cast<UParticleModuleEventGenerator>(Module))
