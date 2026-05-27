@@ -440,7 +440,8 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		V.Alignment = Alignment;
 	}
 
-	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+	// 슬롯 VB가 다른 type stride로 오염돼 있으면 강제 재생성 (mesh BuildDraw와 동일 이유 — stride 안전).
+	if (InOutVB.GetStride() != sizeof(FParticleSpriteInstanceVertex) || !InOutVB.GetBuffer())
 	{
 		InOutVB.Create(Device, N, sizeof(FParticleSpriteInstanceVertex));
 	}
@@ -599,7 +600,11 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		V.SubImageIndex = SubIdx;
 	}
 
-	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+	// 이 emitter 전용 슬롯 VB(SceneProxy 소유, EmitterIdx로 인덱싱)는 type을 모르고 stride를 첫
+	// Create 때 고정한다. 슬롯이 다른 type(sprite 등) stride로 잡혀 있으면 EnsureCapacity 는 그
+	// stride 를 그대로 유지하므로, mesh instance stride 와 다르면 강제 재생성해야 한다. 안 그러면
+	// instance transform 이 어긋난 stride 로 읽혀 이물질/offset/랜덤 크기로 그려진다.
+	if (InOutVB.GetStride() != sizeof(FParticleMeshInstanceVertex) || !InOutVB.GetBuffer())
 	{
 		InOutVB.Create(Device, N, sizeof(FParticleMeshInstanceVertex));
 	}
@@ -795,7 +800,8 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		}
 	}
 
-	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+	// 슬롯 VB가 다른 type stride로 오염돼 있으면 강제 재생성 (stride 안전 — mesh/sprite와 동일 이유).
+	if (InOutVB.GetStride() != sizeof(FParticleBeamTrailVertex) || !InOutVB.GetBuffer())
 		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));
 	else
 		InOutVB.EnsureCapacity(Device, VertCount);
@@ -925,7 +931,8 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		IndexCount,
 		bRuntimeCapped);
 
-	if (InOutVB.GetStride() == 0 || !InOutVB.GetBuffer())
+	// 슬롯 VB가 다른 type stride로 오염돼 있으면 강제 재생성 (stride 안전 — mesh/sprite와 동일 이유).
+	if (InOutVB.GetStride() != sizeof(FParticleBeamTrailVertex) || !InOutVB.GetBuffer())
 		InOutVB.Create(Device, VertCount, sizeof(FParticleBeamTrailVertex));
 	else
 		InOutVB.EnsureCapacity(Device, VertCount);
