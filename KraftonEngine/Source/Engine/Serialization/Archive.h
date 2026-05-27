@@ -24,6 +24,7 @@ public:
 
 	inline bool IsLoading() const { return bIsLoading; }
 	inline bool IsSaving() const { return bIsSaving; }
+	virtual bool IsValid() const { return true; }
 	inline bool UsesTaggedPropertySerialization() const { return bUseTaggedPropertySerialization; }
 	inline bool IsVersionedTaggedLoad() const { return bIsLoading && bUseTaggedPropertySerialization; }
 	virtual void SetTaggedPropertySerializationEnabled(bool bEnabled) { bUseTaggedPropertySerialization = bEnabled; }

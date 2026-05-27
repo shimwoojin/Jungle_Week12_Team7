@@ -1,6 +1,7 @@
 ﻿#include "Core/Types/PropertyTypes.h"
 
 #include "Object/Reflection/UStruct.h"
+#include "Serialization/Archive.h"
 
 const char* FPropertyValue::GetName() const
 {

@@ -23,6 +23,10 @@ class FSoftObjectPtr
 {
 public:
 	FSoftObjectPtr() = default;
+	FSoftObjectPtr(const char* InPath)
+	{
+		SetPath(InPath ? FString(InPath) : FString("None"));
+	}
 	FSoftObjectPtr(const FString& InPath)
 		: ObjectPath(InPath)
 	{
