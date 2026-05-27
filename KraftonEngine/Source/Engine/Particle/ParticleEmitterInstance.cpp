@@ -60,6 +60,31 @@ namespace
 	constexpr float ParticleCollisionDebugPointSize = 0.1f;
 	constexpr float ParticleCollisionDebugNormalLength = 10.0f;
 
+	bool ResolveDefaultCollisionDisablePolicyForLOD(int32 LODIndex)
+	{
+		return LODIndex >= 2;
+	}
+
+	bool ResolveDefaultCollisionEventPolicyForLOD(int32 LODIndex)
+	{
+		return LODIndex <= 0;
+	}
+
+	int32 ResolveDefaultCollisionBudgetForLOD(int32 LODIndex)
+	{
+		if (LODIndex <= 0)
+		{
+			return ParticleCollisionBudgetLOD0;
+		}
+
+		if (LODIndex == 1)
+		{
+			return ParticleCollisionBudgetLOD1;
+		}
+
+		return ParticleCollisionBudgetLOD2OrLower;
+	}
+
 	void DecomposeVelocityAgainstSurfaceNormal(
 		const FVector& Velocity,
 		const FVector& SurfaceNormal,
@@ -1547,15 +1572,61 @@ const UParticleModuleCollision* FParticleEmitterInstance::ResolveCollisionOuterP
 	return nullptr;
 }
 
+FParticleEmitterInstance::FResolvedCollisionOuterPolicy
+FParticleEmitterInstance::ResolveCollisionOuterPolicyForCurrentLOD() const
+{
+	FResolvedCollisionOuterPolicy ResolvedPolicy;
+	ResolvedPolicy.bCollisionFullyDisabled =
+		ResolveDefaultCollisionDisablePolicyForLOD(CurrentLODIndex);
+	ResolvedPolicy.bEmitCollisionEvents =
+		ResolveDefaultCollisionEventPolicyForLOD(CurrentLODIndex);
+	ResolvedPolicy.CollisionQueryBudget =
+		ResolveDefaultCollisionBudgetForLOD(CurrentLODIndex);
+
+	// Current-emitter-LOD remains authoritative for outer collision workload
+	// policy. Simulation-LOD collision modules still define per-particle payload
+	// and hit meaning, but they do not override this emitter-level policy layer.
+	const UParticleModuleCollision* CurrentLODModule = GetCollisionModule();
+	if (!CurrentLODModule)
+	{
+		return ResolvedPolicy;
+	}
+
+	const FParticleCollisionLODPolicyOverride& PolicyOverride =
+		CurrentLODModule->LODPolicyOverride;
+	if (!PolicyOverride.bEnabled)
+	{
+		return ResolvedPolicy;
+	}
+
+	ResolvedPolicy.bUsingAuthoringOverride = true;
+	ResolvedPolicy.CollisionQueryBudget = std::max(0, PolicyOverride.CollisionQueryBudget);
+
+	if (PolicyOverride.bOverrideDisablePolicy)
+	{
+		ResolvedPolicy.bCollisionFullyDisabled = PolicyOverride.bDisableCollisionQueries;
+	}
+
+	if (PolicyOverride.bOverrideCollisionEventPolicy)
+	{
+		ResolvedPolicy.bEmitCollisionEvents = PolicyOverride.bAllowCollisionEvents;
+	}
+
+	return ResolvedPolicy;
+}
+
 void FParticleEmitterInstance::InitializeCollisionOuterPolicyDebugStats(
 	FParticleCollisionDebugStats& OutStats,
 	int32 CollisionBudget) const
 {
+	const FResolvedCollisionOuterPolicy ResolvedPolicy =
+		ResolveCollisionOuterPolicyForCurrentLOD();
 	OutStats.ActiveParticles = static_cast<int32>(ActiveParticles);
 	OutStats.CurrentLODIndex = CurrentLODIndex;
 	OutStats.EffectiveBudget = CollisionBudget;
-	OutStats.bCollisionFullyDisabledForLOD = IsCollisionFullyDisabledForCurrentLOD();
-	OutStats.bCollisionEventGatedForLOD = !ShouldEmitCollisionEventsForCurrentLOD();
+	OutStats.bCollisionFullyDisabledForLOD = ResolvedPolicy.bCollisionFullyDisabled;
+	OutStats.bCollisionEventGatedForLOD = !ResolvedPolicy.bEmitCollisionEvents;
+	OutStats.bUsingCollisionOuterPolicyOverride = ResolvedPolicy.bUsingAuthoringOverride;
 }
 
 bool FParticleEmitterInstance::FinalizeParticleCollisionWithoutQuery(
@@ -2231,13 +2302,14 @@ void FParticleEmitterInstance::DebugLogParticleCollisionStats(
 
 	const std::string EmitterName = Emitter ? Emitter->GetName() : "<null>";
 	UE_LOG(
-		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d pruned=%d pruneProbeHit=%d pruneProbeMiss=%d nearbyCacheValid=%d nearbyCacheRefreshed=%d nearbyCacheReused=%d nearbyEvidence=%d nearbyEvidenceHit=%d nearbyEvidenceMiss=%d nearbyProbeCount=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
+		"[ParticleCollisionDebug] emitter=%s lod=%d active=%d budget=%d disabled=%d eventGated=%d policyOverride=%d pruned=%d pruneProbeHit=%d pruneProbeMiss=%d nearbyCacheValid=%d nearbyCacheRefreshed=%d nearbyCacheReused=%d nearbyEvidence=%d nearbyEvidenceHit=%d nearbyEvidenceMiss=%d nearbyProbeCount=%d candidates=%d(high=%d fallback=%d) queried=%d skippedState=%d skippedEarly=%d skippedBudget=%d noHit=%d accepted=%d suppressed=%d emitted=%d eventSuppressed=%d lowSpeedStop=%d killedNow=%d frozen=%d ignored=%d",
 		EmitterName.c_str(),
 		Stats.CurrentLODIndex,
 		Stats.ActiveParticles,
 		Stats.EffectiveBudget,
 		Stats.bCollisionFullyDisabledForLOD ? 1 : 0,
 		Stats.bCollisionEventGatedForLOD ? 1 : 0,
+		Stats.bUsingCollisionOuterPolicyOverride ? 1 : 0,
 		Stats.EmitterPrunedCount,
 		Stats.EmitterPruneProbeHitCount,
 		Stats.EmitterPruneProbeMissCount,
@@ -2535,8 +2607,9 @@ bool FParticleEmitterInstance::IsCollisionFullyDisabledForCurrentLOD() const
 {
 	// Full collision disable is the strongest LOD reduction axis. It is kept
 	// separate from reduced budgets or event gating so those policies can evolve
-	// independently.
-	return CurrentLODIndex >= 2;
+	// independently. Current-emitter-LOD authoring may now override this outer
+	// policy; otherwise we keep the legacy hardcoded fallback.
+	return ResolveCollisionOuterPolicyForCurrentLOD().bCollisionFullyDisabled;
 }
 
 bool FParticleEmitterInstance::ShouldEmitCollisionEventsForCurrentLOD() const
@@ -2544,8 +2617,9 @@ bool FParticleEmitterInstance::ShouldEmitCollisionEventsForCurrentLOD() const
 	// Current-emitter-LOD outer policy: collision queries and collision-event
 	// fidelity are distinct reduction axes.
 	// Lower LODs may keep some collision behavior while choosing not to preserve
-	// gameplay/event-facing collision reporting.
-	return CurrentLODIndex <= 0;
+	// gameplay/event-facing collision reporting. Authoring may override this
+	// policy without redefining collision response/completion semantics.
+	return ResolveCollisionOuterPolicyForCurrentLOD().bEmitCollisionEvents;
 }
 
 int32 FParticleEmitterInstance::GetCollisionCheckBudgetForCurrentLOD() const
@@ -2553,18 +2627,9 @@ int32 FParticleEmitterInstance::GetCollisionCheckBudgetForCurrentLOD() const
 	// Current-emitter-LOD outer policy: budget answers "how many collision queries
 	// may this emitter spend?", not "what collision payload/module meaning applies?"
 	// Budget scaling is one reduction axis; full disable and event gating are
-	// handled separately.
-	if (CurrentLODIndex <= 0)
-	{
-		return ParticleCollisionBudgetLOD0;
-	}
-
-	if (CurrentLODIndex == 1)
-	{
-		return ParticleCollisionBudgetLOD1;
-	}
-
-	return ParticleCollisionBudgetLOD2OrLower;
+	// handled separately. Current-LOD collision authoring may override this, but
+	// fallback stays the legacy hardcoded LOD policy for existing assets.
+	return ResolveCollisionOuterPolicyForCurrentLOD().CollisionQueryBudget;
 }
 
 void FParticleEmitterInstance::ResizeParticleData(uint32 NewMax)
