@@ -363,6 +363,7 @@ bool FParticleSpriteVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              bool bRequiresSort,
                                              EParticleReplaySortMode SortMode,
                                              FDynamicVertexBuffer& InOutVB,
+                                             FDynamicIndexBuffer& /*InOutIB*/,
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -495,6 +496,7 @@ bool FParticleMeshVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            bool bRequiresSort,
                                            EParticleReplaySortMode SortMode,
                                            FDynamicVertexBuffer& InOutVB,
+                                           FDynamicIndexBuffer& /*InOutIB*/,
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -652,7 +654,6 @@ void FParticleBeamVertexFactory::InitResources(ID3D11Device* /*Device*/)
 void FParticleBeamVertexFactory::ReleaseResources()
 {
 	Shader = nullptr;
-	IB.Release();
 }
 
 bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
@@ -662,6 +663,7 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
                                            bool /*bRequiresSort*/,
                                            EParticleReplaySortMode /*SortMode*/,
                                            FDynamicVertexBuffer& InOutVB,
+                                           FDynamicIndexBuffer& InOutIB,
                                            FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -799,14 +801,14 @@ bool FParticleBeamVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceCon
 		InOutVB.EnsureCapacity(Device, VertCount);
 	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
 
-	IB.EnsureCapacity(Device, IndexCount);
-	IB.Update(Context, Indices.data(), IndexCount);
+	InOutIB.EnsureCapacity(Device, IndexCount);
+	InOutIB.Update(Context, Indices.data(), IndexCount);
 
 	// 섹션 depth 정렬용 대표 위치 = source~target 중점.
 	OutDraw.SortWorldPos = (Source + Target) * 0.5f;
 
-	// 비인스턴싱 strip: VB는 InOutVB(SceneProxy가 바인딩), IB는 factory 동적 IB.
-	OutDraw.StaticIB     = IB.GetBuffer();
+	// 비인스턴싱 strip: VB/IB 모두 SceneProxy가 emitter별로 소유한 동적 버퍼.
+	OutDraw.StaticIB     = InOutIB.GetBuffer();
 	OutDraw.VertexCount  = VertCount;
 	OutDraw.IndexCount   = IndexCount;
 	OutDraw.InstanceCount = 0;
@@ -828,7 +830,6 @@ void FParticleRibbonVertexFactory::InitResources(ID3D11Device* /*Device*/)
 void FParticleRibbonVertexFactory::ReleaseResources()
 {
 	Shader = nullptr;
-	IB.Release();
 }
 
 bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
@@ -838,6 +839,7 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
                                              bool /*bRequiresSort*/,
                                              EParticleReplaySortMode /*SortMode*/,
                                              FDynamicVertexBuffer& InOutVB,
+                                             FDynamicIndexBuffer& InOutIB,
                                              FDrawSpec& OutDraw)
 {
 	OutDraw = {};
@@ -929,8 +931,8 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 		InOutVB.EnsureCapacity(Device, VertCount);
 	if (!InOutVB.Update(Context, Vertices.data(), VertCount)) return false;
 
-	IB.EnsureCapacity(Device, IndexCount);
-	IB.Update(Context, Indices.data(), IndexCount);
+	InOutIB.EnsureCapacity(Device, IndexCount);
+	InOutIB.Update(Context, Indices.data(), IndexCount);
 
 	// 섹션 depth 정렬용 대표 위치 = 입자 월드 위치 평균.
 	FVector SortSum{ 0, 0, 0 };
@@ -940,7 +942,7 @@ bool FParticleRibbonVertexFactory::BuildDraw(ID3D11Device* Device, ID3D11DeviceC
 	}
 	OutDraw.SortWorldPos = SortSum * (1.0f / static_cast<float>(N));
 
-	OutDraw.StaticIB     = IB.GetBuffer();
+	OutDraw.StaticIB     = InOutIB.GetBuffer();
 	OutDraw.VertexCount  = VertCount;
 	OutDraw.IndexCount   = IndexCount;
 	OutDraw.InstanceCount = 0;

@@ -83,23 +83,6 @@ void CollectReplayEmitters(
 	}
 }
 
-FDynamicVertexBuffer* ResolveReplayEmitterVertexBuffer(
-	EDynamicEmitterType EmitterType,
-	FDynamicVertexBuffer& SpriteVB,
-	FDynamicVertexBuffer& MeshInstanceVB,
-	FDynamicVertexBuffer& BeamVB,
-	FDynamicVertexBuffer& RibbonVB)
-{
-	switch (EmitterType)
-	{
-	case EDynamicEmitterType::Sprite: return &SpriteVB;
-	case EDynamicEmitterType::Mesh:   return &MeshInstanceVB;
-	case EDynamicEmitterType::Beam:   return &BeamVB;
-	case EDynamicEmitterType::Ribbon: return &RibbonVB;
-	default:                          return nullptr;
-	}
-}
-
 EVertexFactoryType ResolveReplaySectionVertexFactoryType(EDynamicEmitterType EmitterType)
 {
 	switch (EmitterType)
@@ -121,6 +104,7 @@ bool BuildDrawSpecForReplayEmitter(
 	const FVector& CameraUp,
 	const FVector& CameraPosition,
 	FDynamicVertexBuffer& EmitterVB,
+	FDynamicIndexBuffer& EmitterIB,
 	FParticleVertexFactory::FDrawSpec& OutSpec)
 {
 	// 정렬 필요 여부는 material blend가 아니라 replay 계약의 SortMode가 결정한다.
@@ -135,6 +119,7 @@ bool BuildDrawSpecForReplayEmitter(
 		bRequiresSort,
 		Replay.SortMode,
 		EmitterVB,
+		EmitterIB,
 		OutSpec);
 }
 
@@ -215,10 +200,8 @@ FParticleSystemSceneProxy::~FParticleSystemSceneProxy()
 		if (F) { F->ReleaseResources(); delete F; F = nullptr; }
 	}
 	delete DynamicData; DynamicData = nullptr;
-	SpriteVB.Release();
-	MeshInstanceVB.Release();
-	BeamVB.Release();
-	RibbonVB.Release();
+	EmitterVBs.clear(); // unique_ptr 소멸 → 각 FDynamicVertexBuffer::Release() 호출
+	EmitterIBs.clear(); // unique_ptr 소멸 → 각 FDynamicIndexBuffer::Release() 호출
 	// ParticleMaterial은 UObjectManager가 소유 — 여기서 해제 X
 }
 
@@ -404,19 +387,23 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 	uint32 TotalIndexCount = 0;
 	uint32 EmitterIdx = 0;
 
+	// emitter 인스턴스별 전용 버퍼 슬롯 확보 — replay 순서(EmitterIdx)로 인덱싱.
+	// 같은 type emitter끼리 버퍼를 공유하지 않으므로 뒤 emitter가 앞 emitter 데이터를 덮어쓰지 않는다.
+	if (EmitterVBs.size() < Replays.size()) EmitterVBs.resize(Replays.size());
+	if (EmitterIBs.size() < Replays.size()) EmitterIBs.resize(Replays.size());
+
 	for (const FDynamicEmitterReplayDataBase* Replay : Replays)
 	{
 		FParticleVertexFactory* Factory = GetOrCreateFactory(Replay->EmitterType, Device);
 		if (!Factory) { ++EmitterIdx; continue; }
 
-		// emitter type별 dedicated VB (Sprite/Mesh 정점 포맷 다르니 공유 불가)
-		FDynamicVertexBuffer* EmitterVB = ResolveReplayEmitterVertexBuffer(
-			Replay->EmitterType,
-			SpriteVB,
-			MeshInstanceVB,
-			BeamVB,
-			RibbonVB);
-		if (!EmitterVB) { ++EmitterIdx; continue; }
+		// 이 emitter 전용 VB/IB (lazy 생성). 같은 type 다른 emitter와 버퍼를 공유하지 않는다.
+		// Sprite/Mesh는 IB를 안 쓰지만(정적 quad/mesh IB 사용) 슬롯은 type 무관하게 1:1로 둔다.
+		std::unique_ptr<FDynamicVertexBuffer>& VBSlot = EmitterVBs[EmitterIdx];
+		std::unique_ptr<FDynamicIndexBuffer>&  IBSlot = EmitterIBs[EmitterIdx];
+		if (!VBSlot) VBSlot = std::make_unique<FDynamicVertexBuffer>();
+		if (!IBSlot) IBSlot = std::make_unique<FDynamicIndexBuffer>();
+		FDynamicVertexBuffer* EmitterVB = VBSlot.get();
 
 		// Material 먼저 결정 — sort 조건 산출 위해 BuildDraw 호출 전에 BlendState 확인.
 		// 현재 전 타입 공통 RT material authority는
@@ -439,6 +426,7 @@ bool FParticleSystemSceneProxy::PrepareDrawBuffer(ID3D11Device* Device, ID3D11De
 			CachedCameraUp,
 			CachedCameraPosition,
 			*EmitterVB,
+			*IBSlot,
 			Spec))
 		{
 			++EmitterIdx;
