@@ -21,7 +21,10 @@ void ATriggerVolumeParticle::BeginPlay()
 		if (!PSC) continue;
 
 		CachedComponents.push_back(PSC);
-		PSC->Deactivate();  // 시작 시 꺼둠 — 트리거 진입 전까지 비활성
+		if (bActivateOnTriggerEnter)
+		{
+			PSC->Deactivate();  // 시작 시 꺼둠 — 트리거 진입 전까지 비활성
+		}
 	}
 }
 
@@ -29,6 +32,7 @@ void ATriggerVolumeParticle::OnPossessedPawnEntered(APawn* /*Pawn*/)
 {
 	// 첫 Pawn 진입에서만 켠다 (이미 켜진 상태에서 추가 진입은 무시).
 	if (OverlapCount++ != 0) return;
+	if (!bActivateOnTriggerEnter) return;
 
 	for (UParticleSystemComponent* PSC : CachedComponents)
 	{
@@ -41,6 +45,7 @@ void ATriggerVolumeParticle::OnPossessedPawnExited(APawn* /*Pawn*/)
 	// 마지막 Pawn 이 빠져나갈 때만 끈다.
 	if (--OverlapCount > 0) return;
 	OverlapCount = 0;  // 음수 방어 (Enter/Exit 비대칭 시)
+	if (!bDeactivateOnTriggerExit) return;
 
 	for (UParticleSystemComponent* PSC : CachedComponents)
 	{

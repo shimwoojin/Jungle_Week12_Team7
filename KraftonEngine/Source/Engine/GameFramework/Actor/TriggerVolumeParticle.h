@@ -37,6 +37,12 @@ private:
 	UPROPERTY(Edit, Save, Category="Particle Trigger", DisplayName="ParticleTag")
 	FName ParticleTag = "particleactor";  // 직렬화 — 디자이너가 대상 파티클 태그 지정
 
+	UPROPERTY(Edit, Save, Category="Particle Trigger", DisplayName="Activate On Trigger Enter")
+	bool bActivateOnTriggerEnter = true;
+
+	UPROPERTY(Edit, Save, Category="Particle Trigger", DisplayName="Deactivate On Trigger Exit")
+	bool bDeactivateOnTriggerExit = true;
+
 	TArray<UParticleSystemComponent*> CachedComponents;  // BeginPlay 1회 lookup 캐시
 	int32 OverlapCount = 0;                              // 다중 Pawn 동시 진입 보호
 };
