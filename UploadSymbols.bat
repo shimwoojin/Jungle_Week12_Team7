@@ -20,25 +20,13 @@ if "%VERSION_NAME%"=="" (
     goto :Fail
 )
 
-if not exist "%DEBUGGER_PATH%\symstore.exe" (
-    echo ERROR: symstore.exe not found: %DEBUGGER_PATH%\symstore.exe
-    set MISSING_DEBUG_TOOLS=1
-)
-
-if not exist "%SRCSRV_PATH%\srctool.exe" (
-    echo ERROR: srctool.exe not found: %SRCSRV_PATH%\srctool.exe
-    set MISSING_DEBUG_TOOLS=1
-)
-
-if not exist "%SRCSRV_PATH%\pdbstr.exe" (
-    echo ERROR: pdbstr.exe not found: %SRCSRV_PATH%\pdbstr.exe
-    set MISSING_DEBUG_TOOLS=1
-)
-
-if "%MISSING_DEBUG_TOOLS%"=="1" (
-    call :PrintWindowsSdkInstallHelp
-    goto :Fail
-)
+call :CheckWindowsDebugTool "%DEBUGGER_PATH%\symstore.exe" "symstore.exe"
+if errorlevel 1 set MISSING_DEBUG_TOOLS=1
+call :CheckWindowsDebugTool "%SRCSRV_PATH%\srctool.exe" "srctool.exe"
+if errorlevel 1 set MISSING_DEBUG_TOOLS=1
+call :CheckWindowsDebugTool "%SRCSRV_PATH%\pdbstr.exe" "pdbstr.exe"
+if errorlevel 1 set MISSING_DEBUG_TOOLS=1
+if "%MISSING_DEBUG_TOOLS%"=="1" goto :MissingWindowsDebugTools
 
 if not exist "%RELEASE_BIN%" (
     echo ERROR: Release bin folder not found: %RELEASE_BIN%
@@ -105,6 +93,15 @@ echo UploadSymbols failed.
 echo.
 if /i not "%NO_PAUSE%"=="--no-pause" pause
 endlocal
+exit /b 1
+
+:MissingWindowsDebugTools
+call :PrintWindowsSdkInstallHelp
+goto :Fail
+
+:CheckWindowsDebugTool
+if exist "%~1" exit /b 0
+echo ERROR: %~2 not found: %~1
 exit /b 1
 
 :PrintWindowsSdkInstallHelp
