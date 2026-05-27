@@ -2770,6 +2770,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 	bool bChanged = false;
 	bool bCurveKeyChanged = false;
 	bool bResetPreview = true;
+	UParticleModule* SelectedModuleForReset = nullptr;
 
 	if (SelectedEmitterIndex < 0)
 	{
@@ -2857,6 +2858,7 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 	{
 		UParticleLODLevel* LOD = GetSelectedLOD();
 		UParticleModule* Module = GetSelectedModule();
+		SelectedModuleForReset = Module;
 
 		if (SelectedModuleIndex == -1)
 		{
@@ -3314,7 +3316,14 @@ void FParticleEditorWidget::RenderPropertyPanel(ImVec2 Size)
 
 	if (bChanged || bCurveKeyChanged)
 	{
-		NotifyParticleAssetChanged(bChanged ? bResetPreview : false);
+		const bool bCurveChangeNeedsReset =
+			bCurveKeyChanged &&
+			(Cast<UParticleModuleLifetime>(SelectedModuleForReset) ||
+			 Cast<UParticleModuleLocation>(SelectedModuleForReset) ||
+			 Cast<UParticleModuleVelocity>(SelectedModuleForReset) ||
+			 Cast<UParticleModuleColor>(SelectedModuleForReset) ||
+			 Cast<UParticleModuleSize>(SelectedModuleForReset));
+		NotifyParticleAssetChanged((bChanged && bResetPreview) || bCurveChangeNeedsReset);
 	}
 
 	ImGui::EndChild();
