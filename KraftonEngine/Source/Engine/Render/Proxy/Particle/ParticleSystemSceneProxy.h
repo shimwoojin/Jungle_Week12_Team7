@@ -5,6 +5,8 @@
 #include "Particle/ParticleHelper.h"
 #include "Component/Particle/ParticleSystemComponent.h"
 
+#include <memory>
+
 class FParticleVertexFactory;
 class UMaterial;
 
@@ -47,12 +49,13 @@ protected:
 	// 타입 보고 factory 반환. 없으면 lazy 생성 + InitResources.
 	FParticleVertexFactory* GetOrCreateFactory(EDynamicEmitterType Type, ID3D11Device* Device) const;
 
-	// emitter type별 dedicated buffer — 같은 type 여러 emitter는 단순화하여 1개로 제한.
-	// (Sprite와 Mesh가 정점 포맷 다르고 stride 다르니 한 VB 공유 불가)
-	mutable FDynamicVertexBuffer SpriteVB;        // FParticleSpriteInstanceVertex (per-instance, slot 1)
-	mutable FDynamicVertexBuffer MeshInstanceVB;  // FParticleMeshInstanceVertex
-	mutable FDynamicVertexBuffer BeamVB;          // FParticleBeamTrailVertex (strip, 비인스턴싱)
-	mutable FDynamicVertexBuffer RibbonVB;        // FParticleBeamTrailVertex (strip, 비인스턴싱)
+	// emitter 인스턴스별 dedicated dynamic buffer — replay 순서(EmitterIdx)로 인덱싱.
+	// 같은 type emitter가 여러 개여도 각자 전용 VB/IB를 가져 서로 덮어쓰지 않는다.
+	//   Sprite/Mesh : VB = per-instance 스트림(slot 1), IB는 미사용(정적 quad/mesh IB 사용)
+	//   Beam/Ribbon : VB = strip 정점, IB = strip 인덱스 (둘 다 동적)
+	// 슬롯은 lazy 생성되고 프레임 간 유지되며 EnsureCapacity로 성장. emitter index→type은 고정 가정.
+	mutable TArray<std::unique_ptr<FDynamicVertexBuffer>> EmitterVBs;
+	mutable TArray<std::unique_ptr<FDynamicIndexBuffer>>  EmitterIBs;
 
 	// emitter type별 fallback Material (Template 없을 때 사용).
 	// 자산 기반 (.mat 파일) — FMaterialManager::GetOrCreateMaterial로 로드.

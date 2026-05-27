@@ -477,8 +477,8 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyEvent.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.cpp" />
-    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.cpp" />
+    <ClCompile Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotify_LogMessage.cpp" />
     <ClCompile Include="Source\Engine\Animation\Notify\AnimNotify_PlaySound.cpp" />
     <ClCompile Include="Source\Engine\Animation\Sequence\AnimDataModel.cpp" />
@@ -574,6 +574,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\GameFramework\Actor\SphereActor.cpp" />
     <ClCompile Include="Source\Engine\GameFramework\Actor\StaticMeshActor.cpp" />
     <ClCompile Include="Source\Engine\GameFramework\Actor\TriggerVolumeBase.cpp" />
+    <ClCompile Include="Source\Engine\GameFramework\Actor\TriggerVolumeParticle.cpp" />
     <ClCompile Include="Source\Engine\GameFramework\Camera\CameraModifier.cpp" />
     <ClCompile Include="Source\Engine\GameFramework\Camera\CameraShakeBase.cpp" />
     <ClCompile Include="Source\Engine\GameFramework\Camera\CameraShakeCameraModifier.cpp" />
@@ -645,8 +646,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamNoise.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamSource.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleBeamTarget.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.cpp" />
-    <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleCollision.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColor.cpp" />
     <ClCompile Include="Source\Engine\Particle\Modules\ParticleModuleColorOverLife.cpp" />
@@ -869,8 +868,8 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyEvent.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_AttackHitWindow.h" />
-    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_LogDuration.h" />
+    <ClInclude Include="Source\Engine\Animation\Notify\AnimNotifyState_Particle.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotify_LogMessage.h" />
     <ClInclude Include="Source\Engine\Animation\Notify\AnimNotify_PlaySound.h" />
     <ClInclude Include="Source\Engine\Animation\Sequence\AnimDataModel.h" />
@@ -980,6 +979,7 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\GameFramework\Actor\SphereActor.h" />
     <ClInclude Include="Source\Engine\GameFramework\Actor\StaticMeshActor.h" />
     <ClInclude Include="Source\Engine\GameFramework\Actor\TriggerVolumeBase.h" />
+    <ClInclude Include="Source\Engine\GameFramework\Actor\TriggerVolumeParticle.h" />
     <ClInclude Include="Source\Engine\GameFramework\Camera\CameraModifier.h" />
     <ClInclude Include="Source\Engine\GameFramework\Camera\CameraShakeBase.h" />
     <ClInclude Include="Source\Engine\GameFramework\Camera\CameraShakeCameraModifier.h" />
@@ -1068,17 +1068,6 @@ xcopy /Y "$(ProjectDir)ThirdParty\fbx\lib\x64\release\libfbxsdk.dll" "$(OutDir)"
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniform.h" />
     <ClInclude Include="Source\Engine\Particle\Distributions\DistributionVectorUniformCurve.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleAcceleration.h" />
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUV.h" />
-    <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleSubUVMovie.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEmitter.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEmitterInstance.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEventManager.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleEvents.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleHelper.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleLODLevel.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleModule.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleSystem.h" />
-    <ClInclude Include="Source\Engine\Particle\ParticleSystemManager.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamNoise.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamSource.h" />
     <ClInclude Include="Source\Engine\Particle\Modules\ParticleModuleBeamTarget.h" />

@@ -11,6 +11,7 @@
 #include "GameFramework/Actor/DecalActor.h"
 #include "GameFramework/Actor/HeightFogActor.h"
 #include "GameFramework/Actor/TriggerVolumeBase.h"
+#include "GameFramework/Actor/TriggerVolumeParticle.h"
 #include "GameFramework/Light/AmbientLightActor.h"
 #include "GameFramework/Light/DirectionalLightActor.h"
 #include "GameFramework/Light/PointLightActor.h"
@@ -1732,6 +1733,7 @@ void FLevelViewportLayout::RenderViewportPlaceActorPopup()
 		PlaceActorMenuItem("Sphere Collider", EViewportPlaceActorType::SphereCollider);
 		PlaceActorMenuItem("Capsule Collider", EViewportPlaceActorType::CapsuleCollider);
 		PlaceActorMenuItem("Trigger Volume", EViewportPlaceActorType::TriggerVolume);
+		PlaceActorMenuItem("Trigger Volume (Particle)", EViewportPlaceActorType::TriggerVolumeParticle);
 		PlaceActorMenuItem("Skeletal Mesh Actor", EViewportPlaceActorType::SkeletalMesh);
 		PlaceActorMenuItem("Character",           EViewportPlaceActorType::Character);
 		PlaceActorMenuItem("Lua Character", EViewportPlaceActorType::LuaCharacter);
@@ -1985,6 +1987,16 @@ AActor* FLevelViewportLayout::SpawnActorFromViewportMenu(EViewportPlaceActorType
 		if (Actor)
 		{
 			Actor->InitDefaultComponents();
+			SpawnedActor = Actor;
+		}
+		break;
+	}
+	case EViewportPlaceActorType::TriggerVolumeParticle:
+	{
+		ATriggerVolumeParticle* Actor = World->SpawnActor<ATriggerVolumeParticle>();
+		if (Actor)
+		{
+			Actor->InitDefaultComponents();  // 베이스의 BoxComponent Trigger 셋업 상속
 			SpawnedActor = Actor;
 		}
 		break;

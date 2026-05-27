@@ -148,6 +148,14 @@ public:
 	void SetSimulatePhysics(bool bInSimulate);
 	bool GetSimulatePhysics() const { return bSimulatePhysics; }
 
+	// Kinematic — 물리 시뮬레이션(중력/충돌 반발)은 받지 않지만 코드로 위치를 옮기며
+	// dynamic/trigger 와의 overlap·hit 이벤트는 수신. 캐릭터 capsule 처럼 "코드가 움직이되
+	// 시뮬레이션은 안 하는" 바디용. (PhysX: RigidDynamic + eKINEMATIC. SimulatePhysics 가
+	// true 면 그쪽이 우선이라 kinematic 은 무시됨. Native 백엔드는 모든 등록 바디를 검사하므로
+	// 이 플래그와 무관하게 동작.)
+	void SetKinematic(bool bInKinematic);
+	bool IsKinematic() const { return bKinematic; }
+
 	// --- Physics Force/Velocity API ---
 	void AddForce(const FVector& Force);
 	void AddForceAtLocation(const FVector& Force, const FVector& Location);
@@ -226,6 +234,8 @@ protected:
 	bool bCastShadowAsTwoSided = false;
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Simulate Physics")
 	bool bSimulatePhysics = false;
+	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Kinematic")
+	bool bKinematic = false;
 	UPROPERTY(Edit, Save, Category="Collision", DisplayName="Generate Overlap Events")
 	bool bGenerateOverlapEvents = false;
 

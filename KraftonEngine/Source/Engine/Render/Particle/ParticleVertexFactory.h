@@ -9,6 +9,7 @@ struct ID3D11Device;
 struct ID3D11DeviceContext;
 class FShader;
 class FDynamicVertexBuffer;
+class FDynamicIndexBuffer;
 
 // =============================================================================
 // FParticleVertexFactory
@@ -53,6 +54,9 @@ public:
 	};
 	// bRequiresSort: caller(SceneProxy)가 Material.BlendState 등으로 결정.
 	// AlphaBlend면 true, Opaque/Additive/Modulate면 false. 입자 간 카메라 거리 정렬을 skip 가능.
+	// InOutVB/InOutIB: caller(SceneProxy)가 emitter 인스턴스별로 소유하는 동적 버퍼.
+	//   Sprite/Mesh: InOutVB만 per-instance 스트림으로 사용, InOutIB는 미사용(정적 quad/mesh IB).
+	//   Beam/Ribbon: InOutVB=strip 정점, InOutIB=strip 인덱스 둘 다 사용.
 	virtual bool BuildDraw(ID3D11Device* Device, ID3D11DeviceContext* Context,
 	                       const FDynamicEmitterReplayDataBase& Replay,
 	                       const FVector& CameraRight, const FVector& CameraUp,
@@ -60,6 +64,7 @@ public:
 	                       bool bRequiresSort,
 	                       EParticleReplaySortMode SortMode,
 	                       FDynamicVertexBuffer& InOutVB,
+	                       FDynamicIndexBuffer& InOutIB,
 	                       FDrawSpec& OutDraw) = 0;
 };
 
@@ -82,6 +87,7 @@ public:
 	               bool bRequiresSort,
 	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
+	               FDynamicIndexBuffer& InOutIB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -114,6 +120,7 @@ public:
 	               bool bRequiresSort,
 	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
+	               FDynamicIndexBuffer& InOutIB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -144,6 +151,7 @@ public:
 	               bool bRequiresSort,
 	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
+	               FDynamicIndexBuffer& InOutIB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -151,7 +159,8 @@ public:
 
 protected:
 	FShader* Shader = nullptr;
-	FDynamicIndexBuffer IB;   // strip 인덱스 (가변, BuildDraw가 채움)
+	// strip 인덱스는 더 이상 factory가 소유하지 않는다 — SceneProxy가 emitter별로 소유해
+	// BuildDraw에 InOutIB로 넘긴다(같은 type 여러 emitter가 IB를 덮어쓰는 문제 방지).
 };
 
 class FParticleRibbonVertexFactory : public FParticleVertexFactory
@@ -167,6 +176,7 @@ public:
 	               bool bRequiresSort,
 	               EParticleReplaySortMode SortMode,
 	               FDynamicVertexBuffer& InOutVB,
+	               FDynamicIndexBuffer& InOutIB,
 	               FDrawSpec& OutDraw) override;
 
 	void InitResources(ID3D11Device* Device) override;
@@ -174,5 +184,6 @@ public:
 
 protected:
 	FShader* Shader = nullptr;
-	FDynamicIndexBuffer IB;   // strip 인덱스 (가변, BuildDraw가 채움)
+	// strip 인덱스는 더 이상 factory가 소유하지 않는다 — SceneProxy가 emitter별로 소유해
+	// BuildDraw에 InOutIB로 넘긴다(같은 type 여러 emitter가 IB를 덮어쓰는 문제 방지).
 };

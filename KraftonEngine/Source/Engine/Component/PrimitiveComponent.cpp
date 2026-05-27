@@ -121,6 +121,13 @@ void UPrimitiveComponent::SetSimulatePhysics(bool bInSimulate)
 	NotifyPhysicsBodyDirty();
 }
 
+void UPrimitiveComponent::SetKinematic(bool bInKinematic)
+{
+	if (bKinematic == bInKinematic) return;
+	bKinematic = bInKinematic;
+	NotifyPhysicsBodyDirty();  // 바디 타입(static↔kinematic dynamic) 변경 → 재등록
+}
+
 void UPrimitiveComponent::MarkProxyDirty(EDirtyFlag Flag) const
 {
 	if (!SceneProxy || !Owner || !Owner->GetWorld()) return;
