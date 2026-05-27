@@ -41,9 +41,6 @@ PDB 안에 Source Server 정보가 들어 있는가?
 PackageRelease.bat
   Release 빌드, BuildInfo 생성, 패키지 생성, 심볼 업로드를 한 번에 수행합니다.
 
-GenerateBuildInfo.bat
-  KraftonEngine/Source/Engine/Platform/BuildInfo.h를 자동 생성합니다.
-
 UploadSymbols.bat
   Release PDB에 source indexing 정보를 넣고, 검증 로그를 만든 뒤, 심볼 서버에 업로드합니다.
 
@@ -65,7 +62,7 @@ KraftonEngine/Source/Engine/Platform/CrashDump.cpp
 .\PackageRelease.bat 20260527_2100
 ```
 
-`20260527_2100`은 이 Release를 식별하는 버전명입니다. 팀에서 정한 규칙에 맞게 바꾸면 됩니다.
+`20260527_2100`은 이 Release를 식별하는 버전명입니다. 팀에서 정한 규칙에 맞게 바꾸면 됩니다. 배치 파일을 더블클릭하거나 인자 없이 실행하면 `VersionName`을 물어보고, 그냥 Enter를 누르면 현재 시간 기반 기본값(`yyyyMMdd_HHmm`)을 사용합니다.
 
 추천 형식:
 
@@ -89,7 +86,7 @@ SymbolLogs 파일명
 `PackageRelease.bat`는 내부적으로 다음 순서로 동작합니다.
 
 ```text
-1. GenerateBuildInfo.bat Release [VersionName]
+1. BuildInfo.h 생성
 2. Visual Studio Release x64 빌드
 3. ReleaseBuild 폴더 생성
 4. exe/dll/Shaders/Content/Settings 복사
@@ -97,7 +94,7 @@ SymbolLogs 파일명
 6. UploadSymbols.bat [VersionName] --no-pause 호출
 ```
 
-즉 일반적으로는 `GenerateBuildInfo.bat`나 `UploadSymbols.bat`를 따로 실행하지 않고, `PackageRelease.bat` 하나만 실행하면 됩니다.
+즉 일반적으로는 `UploadSymbols.bat`를 따로 실행하지 않고, `PackageRelease.bat` 하나만 실행하면 됩니다.
 
 ## UploadSymbols.bat의 역할
 
@@ -357,6 +354,22 @@ source indexing 이후에도 외부 SDK 파일이 남는 것은 정상입니다.
 ```text
 C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\srcsrv
 ```
+
+필요한 도구는 다음 3개입니다.
+
+```text
+C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\symstore.exe
+C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\srcsrv\srctool.exe
+C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\srcsrv\pdbstr.exe
+```
+
+도구가 없으면 Windows SDK를 설치하거나 수정 설치하면서 다음 항목을 포함해야 합니다.
+
+```text
+Debugging Tools for Windows
+```
+
+이 도구가 없는 상태에서는 source indexing, PDB 검증, symstore 업로드를 신뢰할 수 없으므로 `UploadSymbols.bat`는 중단됩니다. 설치 후 터미널을 다시 열고 `PackageRelease.bat`를 다시 실행하면 됩니다.
 
 `Symbol store path not accessible`가 나오면 심볼 서버 공유 폴더 접근 권한 또는 네트워크 연결을 확인해야 합니다.
 
